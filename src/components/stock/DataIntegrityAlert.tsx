@@ -450,20 +450,23 @@ export function DataIntegrityAlert({ code, onSync, onIntegrityCheck, externalSta
                 <div className="mb-2">
                   <div className="flex items-center justify-between text-[10px] mb-1">
                     <span className="opacity-70">数据条目</span>
-                    <span className={getCompletenessColor(level.completeness)}>
-                      {level.recordCount}/{level.expectedRecords}
+                    <span className="font-medium">
+                      {level.recordCount}
+                      <span className="opacity-50 font-normal"> / {level.expectedDescription}</span>
                     </span>
                   </div>
-                  <Progress 
-                    value={level.completeness} 
+                  {/* 以 minRecords(233) 为满分，满足分析要求即为绿色满格 */}
+                  <Progress
+                    value={Math.min(100, Math.round((level.recordCount / level.minRecords) * 100))}
                     className="h-1.5"
-                    style={{ 
-                      ['--progress-background' as string]: getCompletenessBgColor(level.completeness)
+                    style={{
+                      ['--progress-background' as string]: level.recordCount >= level.minRecords ? '#16a34a' : level.recordCount >= level.minRecords * 0.5 ? '#ca8a04' : '#dc2626'
                     }}
                   />
-                  {/* 数据周期说明 */}
-                  <div className="text-[10px] opacity-60 mt-1">
-                    周期: {level.expectedDescription}
+                  <div className="text-[10px] mt-1 opacity-60">
+                    {level.recordCount >= level.minRecords
+                      ? `✓ 已满足 MA233 分析要求`
+                      : `还需 ${level.minRecords - level.recordCount} 条满足 MA233`}
                   </div>
                 </div>
                 
