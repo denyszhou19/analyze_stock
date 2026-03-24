@@ -477,10 +477,22 @@ class TrinityStockAnalyzer:
                         judgment_criteria + ["✅ A类结构：趋势启动后平台整理"])
             
             elif comp1.type == "Platform" and comp2.type == "Directional":
-                # 平台 + 单边 = A类趋势（后半段）
-                return ('A五段式', '趋势突破阶段',
-                        f"A五段式，平台整理后突破",
-                        judgment_criteria + ["✅ A类结构：平台整理后趋势突破"])
+                # 平台 + 单边：区分正常中继平台 vs 超大中枢
+                # 缠论标准：中枢延伸到9段以上升级为高级别中枢（盘整）
+                # 三位一体映射：Platform笔数≤5为正常中继→A五段式；≥6为超大中枢→超大C类
+                platform_strokes = len(comp1.strokes)
+                if platform_strokes <= 5:
+                    return ('A五段式', '趋势突破阶段',
+                            f"A五段式，平台整理({platform_strokes}笔)后突破",
+                            judgment_criteria + ["✅ A类结构：平台整理后趋势突破"])
+                else:
+                    return ('C单平台式', '大中枢突破启动',
+                            f"超大C类（{platform_strokes}笔大中枢整理）+ 新上涨第一推动段",
+                            judgment_criteria + [
+                                f"⚠️ Platform含{platform_strokes}笔（≥6），缠论中枢延伸/升级，认定为超大C类盘整",
+                                "✅ 大中枢突破，等待回踩MA55确认，新A类a1段完成",
+                                "💡 操作建议：大概率进入新一轮上涨，回踩MA55为最佳介入点"
+                            ])
             
             else:
                 # 两个单边 = D类延伸
@@ -2044,10 +2056,16 @@ class TrinityStockAnalyzer:
         # 则合并为一根K线，方向与前一根非包含K线相同
         
         def process_containment(df):
-            """处理K线包含关系"""
+            """处理K线包含关系（缠论标准：上涨取高，下跌取低）
+
+            缠论标准规则：
+            - 上涨趋势中：合并取 high=max, low=max（保留强势方向）
+            - 下跌趋势中：合并取 high=min, low=min（保留弱势方向）
+            - 方向由已处理的前两根非包含K线的高低点关系决定
+            """
             if len(df) < 3:
                 return df
-            
+
             processed = []
             i = 0
             while i < len(df):
@@ -2055,47 +2073,50 @@ class TrinityStockAnalyzer:
                     processed.append(df.iloc[i].to_dict())
                     i += 1
                     continue
-                
+
                 curr = df.iloc[i]
                 prev = pd.Series(processed[-1])
-                
-                # 检查是否存在包含关系
-                # 包含关系：一根K线的高低点完全包含在另一根内
+
                 curr_high = curr['high']
                 curr_low = curr['low']
                 prev_high = prev['high']
                 prev_low = prev['low']
-                
+
                 # 判断包含关系
-                has_containment = False
-                if curr_high <= prev_high and curr_low >= prev_low:
-                    # 当前K线被前一根包含
-                    has_containment = True
-                    # 合并到前一根，方向保持不变
-                    processed[-1]['high'] = prev_high
-                    processed[-1]['low'] = prev_low
-                    # 更新日期和收盘价为当前K线的值（最新的值）
+                has_containment = (
+                    (curr_high <= prev_high and curr_low >= prev_low) or
+                    (prev_high <= curr_high and prev_low >= curr_low)
+                )
+
+                if has_containment:
+                    # 根据前两根已处理K线判断合并方向
+                    # 上涨（前K线高点 > 前前K线高点）：取高（high=max, low=max）
+                    # 下跌（前K线高点 < 前前K线高点）：取低（high=min, low=min）
+                    if len(processed) >= 2:
+                        prev_prev = processed[-2]
+                        is_up = prev_high >= prev_prev['high']
+                    else:
+                        # 仅有一根已处理K线，默认按上涨处理（取大）
+                        is_up = True
+
+                    if is_up:
+                        merged_high = max(prev_high, curr_high)
+                        merged_low = max(prev_low, curr_low)
+                    else:
+                        merged_high = min(prev_high, curr_high)
+                        merged_low = min(prev_low, curr_low)
+
+                    processed[-1]['high'] = merged_high
+                    processed[-1]['low'] = merged_low
                     if 'date' in curr:
                         processed[-1]['date'] = curr['date']
                     if 'close' in curr:
                         processed[-1]['close'] = curr['close']
-                elif prev_high <= curr_high and prev_low >= curr_low:
-                    # 前一根被当前K线包含
-                    has_containment = True
-                    # 合并到前一根，使用当前K线的高低点
-                    processed[-1]['high'] = curr_high
-                    processed[-1]['low'] = curr_low
-                    # 更新日期和收盘价为当前K线的值（最新的值）
-                    if 'date' in curr:
-                        processed[-1]['date'] = curr['date']
-                    if 'close' in curr:
-                        processed[-1]['close'] = curr['close']
-                
-                if not has_containment:
+                else:
                     processed.append(curr.to_dict())
-                
+
                 i += 1
-            
+
             return pd.DataFrame(processed)
         
         # 处理包含关系后的K线
@@ -2250,19 +2271,10 @@ class TrinityStockAnalyzer:
                                         result[-1] = current
                                         changed = True
                         else:
-                            # 间隔太近，保留更极端的分型
-                            if current['type'] == 'top':
-                                # 保留高点更高的
-                                if current['high'] > last['high']:
-                                    result[-1] = current
-                                    changed = True
-                                # 否则保留底分型（last），跳过当前顶分型
-                            else:
-                                # 保留低点更低的
-                                if current['low'] < last['low']:
-                                    result[-1] = current
-                                    changed = True
-                                # 否则保留顶分型（last），跳过当前底分型
+                            # 间隔太近（gap < 3），不同类型
+                            # 缠论规则：相邻异类分型不能构成有效笔，保留旧分型（last），跳过新分型（current）
+                            # 错误做法：用新分型替换旧分型（会导致重要极值点如高点209.88被错误丢弃）
+                            pass  # 直接跳过 current，保留 last
                 
                 fractals = result
             
