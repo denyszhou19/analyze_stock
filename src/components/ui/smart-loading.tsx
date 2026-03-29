@@ -3,9 +3,14 @@
 import { useState, useEffect, useRef } from 'react';
 import { Loader2 } from 'lucide-react';
 import { Progress } from './progress';
+import {
+  getAnalysisLoadingStageMeta,
+  type AnalysisLoadingStage,
+} from '@/lib/analysis-loading-stage';
 
 interface SmartLoadingProps {
   isLoading: boolean;
+  stage?: AnalysisLoadingStage | null;
   slowThreshold?: number; // 超过多少毫秒显示进度条，默认 3000ms
   loadingText?: string;
   slowLoadingText?: string;
@@ -28,6 +33,7 @@ const LOADING_STAGES = [
  */
 export function SmartLoading({
   isLoading,
+  stage = null,
   slowThreshold = 3000,
   loadingText = '加载中...',
   slowLoadingText = '正在从远程获取数据...',
@@ -38,6 +44,7 @@ export function SmartLoading({
   const startTimeRef = useRef<number>(0);
   const timerRef = useRef<NodeJS.Timeout | null>(null);
   const progressTimerRef = useRef<NodeJS.Timeout | null>(null);
+  const stageMeta = stage ? getAnalysisLoadingStageMeta(stage) : null;
 
   useEffect(() => {
     if (isLoading) {
@@ -47,6 +54,19 @@ export function SmartLoading({
       timerRef.current = setTimeout(() => {
         setIsSlowLoading(true);
       }, slowThreshold);
+
+      if (stageMeta) {
+        setStageText(stageMeta.title);
+        setProgress(stageMeta.progress);
+        return () => {
+          if (timerRef.current) {
+            clearTimeout(timerRef.current);
+          }
+          if (progressTimerRef.current) {
+            clearInterval(progressTimerRef.current);
+          }
+        };
+      }
 
       // 进度动画
       progressTimerRef.current = setInterval(() => {
@@ -99,9 +119,21 @@ export function SmartLoading({
         clearInterval(progressTimerRef.current);
       }
     };
-  }, [isLoading, slowThreshold, slowLoadingText]);
+  }, [isLoading, slowThreshold, slowLoadingText, stageMeta]);
+
+  useEffect(() => {
+    if (isLoading && stageMeta) {
+      setStageText(stageMeta.title);
+      setProgress(stageMeta.progress);
+    }
+  }, [isLoading, stageMeta]);
 
   if (!isLoading) return null;
+
+  const currentLoadingText = stageMeta?.title || loadingText;
+  const currentStageText = stageMeta?.title || stageText;
+  const currentProgress = stageMeta?.progress ?? progress;
+  const currentDetailText = stageMeta?.detail || '请耐心等待，数据将自动缓存';
 
   // 快速加载：简单 spinner
   if (!isSlowLoading) {
@@ -109,7 +141,7 @@ export function SmartLoading({
       <div className="fixed inset-0 bg-background/80 backdrop-blur-sm z-50 flex items-center justify-center">
         <div className="flex flex-col items-center gap-3">
           <Loader2 className="h-10 w-10 animate-spin text-primary" />
-          <p className="text-sm sm:text-base text-muted-foreground">{loadingText}</p>
+          <p className="text-sm sm:text-base text-muted-foreground">{currentLoadingText}</p>
         </div>
       </div>
     );
@@ -127,22 +159,22 @@ export function SmartLoading({
             style={{ animationDuration: '1s' }}
           />
           <div className="absolute inset-0 flex items-center justify-center">
-            <span className="text-lg font-bold text-primary">{Math.round(progress)}%</span>
+            <span className="text-lg font-bold text-primary">{Math.round(currentProgress)}%</span>
           </div>
         </div>
 
         {/* 进度条 */}
         <div className="w-full space-y-2">
-          <Progress value={progress} className="h-2" />
+          <Progress value={currentProgress} className="h-2" />
           <p className="text-sm text-muted-foreground text-center animate-pulse">
-            {stageText}
+            {currentStageText}
           </p>
         </div>
 
         {/* 提示文字 */}
         <div className="text-xs text-muted-foreground text-center space-y-1">
-          <p>首次加载需要从远程获取历史数据</p>
-          <p>请耐心等待，数据将自动缓存</p>
+          <p>{currentDetailText}</p>
+          <p>{stageMeta ? '进度会随真实处理阶段更新。' : '首次加载需要从远程获取历史数据。'}</p>
         </div>
       </div>
     </div>

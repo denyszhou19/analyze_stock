@@ -8,6 +8,10 @@ import {
   CheckCircle, AlertTriangle, XCircle, RefreshCw, ChevronDown, ChevronUp,
   Database, Clock, Loader2, Info
 } from 'lucide-react';
+import type {
+  DataIntegritySnapshot,
+  DataIntegritySummary,
+} from '@/lib/stock-data-integrity';
 
 /**
  * P1修复：状态机定义
@@ -21,52 +25,16 @@ import {
  */
 type DataState = 'idle' | 'checking' | 'syncing' | 'verifying' | 'analyzing' | 'ready' | 'failed';
 
-interface LevelStatus {
-  key: string;
-  name: string;
-  icon: string;
-  description: string;
-  status: 'ok' | 'stale' | 'missing' | 'error' | 'pending';
-  statusText: string;
-  lastDate: string | null;
-  recordCount: number;
-  expectedRecords: number;
-  expectedDescription: string;
-  completeness: number;
-  minRecords: number;
-  needsSync: boolean;
-  issues: string[];
-}
-
-interface DataIntegritySummary {
-  overallStatus: 'ok' | 'warning' | 'error' | 'syncing';
-  overallText: string;
-  okCount: number;
-  staleCount: number;
-  missingCount: number;
-  errorCount: number;
-  pendingCount: number;
-  totalLevels: number;
-  needsSyncLevels: string[];
-  canAnalyze: boolean;
-  analyzeWarning: string | null;
-}
-
-interface DataIntegrityData {
-  code: string;
-  levels: LevelStatus[];
-  baostockLatestDate: string | null;
-  currentTime: string;
-  isWeekend: boolean;
-  summary: DataIntegritySummary;
-}
-
 interface DataIntegrityAlertProps {
   code: string;
   onSync?: (frequencies: string[]) => Promise<void>;  // P1修复：改为异步
   onIntegrityCheck?: (canAnalyze: boolean, summary: DataIntegritySummary) => void;
   /** 外部控制的分析状态 */
   externalState?: 'analyzing' | 'ready';
+  /** 页面首屏已拿到的数据快照，避免重复请求 */
+  initialData?: DataIntegritySnapshot | null;
+  /** 是否允许组件自行发起完整性检查 */
+  autoRefresh?: boolean;
 }
 
 // 状态转换映射
@@ -91,14 +59,46 @@ const STATE_TEXT: Record<DataState, string> = {
   'failed': '操作失败',
 };
 
-export function DataIntegrityAlert({ code, onSync, onIntegrityCheck, externalState }: DataIntegrityAlertProps) {
-  const [data, setData] = useState<DataIntegrityData | null>(null);
+function getDataStateFromSummary(summary: DataIntegritySummary): DataState {
+  if (summary.canAnalyze) {
+    return 'ready';
+  }
+
+  if (summary.needsSyncLevels.length > 0) {
+    return 'idle';
+  }
+
+  return 'failed';
+}
+
+export function DataIntegrityAlert({
+  code,
+  onSync,
+  onIntegrityCheck,
+  externalState,
+  initialData = null,
+  autoRefresh = true,
+}: DataIntegrityAlertProps) {
+  const [data, setData] = useState<DataIntegritySnapshot | null>(initialData);
   const [dataState, setDataState] = useState<DataState>('checking');
   const [expanded, setExpanded] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   
   const onIntegrityCheckRef = useRef(onIntegrityCheck);
   onIntegrityCheckRef.current = onIntegrityCheck;
+
+  const applyIntegrityData = useCallback((nextData: DataIntegritySnapshot) => {
+    setData(nextData);
+    setDataState(getDataStateFromSummary(nextData.summary));
+
+    if (nextData.summary.canAnalyze || nextData.summary.needsSyncLevels.length > 0) {
+      setErrorMessage(null);
+    } else {
+      setErrorMessage('数据不完整，无法分析');
+    }
+
+    onIntegrityCheckRef.current?.(nextData.summary.canAnalyze, nextData.summary);
+  }, []);
 
   // P1修复：状态转换函数（带验证）
   const transitionTo = useCallback((newState: DataState) => {
@@ -123,19 +123,7 @@ export function DataIntegrityAlert({ code, onSync, onIntegrityCheck, externalSta
       const res = await fetch(`/api/stock/data-integrity?code=${code}`);
       const result = await res.json();
       if (result.success) {
-        setData(result.data);
-        if (onIntegrityCheckRef.current) {
-          onIntegrityCheckRef.current(result.data.summary.canAnalyze, result.data.summary);
-        }
-        // 根据检查结果决定下一个状态
-        if (result.data.summary.canAnalyze) {
-          transitionTo('ready');
-        } else if (result.data.summary.needsSyncLevels.length > 0) {
-          transitionTo('idle');
-        } else {
-          transitionTo('failed');
-          setErrorMessage('数据不完整，无法分析');
-        }
+        applyIntegrityData(result.data);
       } else {
         transitionTo('failed');
         setErrorMessage(result.error || '检查失败');
@@ -145,7 +133,7 @@ export function DataIntegrityAlert({ code, onSync, onIntegrityCheck, externalSta
       transitionTo('failed');
       setErrorMessage(err instanceof Error ? err.message : '检查失败');
     }
-  }, [code, transitionTo]);
+  }, [applyIntegrityData, code, transitionTo]);
 
   // P1修复：同步并验证
   const handleSyncAndVerify = useCallback(async () => {
@@ -165,17 +153,7 @@ export function DataIntegrityAlert({ code, onSync, onIntegrityCheck, externalSta
       const result = await res.json();
       
       if (result.success) {
-        setData(result.data);
-        if (onIntegrityCheckRef.current) {
-          onIntegrityCheckRef.current(result.data.summary.canAnalyze, result.data.summary);
-        }
-        
-        if (result.data.summary.canAnalyze) {
-          transitionTo('ready');
-        } else {
-          // 还有数据需要同步
-          transitionTo('idle');
-        }
+        applyIntegrityData(result.data);
       } else {
         transitionTo('failed');
         setErrorMessage(result.error || '验证失败');
@@ -185,12 +163,19 @@ export function DataIntegrityAlert({ code, onSync, onIntegrityCheck, externalSta
       transitionTo('failed');
       setErrorMessage(err instanceof Error ? err.message : '同步失败');
     }
-  }, [code, data, onSync, transitionTo]);
+  }, [applyIntegrityData, code, data, onSync, transitionTo]);
 
-  // 初始化检查
+  // 首屏直接接入 prepare-analysis 返回的快照，避免重复请求
   useEffect(() => {
-    checkIntegrity();
-  }, [checkIntegrity]);
+    if (initialData) {
+      applyIntegrityData(initialData);
+      return;
+    }
+
+    if (autoRefresh) {
+      void checkIntegrity();
+    }
+  }, [applyIntegrityData, autoRefresh, checkIntegrity, initialData]);
 
   // P1修复：响应外部状态
   useEffect(() => {

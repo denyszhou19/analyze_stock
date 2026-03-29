@@ -3,6 +3,7 @@
 import { useState, useEffect, useCallback } from 'react';
 import { Clock, RefreshCw } from 'lucide-react';
 import { cn } from '@/lib/utils';
+import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
 
 /**
  * 单个周期的同步状态
@@ -23,6 +24,10 @@ interface DataSyncTimeProps {
   currentFrequency?: string;
   /** 自定义类名 */
   className?: string;
+  /** 已有的数据完整性快照，可避免重复拉取 sync-status */
+  initialData?: DataIntegritySnapshot | null;
+  /** 是否允许组件自行请求 sync-status */
+  autoFetch?: boolean;
 }
 
 // 周期名称映射
@@ -44,10 +49,25 @@ export function DataSyncTime({
   code,
   currentFrequency,
   className,
+  initialData = null,
+  autoFetch = true,
 }: DataSyncTimeProps) {
   const [statusList, setStatusList] = useState<SyncStatusItem[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(autoFetch && !initialData);
   const [error, setError] = useState<string | null>(null);
+
+  const applyIntegritySnapshot = useCallback((snapshot: DataIntegritySnapshot) => {
+    setStatusList(snapshot.levels.map(level => ({
+      code: snapshot.code,
+      frequency: level.key,
+      lastSyncDate: level.lastDate,
+      lastSyncAt: null,
+      recordCount: level.recordCount,
+      syncStatus: level.status,
+    })));
+    setError(null);
+    setLoading(false);
+  }, []);
 
   // 获取同步状态
   const fetchSyncStatus = useCallback(async () => {
@@ -78,10 +98,18 @@ export function DataSyncTime({
   }, [code]);
 
   useEffect(() => {
-    if (code) {
-      fetchSyncStatus();
+    if (initialData) {
+      applyIntegritySnapshot(initialData);
+      return;
     }
-  }, [code, fetchSyncStatus]);
+
+    if (code && autoFetch) {
+      void fetchSyncStatus();
+      return;
+    }
+
+    setLoading(false);
+  }, [applyIntegritySnapshot, autoFetch, code, fetchSyncStatus, initialData]);
 
   // 加载中状态
   if (loading) {

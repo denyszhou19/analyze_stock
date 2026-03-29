@@ -6,37 +6,11 @@ import { Button } from '@/components/ui/button';
 import { Alert, AlertDescription, AlertTitle } from '@/components/ui/alert';
 import { Badge } from '@/components/ui/badge';
 import { cn } from '@/lib/utils';
-
-// 三位一体分析实际使用的级别（不包含5分钟）
-const REQUIRED_FREQUENCIES = ['w', 'd', '60', '30', '15'];
-
-interface SyncStatusItem {
-  code: string;
-  frequency: string;
-  lastSyncDate: string | null;
-  lastSyncAt: string | null;
-  recordCount: number;
-  syncType: string;
-  syncStatus: string;
-  lastSyncError: string | null;
-  retryCount: number;
-}
-
-interface SyncStatusSummary {
-  total: number;
-  failed: number;
-  syncing: number;
-  success: number;
-  pending: number;
-}
-
-interface SyncStatusResponse {
-  success: boolean;
-  data: SyncStatusItem[];
-  summary: SyncStatusSummary;
-  hasErrors: boolean;
-  errorCodes: string[];
-}
+import {
+  resolveSyncStatusPresentation,
+  type SyncStatusItem,
+  type SyncStatusResponse,
+} from '@/lib/stock-sync-status';
 
 interface SyncStatusAlertProps {
   /** 股票代码，用于过滤特定股票的同步状态 */
@@ -44,11 +18,15 @@ interface SyncStatusAlertProps {
   /** 是否显示详细信息 */
   showDetails?: boolean;
   /** 同步回调函数 */
-  onSync?: () => void;
+  onSync?: () => Promise<void> | void;
   /** 是否正在同步 */
   isSyncing?: boolean;
   /** 自定义类名 */
   className?: string;
+  /** 父层已拿到的同步状态 */
+  initialData?: SyncStatusResponse | null;
+  /** 是否允许组件自行发起请求 */
+  autoFetch?: boolean;
 }
 
 /**
@@ -66,8 +44,10 @@ export function SyncStatusAlert({
   onSync,
   isSyncing = false,
   className,
+  initialData = null,
+  autoFetch = true,
 }: SyncStatusAlertProps) {
-  const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(initialData);
   const [loading, setLoading] = useState(false);
   const [dismissed, setDismissed] = useState(false);
 
@@ -95,11 +75,19 @@ export function SyncStatusAlert({
 
   // 初始加载
   useEffect(() => {
-    fetchSyncStatus();
-    // 每 30 秒刷新一次状态
+    if (initialData) {
+      setSyncStatus(initialData);
+      return;
+    }
+
+    if (!autoFetch) {
+      return;
+    }
+
+    void fetchSyncStatus();
     const interval = setInterval(fetchSyncStatus, 30000);
     return () => clearInterval(interval);
-  }, [fetchSyncStatus]);
+  }, [autoFetch, fetchSyncStatus, initialData]);
 
   // 重试同步
   const handleRetry = async () => {
@@ -116,7 +104,7 @@ export function SyncStatusAlert({
       
       // 触发同步
       if (onSync) {
-        onSync();
+        await onSync();
       } else {
         // 如果没有提供同步回调，调用同步 API
         const syncUrl = code
@@ -144,36 +132,14 @@ export function SyncStatusAlert({
     return null;
   }
 
-  // 没有错误且没有正在同步，不显示
-  if (!syncStatus.hasErrors && syncStatus.summary.syncing === 0) {
+  const presentation = resolveSyncStatusPresentation(syncStatus, code);
+
+  if (presentation.variant === 'hidden') {
     return null;
   }
 
-  // 筛选当前股票的错误（只显示三位一体分析使用的级别）
-  const errorItems = code
-    ? syncStatus.data.filter(
-        item => item.code === code && 
-                item.syncStatus === 'failed' &&
-                REQUIRED_FREQUENCIES.includes(item.frequency)
-      )
-    : syncStatus.data.filter(
-        item => item.syncStatus === 'failed' &&
-                REQUIRED_FREQUENCIES.includes(item.frequency)
-      );
-
-  const syncingItems = code
-    ? syncStatus.data.filter(
-        item => item.code === code && 
-                item.syncStatus === 'syncing' &&
-                REQUIRED_FREQUENCIES.includes(item.frequency)
-      )
-    : syncStatus.data.filter(
-        item => item.syncStatus === 'syncing' &&
-                REQUIRED_FREQUENCIES.includes(item.frequency)
-      );
-
   // 正在同步状态
-  if (syncingItems.length > 0) {
+  if (presentation.variant === 'syncing') {
     return (
       <Alert className={cn('border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950', className)}>
         <Clock className="h-4 w-4 text-blue-600 animate-spin" />
@@ -183,7 +149,7 @@ export function SyncStatusAlert({
         <AlertDescription className="text-blue-700 dark:text-blue-300">
           {showDetails && (
             <div className="mt-2 text-sm">
-              {syncingItems.map(item => (
+              {presentation.syncingItems.map(item => (
                 <div key={`${item.code}-${item.frequency}`} className="flex items-center gap-2">
                   <span>{item.code}</span>
                   <Badge variant="outline" className="text-xs">{item.frequency}</Badge>
@@ -197,7 +163,7 @@ export function SyncStatusAlert({
   }
 
   // 错误状态
-  if (errorItems.length > 0) {
+  if (presentation.variant === 'error') {
     return (
       <Alert 
         variant="destructive" 
@@ -215,13 +181,13 @@ export function SyncStatusAlert({
         <AlertTitle className="flex items-center gap-2">
           数据同步失败
           <Badge variant="destructive" className="text-xs">
-            {errorItems.length} 个错误
+            {presentation.errorItems.length} 个错误
           </Badge>
         </AlertTitle>
         <AlertDescription>
           {showDetails && (
             <div className="mt-2 space-y-1">
-              {errorItems.map(item => (
+              {presentation.errorItems.map(item => (
                 <div 
                   key={`${item.code}-${item.frequency}`} 
                   className="text-sm flex items-start gap-2"
@@ -272,8 +238,10 @@ export function SyncStatusIndicator({
   onSync,
   isSyncing,
   className,
+  initialData = null,
+  autoFetch = true,
 }: Omit<SyncStatusAlertProps, 'showDetails'>) {
-  const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(null);
+  const [syncStatus, setSyncStatus] = useState<SyncStatusResponse | null>(initialData);
 
   // 获取同步状态
   const fetchSyncStatus = useCallback(async () => {
@@ -294,17 +262,27 @@ export function SyncStatusIndicator({
   }, [code]);
 
   useEffect(() => {
-    fetchSyncStatus();
+    if (initialData) {
+      setSyncStatus(initialData);
+      return;
+    }
+
+    if (!autoFetch) {
+      return;
+    }
+
+    void fetchSyncStatus();
     const interval = setInterval(fetchSyncStatus, 30000);
     return () => clearInterval(interval);
-  }, [fetchSyncStatus]);
+  }, [autoFetch, fetchSyncStatus, initialData]);
 
   if (!syncStatus) {
     return null;
   }
 
-  // 正在同步
-  if (syncStatus.summary.syncing > 0) {
+  const presentation = resolveSyncStatusPresentation(syncStatus, code);
+
+  if (presentation.variant === 'syncing') {
     return (
       <div className={cn('flex items-center gap-2 text-sm text-blue-600', className)}>
         <RefreshCw className="h-4 w-4 animate-spin" />
@@ -313,8 +291,7 @@ export function SyncStatusIndicator({
     );
   }
 
-  // 有错误
-  if (syncStatus.hasErrors) {
+  if (presentation.variant === 'error') {
     return (
       <Button
         variant="ghost"

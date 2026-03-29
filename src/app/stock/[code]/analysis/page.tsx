@@ -20,9 +20,14 @@ import {
 } from 'lucide-react';
 import { Markdown } from '@/components/ui/markdown';
 import { SmartLoading } from '@/components/ui/smart-loading';
-import { SyncStatusAlert } from '@/components/stock/SyncStatusAlert';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
+import {
+  StructureTopologySvg,
+  type StructureRenderPayload,
+} from '@/components/stock/StructureTopologySvg';
+import type { AnalysisLoadingStage } from '@/lib/analysis-loading-stage';
+import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
 import { domToJpeg } from 'modern-screenshot';
 import jsPDF from 'jspdf';
 
@@ -115,6 +120,7 @@ interface StructureData {
       to_type: string;
       is_current?: boolean;
     }>;
+    render_payload?: StructureRenderPayload;
     judgment_criteria: string;
     prediction?: {
       current_stage: string;
@@ -252,6 +258,11 @@ interface AnalysisResult {
 interface PrepareAnalysisData {
   ready: boolean;
   phase: string;
+  integrity?: DataIntegritySnapshot | null;
+  failedSyncs?: Array<{
+    frequency: string;
+    message: string;
+  }>;
   summary?: {
     canAnalyze: boolean;
     overallText: string;
@@ -259,16 +270,18 @@ interface PrepareAnalysisData {
     needsSyncLevels?: string[];
     pendingCount?: number;
   };
-  levels?: Array<{
-    key: string;
-    name: string;
-    status: string;
-  }>;
+  levels?: DataIntegritySnapshot['levels'];
   syncResults?: Array<{
     frequency: string;
     success: boolean;
     message?: string;
   }> | null;
+  bootstrap?: {
+    analysisData: AnalysisResult;
+    stockInfo: {
+      name?: string;
+    };
+  } | null;
 }
 
 // 周期名称映射
@@ -459,6 +472,8 @@ export default function StockAnalysisPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<AnalysisResult | null>(null);
   const [stockName, setStockName] = useState<string>('');
+  const [loadingStage, setLoadingStage] = useState<AnalysisLoadingStage>('checking');
+  const [integritySnapshot, setIntegritySnapshot] = useState<DataIntegritySnapshot | null>(null);
   
   // 数据完整性状态
   const [dataIntegrityStatus, setDataIntegrityStatus] = useState<{
@@ -494,6 +509,10 @@ export default function StockAnalysisPage() {
       return;
     }
 
+    if (prepared.integrity) {
+      setIntegritySnapshot(prepared.integrity);
+    }
+
     const summary = prepared.summary;
     setDataIntegrityStatus({
       canAnalyze: !!prepared.ready,
@@ -503,6 +522,23 @@ export default function StockAnalysisPage() {
       warning: prepared.ready ? null : (summary?.analyzeWarning || '数据不完整，请先同步数据后再分析'),
       needsSyncLevels: summary?.needsSyncLevels || [],
     });
+
+    if (prepared.bootstrap?.stockInfo?.name) {
+      setStockName(prepared.bootstrap.stockInfo.name);
+    }
+
+    if (prepared.bootstrap?.analysisData) {
+      setResult(prepared.bootstrap.analysisData);
+    }
+  }, []);
+
+  const applyLoadingStage = useCallback((stage: AnalysisLoadingStage) => {
+    setLoadingStage(stage);
+    setDataIntegrityStatus(prev => ({
+      ...prev,
+      isChecking: stage === 'checking',
+      isSyncing: stage === 'syncing',
+    }));
   }, []);
 
   const prepareAnalysis = useCallback(async (
@@ -515,38 +551,84 @@ export default function StockAnalysisPage() {
 
     const prepareRes = await fetch('/api/stock/prepare-analysis', {
       method: 'POST',
-      headers: { 'Content-Type': 'application/json' },
+      headers: {
+        'Content-Type': 'application/json',
+        'Accept': 'text/event-stream',
+      },
       body: JSON.stringify({
         code,
         forceSync,
         levels,
+        stream: true,
       }),
     });
 
-    const prepareResult = await prepareRes.json();
-    if (!prepareResult.success) {
-      throw new Error(prepareResult.error || '数据准备失败');
+    if (!prepareRes.ok || !prepareRes.headers.get('content-type')?.includes('text/event-stream')) {
+      const prepareResult = await prepareRes.json();
+      if (!prepareResult.success) {
+        if (prepareResult.data) {
+          applyPrepareState(prepareResult.data as PrepareAnalysisData, runId);
+        }
+        throw new Error(prepareResult.error || '数据准备失败');
+      }
+      const prepared = prepareResult.data as PrepareAnalysisData;
+      applyPrepareState(prepared, runId);
+      return prepared;
     }
 
-    const prepared = prepareResult.data as PrepareAnalysisData;
-    applyPrepareState(prepared, runId);
-
-    if (!prepared.ready) {
-      const failedSyncs = prepared.syncResults?.filter(item => !item.success) || [];
-      if (failedSyncs.length > 0) {
-        throw new Error(`数据同步失败: ${failedSyncs.map(item => item.frequency).join(', ')}`);
-      }
-
-      const pendingLevels = prepared.levels?.filter(level => level.status === 'pending').map(level => level.name) || [];
-      if (pendingLevels.length > 0) {
-        throw new Error(`数据仍在同步中: ${pendingLevels.join('、')}`);
-      }
-
-      throw new Error(prepared.summary?.analyzeWarning || '数据准备未完成');
+    const reader = prepareRes.body?.getReader();
+    if (!reader) {
+      throw new Error('无法读取分析准备响应流');
     }
 
-    return prepared;
-  }, [applyPrepareState, code]);
+    const decoder = new TextDecoder();
+    let buffer = '';
+    let preparedResult: PrepareAnalysisData | null = null;
+
+    while (true) {
+      const { done, value } = await reader.read();
+      if (done) {
+        break;
+      }
+
+      buffer += decoder.decode(value, { stream: true });
+      const events = buffer.split('\n\n');
+      buffer = events.pop() || '';
+
+      for (const event of events) {
+        if (!event.trim() || !event.startsWith('data: ')) continue;
+
+        const payload = JSON.parse(event.substring(6));
+        if (runId !== undefined && runId !== activeRunIdRef.current) {
+          return null as never;
+        }
+
+        switch (payload.type) {
+          case 'stage':
+            applyLoadingStage(payload.stage as AnalysisLoadingStage);
+            break;
+          case 'result': {
+            preparedResult = payload.data as PrepareAnalysisData;
+            applyPrepareState(preparedResult, runId);
+            break;
+          }
+          case 'error':
+            if (payload.data) {
+              applyPrepareState(payload.data as PrepareAnalysisData, runId);
+            }
+            throw new Error(payload.error || '数据准备失败');
+          default:
+            break;
+        }
+      }
+    }
+
+    if (!preparedResult) {
+      throw new Error('数据准备流程中断，未返回最终结果');
+    }
+
+    return preparedResult;
+  }, [applyLoadingStage, applyPrepareState, code]);
 
   const loadAnalysis = useCallback(async (options: { forceSync?: boolean; levels?: string[] } = {}) => {
     const { forceSync = false, levels = [] } = options;
@@ -556,6 +638,7 @@ export default function StockAnalysisPage() {
     setIsLoading(true);
     setError(null);
     setResult(null);
+    applyLoadingStage(forceSync || levels.length > 0 ? 'syncing' : 'checking');
     setDataIntegrityStatus(prev => ({
       ...prev,
       isChecking: !forceSync,
@@ -563,45 +646,26 @@ export default function StockAnalysisPage() {
     }));
 
     try {
-      await prepareAnalysis({ forceSync, levels }, runId);
+      const prepared = await prepareAnalysis({ forceSync, levels }, runId);
 
       if (runId !== activeRunIdRef.current) {
         return;
       }
 
-      // ============ 第二步：执行分析 ============
-      console.log('[分析流程] 步骤2: 执行三位一体分析...');
-      
-      const [analysisRes, infoRes] = await Promise.all([
-        fetch(`/api/stock/analysis?code=${code}`),
-        fetch(`/api/stock/info?code=${code}`)
-      ]);
-
-      const analysisData = await analysisRes.json();
-      const infoData = await infoRes.json();
-
-      if (runId !== activeRunIdRef.current) {
-        return;
-      }
-
-      if (infoData.success && infoData.data?.name) {
-        setStockName(infoData.data.name);
-      }
-
-      if (!analysisData.success) {
-        if (analysisData.code === 'DATA_INCOMPLETE') {
-          console.error('[分析流程] 分析接口报告数据不完整:', analysisData.error);
-          setDataIntegrityStatus(prev => ({
-            ...prev,
-            canAnalyze: false,
-            warning: analysisData.error
-          }));
+      if (!prepared.ready) {
+        const pendingLevels = prepared.levels?.filter(level => level.status === 'pending').map(level => level.name) || [];
+        if (pendingLevels.length > 0) {
+          throw new Error(`数据仍在同步中: ${pendingLevels.join('、')}`);
         }
-        setError(analysisData.error || '分析失败');
-      } else {
-        console.log('[分析流程] 分析完成，数据级别:', Object.keys(analysisData.data?.periods || {}));
-        setResult(analysisData.data);
+
+        throw new Error(prepared.summary?.analyzeWarning || '数据准备未完成');
       }
+
+      if (!prepared.bootstrap?.analysisData) {
+        throw new Error('分析结果缺失，请重试');
+      }
+
+      console.log('[分析流程] 分析完成，数据级别:', Object.keys(prepared.bootstrap.analysisData?.periods || {}));
     } catch (err) {
       if (runId !== activeRunIdRef.current) {
         return;
@@ -615,7 +679,7 @@ export default function StockAnalysisPage() {
       setIsLoading(false);
       setDataIntegrityStatus(prev => ({ ...prev, isChecking: false, isSyncing: false }));
     }
-  }, [code, prepareAnalysis]);
+  }, [applyLoadingStage, prepareAnalysis]);
 
   const handleManualSync = useCallback(async (frequencies?: string[]) => {
     await loadAnalysis({
@@ -627,6 +691,8 @@ export default function StockAnalysisPage() {
   useEffect(() => {
     autoLoadTriggeredRef.current = false;
     activeRunIdRef.current = 0;
+    setIntegritySnapshot(null);
+    setLoadingStage('checking');
   }, [code]);
 
   useEffect(() => {
@@ -916,18 +982,17 @@ export default function StockAnalysisPage() {
         </div>
       </div>
 
-      {/* 同步状态提醒 */}
-      <SyncStatusAlert 
-        code={code} 
-        onSync={() => handleManualSync()} 
-        isSyncing={isLoading || dataIntegrityStatus.isSyncing}
-      />
-
       {/* 数据完整性检查 */}
       <DataIntegrityAlert 
         code={code} 
         onSync={handleManualSync}
-        externalState={isLoading ? 'analyzing' : (result && dataIntegrityStatus.canAnalyze ? 'ready' : undefined)}
+        initialData={integritySnapshot}
+        autoRefresh={false}
+        externalState={
+          isLoading && (loadingStage === 'requesting-analysis' || loadingStage === 'finalizing')
+            ? 'analyzing'
+            : (result && dataIntegrityStatus.canAnalyze ? 'ready' : undefined)
+        }
         onIntegrityCheck={(canAnalyze, summary) => {
           setDataIntegrityStatus(prev => ({
             ...prev,
@@ -940,7 +1005,7 @@ export default function StockAnalysisPage() {
       />
 
       {/* 数据同步时间 */}
-      <DataSyncTime code={code} />
+      <DataSyncTime code={code} initialData={integritySnapshot} autoFetch={false} />
 
       {/* 数据同步提示 */}
       {(dataIntegrityStatus.isChecking || dataIntegrityStatus.isSyncing) && (
@@ -989,11 +1054,15 @@ export default function StockAnalysisPage() {
       {/* Loading 状态 - 智能进度条 */}
       <SmartLoading
         isLoading={isLoading || dataIntegrityStatus.isChecking || dataIntegrityStatus.isSyncing}
-        loadingText={
-          dataIntegrityStatus.isChecking ? '正在检查数据完整性...' :
-          dataIntegrityStatus.isSyncing ? '正在同步缺失数据，请稍候...' :
-          '正在进行三位一体技术分析...'
+        stage={
+          dataIntegrityStatus.isSyncing
+            ? 'syncing'
+            : dataIntegrityStatus.isChecking
+              ? 'checking'
+              : loadingStage
         }
+        slowThreshold={1200}
+        loadingText="正在准备分析..."
         slowLoadingText="正在分析周线、日线、60分钟、30分钟、15分钟多周期数据..."
       />
 
@@ -1587,128 +1656,13 @@ export default function StockAnalysisPage() {
                                     <div className="font-semibold text-white text-sm">结构拓扑图</div>
                                     
                                     {/* SVG 结构图形 */}
-                                    {periodData.structure.structure_details.strokes.length > 0 && (
+                                    {periodData.structure.structure_details.render_payload?.point_count ? (
                                       <div className="bg-slate-900/80 p-3 rounded-lg border border-slate-600">
-                                        <svg 
-                                          viewBox="0 0 400 200" 
-                                          className="w-full h-40"
-                                          preserveAspectRatio="xMidYMid meet"
-                                        >
-                                          {(() => {
-                                            const strokes = periodData.structure.structure_details!.strokes;
-                                            if (strokes.length === 0) return null;
-                                            
-                                            // 计算价格范围
-                                            const prices = strokes.flatMap(s => [s.from_price, s.to_price]);
-                                            const minPrice = Math.min(...prices);
-                                            const maxPrice = Math.max(...prices);
-                                            const priceRange = maxPrice - minPrice || 1;
-                                            const padding = 30;
-                                            const svgHeight = 200;
-                                            const dateLabelHeight = 20;
-                                            const drawHeight = svgHeight - padding * 2 - dateLabelHeight;
-                                            
-                                            // 计算坐标点
-                                            const points: Array<{x: number; y: number; price: number; date: string; type: string}> = [];
-                                            const xStep = (400 - padding * 2) / (strokes.length);
-                                            
-                                            strokes.forEach((stroke, i) => {
-                                              if (i === 0) {
-                                                points.push({
-                                                  x: padding,
-                                                  y: padding + (1 - (stroke.from_price - minPrice) / priceRange) * drawHeight,
-                                                  price: stroke.from_price,
-                                                  date: stroke.from_date.split(' ')[0],
-                                                  type: stroke.from_type
-                                                });
-                                              }
-                                              points.push({
-                                                x: padding + (i + 1) * xStep,
-                                                y: padding + (1 - (stroke.to_price - minPrice) / priceRange) * drawHeight,
-                                                price: stroke.to_price,
-                                                date: stroke.to_date.split(' ')[0],
-                                                type: stroke.to_type
-                                              });
-                                            });
-                                            
-                                            return (
-                                              <>
-                                                {/* 绘制连线 - 上涨红色，下跌绿色（中国股市习惯） */}
-                                                {strokes.map((stroke, i) => {
-                                                  const x1 = points[i].x;
-                                                  const y1 = points[i].y;
-                                                  const x2 = points[i + 1].x;
-                                                  const y2 = points[i + 1].y;
-                                                  const isUp = stroke.direction === '上涨';
-                                                  const isCurrent = stroke.is_current;
-                                                  return (
-                                                    <line 
-                                                      key={i}
-                                                      x1={x1} y1={y1} x2={x2} y2={y2}
-                                                      stroke={isUp ? '#ef4444' : '#22c55e'}
-                                                      strokeWidth="2"
-                                                      strokeDasharray={isCurrent ? "4,2" : undefined}
-                                                    />
-                                                  );
-                                                })}
-                                                
-                                                {/* 绘制拐点 */}
-                                                {points.map((point, i) => {
-                                                  const isTop = point.type === 'top' || (point.type === 'current' && i > 0 && points[i-1].y > point.y);
-                                                  const labelY = isTop ? point.y - 15 : point.y + 18;
-                                                  
-                                                  return (
-                                                    <g key={i}>
-                                                      {/* 价格标签背景 */}
-                                                      <rect 
-                                                        x={point.x - 18}
-                                                        y={labelY - 8}
-                                                        width="36"
-                                                        height="14"
-                                                        rx="2"
-                                                        fill="rgba(0,0,0,0.7)"
-                                                      />
-                                                      {/* 价格标签文字 */}
-                                                      <text 
-                                                        x={point.x} 
-                                                        y={labelY + 2}
-                                                        textAnchor="middle"
-                                                        fill="white"
-                                                        fontSize="9"
-                                                        fontWeight="500"
-                                                      >
-                                                        {point.price.toFixed(1)}
-                                                      </text>
-                                                      {/* 拐点圆点 */}
-                                                      <circle 
-                                                        cx={point.x} 
-                                                        cy={point.y} 
-                                                        r="5"
-                                                        fill={point.type === 'top' ? '#ef4444' : (point.type === 'current' ? '#fbbf24' : '#22c55e')}
-                                                        stroke="white"
-                                                        strokeWidth="1.5"
-                                                      />
-                                                      {/* 日期标签（只显示首尾和当前点） */}
-                                                      {(i === 0 || i === points.length - 1 || point.type === 'current') && (
-                                                        <text 
-                                                          x={point.x} 
-                                                          y={svgHeight - 10}
-                                                          textAnchor="middle"
-                                                          fill="#94a3b8"
-                                                          fontSize="8"
-                                                        >
-                                                          {point.date}
-                                                        </text>
-                                                      )}
-                                                    </g>
-                                                  );
-                                                })}
-                                              </>
-                                            );
-                                          })()}
-                                        </svg>
+                                        <StructureTopologySvg
+                                          payload={periodData.structure.structure_details.render_payload}
+                                        />
                                       </div>
-                                    )}
+                                    ) : null}
                                     
                                     {/* 笔信息列表 - 上涨红色，下跌绿色 */}
                                     <div className="space-y-1.5 max-h-28 overflow-y-auto pr-1">

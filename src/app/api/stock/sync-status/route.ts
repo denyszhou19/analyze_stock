@@ -1,5 +1,13 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { getSupabaseClient } from '@/storage/database/supabase-client';
+import {
+  checkDataFreshness,
+  getBaostockLatestDate,
+  getCurrentTimeInfo,
+  getMinRecords,
+  type Frequency,
+} from '@/lib/stock-freshness';
+import { resolveEffectiveSyncStatus } from '@/lib/stock-sync-status';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -17,10 +25,12 @@ interface SyncStatusItem {
   syncStatus: string;
   lastSyncError: string | null;
   retryCount: number;
+  rawSyncStatus?: string;
+  resolvedFromLocalData?: boolean;
 }
 
 // 周期列表
-const FREQUENCIES = ['w', 'd', '60', '30', '15', '5'];
+const FREQUENCIES: Frequency[] = ['w', 'd', '60', '30', '15', '5'];
 
 /**
  * GET /api/stock/sync-status - 获取股票同步状态
@@ -52,7 +62,7 @@ export async function GET(request: NextRequest) {
       query = query.eq('code', code);
     }
     
-    if (status) {
+    if (status && !code) {
       query = query.eq('sync_status', status);
     }
     
@@ -74,48 +84,69 @@ export async function GET(request: NextRequest) {
     let syncStatusList: SyncStatusItem[] = [];
     
     if (code) {
+      const timeInfo = getCurrentTimeInfo();
+      const baostockLatestDate = await getBaostockLatestDate(code);
+      const syncRecordMap = new Map(
+        (data || []).map((item: any) => [item.frequency, item])
+      );
+
       // 对于指定股票，从 K 线数据表获取实际的最新日期
-      for (const freq of FREQUENCIES) {
-        // 从 K 线数据表查询该周期的最新数据
-        const { data: klineData, error: klineError } = await client
-          .from('stock_kline_data_v2')
-          .select('trade_date')
-          .eq('code', code)
-          .eq('frequency', freq)
-          .order('trade_date', { ascending: false })
-          .limit(1);
-        
-        // 查询该周期的总记录数
-        const { count } = await client
-          .from('stock_kline_data_v2')
-          .select('*', { count: 'exact', head: true })
-          .eq('code', code)
-          .eq('frequency', freq);
-        
-        // 查找同步状态表中的记录
-        const syncRecord = (data || []).find((item: any) => item.frequency === freq);
-        
-        // 处理日期格式 - 优先使用 K 线数据表的实际日期
+      syncStatusList = await Promise.all(FREQUENCIES.map(async (freq) => {
+        const [klineLatestResult, countResult] = await Promise.all([
+          client
+            .from('stock_kline_data_v2')
+            .select('trade_date')
+            .eq('code', code)
+            .eq('frequency', freq)
+            .order('trade_date', { ascending: false })
+            .limit(1),
+          client
+            .from('stock_kline_data_v2')
+            .select('*', { count: 'exact', head: true })
+            .eq('code', code)
+            .eq('frequency', freq),
+        ]);
+
+        const syncRecord = syncRecordMap.get(freq);
+        const klineData = klineLatestResult.data;
+        const klineError = klineLatestResult.error;
+        const recordCount = countResult.count || 0;
+
         let lastDateStr: string | null = null;
         if (!klineError && klineData && klineData.length > 0) {
           const lastDate = klineData[0].trade_date;
-          lastDateStr = typeof lastDate === 'string' 
-            ? lastDate.split('T')[0] 
+          lastDateStr = typeof lastDate === 'string'
+            ? lastDate.split('T')[0]
             : new Date(lastDate).toISOString().split('T')[0];
         }
-        
-        syncStatusList.push({
+
+        const effectiveStatus = resolveEffectiveSyncStatus({
+          frequency: freq,
+          recordCount,
+          minRecords: getMinRecords(freq),
+          freshnessResult: checkDataFreshness(
+            freq,
+            lastDateStr,
+            baostockLatestDate,
+            timeInfo
+          ),
+          syncStatus: syncRecord,
+        });
+
+        return {
           code,
           frequency: freq,
           lastSyncDate: lastDateStr, // 使用 K 线数据表的实际日期
           lastSyncAt: syncRecord?.last_sync_at || null,
-          recordCount: count || 0,
+          recordCount,
           syncType: syncRecord?.sync_type || 'unknown',
-          syncStatus: syncRecord?.sync_status || 'pending',
-          lastSyncError: syncRecord?.last_sync_error || null,
+          syncStatus: effectiveStatus.syncStatus,
+          lastSyncError: effectiveStatus.lastSyncError,
           retryCount: syncRecord?.retry_count || 0,
-        });
-      }
+          rawSyncStatus: effectiveStatus.rawSyncStatus,
+          resolvedFromLocalData: effectiveStatus.resolvedFromLocalData,
+        };
+      }));
     } else {
       // 未指定股票代码时，使用同步状态表的数据
       syncStatusList = (data || []).map((item: any) => ({
@@ -129,6 +160,10 @@ export async function GET(request: NextRequest) {
         lastSyncError: item.last_sync_error,
         retryCount: item.retry_count || 0,
       }));
+    }
+
+    if (status) {
+      syncStatusList = syncStatusList.filter(item => item.syncStatus === status);
     }
 
     // 筛选有错误的股票代码（去重）
@@ -184,6 +219,7 @@ export async function POST(request: NextRequest) {
       .from('stock_sync_status')
       .update({
         sync_status: 'pending',
+        last_sync_error: null,
         retry_count: 0,
         updated_at: new Date().toISOString(),
       })

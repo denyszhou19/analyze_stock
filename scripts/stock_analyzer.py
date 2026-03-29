@@ -26,7 +26,7 @@ import argparse
 import json
 import sys
 from datetime import datetime, timedelta, timezone
-from typing import Dict, List, Optional, Tuple
+from typing import Any, Dict, List, Optional, Tuple
 from zoneinfo import ZoneInfo
 
 import numpy as np
@@ -52,6 +52,15 @@ class TrinityStockAnalyzer:
         'hour30': '30',     # 30分钟
         'hour15': '15',     # 15分钟
     }
+
+    # 结构分析窗口配置
+    STRUCTURE_MIN_KLINES = 60
+    STRUCTURE_FRACTAL_DISPLAY_LIMIT = 10
+    STRUCTURE_STROKE_WINDOW = 15
+    STRUCTURE_RENDER_WIDTH = 400
+    STRUCTURE_RENDER_HEIGHT = 200
+    STRUCTURE_RENDER_PADDING = 30
+    STRUCTURE_RENDER_DATE_LABEL_HEIGHT = 20
     
     # 时空要素和结构要素应用表
     # 核心逻辑：大级别（日线）时空状态 + 小级别（30分钟/15分钟）结构 = 操作建议
@@ -1955,6 +1964,829 @@ class TrinityStockAnalyzer:
             'origin_type': origin_type,
             'break_type': break_type
         }
+
+    def _create_structure_result(self) -> Dict[str, Any]:
+        """创建结构分析结果骨架，保持对外字段兼容。"""
+        return {
+            'structure_type': 'unknown',
+            'structure_stage': 'unknown',
+            'trend_direction': 'unknown',
+            'inflection_points': 0,
+            'segment_count': 0,
+            'description': '',
+            'structure_details': {
+                'top_fractals': [],
+                'bottom_fractals': [],
+                'strokes': [],
+                'judgment_criteria': '',
+                'line_geometry': {
+                    'price_range': None,
+                    'points': [],
+                    'segments': []
+                },
+                'render_payload': self._create_empty_render_payload(),
+                'pipeline': {}
+            }
+        }
+
+    def _create_empty_render_payload(self) -> Dict[str, Any]:
+        """创建画线层直接消费的默认 render payload。"""
+        padding = {
+            'top': self.STRUCTURE_RENDER_PADDING,
+            'right': self.STRUCTURE_RENDER_PADDING,
+            'bottom': self.STRUCTURE_RENDER_PADDING,
+            'left': self.STRUCTURE_RENDER_PADDING
+        }
+        draw_height = (
+            self.STRUCTURE_RENDER_HEIGHT
+            - (self.STRUCTURE_RENDER_PADDING * 2)
+            - self.STRUCTURE_RENDER_DATE_LABEL_HEIGHT
+        )
+        draw_width = self.STRUCTURE_RENDER_WIDTH - (self.STRUCTURE_RENDER_PADDING * 2)
+
+        return {
+            'version': 1,
+            'viewport': {
+                'width': self.STRUCTURE_RENDER_WIDTH,
+                'height': self.STRUCTURE_RENDER_HEIGHT,
+                'padding': padding,
+                'draw_width': draw_width,
+                'draw_height': draw_height,
+                'date_label_y': self.STRUCTURE_RENDER_HEIGHT - 10,
+                'label_box': {
+                    'width': 36,
+                    'height': 14,
+                    'radius': 2
+                }
+            },
+            'price_range': None,
+            'points': [],
+            'segments': [],
+            'point_count': 0,
+            'segment_count': 0
+        }
+
+    def _normalize_render_date(self, value: Any, date_only: bool = False) -> str:
+        """将时间字段统一为前端画线层可直接显示的字符串。"""
+        if value is None:
+            return ''
+
+        if hasattr(value, 'strftime'):
+            if date_only:
+                return value.strftime('%Y-%m-%d')
+            return value.strftime('%Y-%m-%d %H:%M')
+
+        text = str(value)
+        if date_only:
+            if ' ' in text:
+                return text.split(' ')[0]
+            if 'T' in text:
+                return text.split('T')[0]
+        return text
+
+    def _determine_structure_trend(self, df: pd.DataFrame) -> str:
+        """基于前后半段均价变化给结构识别一个趋势背景。"""
+        if len(df) < 2:
+            return '震荡'
+
+        half = max(1, len(df) // 2)
+        first_half_mean = df.head(half)['close'].mean()
+        second_half_mean = df.tail(half)['close'].mean()
+
+        if first_half_mean == 0 or pd.isna(first_half_mean) or pd.isna(second_half_mean):
+            return '震荡'
+
+        trend_change = (second_half_mean - first_half_mean) / first_half_mean * 100
+
+        if trend_change > 5:
+            return '上涨'
+        if trend_change < -5:
+            return '下跌'
+        return '震荡'
+
+    def _serialize_valid_range(self, valid_range: Optional[Dict[str, Any]]) -> Optional[Dict[str, Any]]:
+        """格式化有效区间信息，便于前端和后续画线逻辑直接使用。"""
+        if not valid_range:
+            return None
+
+        return {
+            'start_date': valid_range['start_date'],
+            'end_date': valid_range['end_date'],
+            'start_price': valid_range['start_price'],
+            'end_price': valid_range['end_price'],
+            'origin_type': valid_range['origin_type'],
+            'break_type': valid_range.get('break_type', 'MA55')
+        }
+
+    def _process_containment(self, df: pd.DataFrame) -> pd.DataFrame:
+        """处理K线包含关系，输出后续分型识别所需的干净K线序列。"""
+        if len(df) < 3:
+            return df
+
+        processed: List[Dict[str, Any]] = []
+        i = 0
+        while i < len(df):
+            if i == 0:
+                processed.append(df.iloc[i].to_dict())
+                i += 1
+                continue
+
+            curr = df.iloc[i]
+            prev = pd.Series(processed[-1])
+
+            curr_high = curr['high']
+            curr_low = curr['low']
+            prev_high = prev['high']
+            prev_low = prev['low']
+
+            has_containment = (
+                (curr_high <= prev_high and curr_low >= prev_low) or
+                (prev_high <= curr_high and prev_low >= curr_low)
+            )
+
+            if has_containment:
+                if len(processed) >= 2:
+                    prev_prev = processed[-2]
+                    is_up = prev_high >= prev_prev['high']
+                else:
+                    is_up = True
+
+                if is_up:
+                    merged_high = max(prev_high, curr_high)
+                    merged_low = max(prev_low, curr_low)
+                else:
+                    merged_high = min(prev_high, curr_high)
+                    merged_low = min(prev_low, curr_low)
+
+                processed[-1]['high'] = merged_high
+                processed[-1]['low'] = merged_low
+                if 'date' in curr:
+                    processed[-1]['date'] = curr['date']
+                if 'close' in curr:
+                    processed[-1]['close'] = curr['close']
+            else:
+                processed.append(curr.to_dict())
+
+            i += 1
+
+        return pd.DataFrame(processed)
+
+    def _detect_fractals(self, processed_df: pd.DataFrame) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """识别原始顶底分型。"""
+        top_fractals: List[Dict[str, Any]] = []
+        bottom_fractals: List[Dict[str, Any]] = []
+
+        for i in range(1, len(processed_df) - 1):
+            prev_high = processed_df.iloc[i - 1]['high']
+            curr_high = processed_df.iloc[i]['high']
+            next_high = processed_df.iloc[i + 1]['high']
+            prev_low = processed_df.iloc[i - 1]['low']
+            curr_low = processed_df.iloc[i]['low']
+            next_low = processed_df.iloc[i + 1]['low']
+
+            if curr_high > prev_high and curr_high > next_high:
+                if curr_low > prev_low and curr_low > next_low:
+                    top_fractals.append({
+                        'index': i,
+                        'date': processed_df.iloc[i].get('date', str(i)),
+                        'high': curr_high,
+                        'low': curr_low,
+                        'type': 'top'
+                    })
+
+            if curr_low < prev_low and curr_low < next_low:
+                if curr_high < prev_high and curr_high < next_high:
+                    bottom_fractals.append({
+                        'index': i,
+                        'date': processed_df.iloc[i].get('date', str(i)),
+                        'high': curr_high,
+                        'low': curr_low,
+                        'type': 'bottom'
+                    })
+
+        return top_fractals, bottom_fractals
+
+    def _serialize_fractals(self, fractals: List[Dict[str, Any]], price_key: str) -> List[Dict[str, Any]]:
+        """裁剪并格式化分型，用于结构结果输出。"""
+        serialized = []
+        for fractal in fractals[-self.STRUCTURE_FRACTAL_DISPLAY_LIMIT:]:
+            serialized.append({
+                'index': fractal['index'],
+                'date': fractal['date'],
+                price_key: round(fractal[price_key], 2)
+            })
+        return serialized
+
+    def _merge_and_validate_fractals(
+        self,
+        top_fractals: List[Dict[str, Any]],
+        bottom_fractals: List[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """合并顶底分型，并先做一轮相邻同类与极值合法性过滤。"""
+        all_fractals = [{**f, 'type': 'top'} for f in top_fractals]
+        all_fractals.extend({**f, 'type': 'bottom'} for f in bottom_fractals)
+        all_fractals.sort(key=lambda x: x['index'])
+
+        filtered_fractals: List[Dict[str, Any]] = []
+        for fractal in all_fractals:
+            if not filtered_fractals:
+                filtered_fractals.append(fractal)
+                continue
+
+            last = filtered_fractals[-1]
+            if last['type'] == fractal['type']:
+                if fractal['type'] == 'top':
+                    if fractal['high'] > last['high']:
+                        filtered_fractals[-1] = fractal
+                else:
+                    if fractal['low'] < last['low']:
+                        filtered_fractals[-1] = fractal
+                continue
+
+            if fractal['type'] == 'top':
+                if fractal['high'] > last['low']:
+                    filtered_fractals.append(fractal)
+            else:
+                if fractal['low'] < last['high']:
+                    filtered_fractals.append(fractal)
+
+        return filtered_fractals
+
+    def _build_strokes_iterative(self, fractals: List[Dict[str, Any]]) -> List[Dict[str, Any]]:
+        """按缠论约束迭代收敛有效分型序列。"""
+        if len(fractals) < 2:
+            return fractals
+
+        changed = True
+        while changed:
+            changed = False
+            result = [fractals[0]]
+
+            for current in fractals[1:]:
+                last = result[-1]
+
+                if current['type'] == last['type']:
+                    if current['type'] == 'top':
+                        if current['high'] > last['high']:
+                            result[-1] = current
+                            changed = True
+                    else:
+                        if current['low'] < last['low']:
+                            result[-1] = current
+                            changed = True
+                    continue
+
+                gap = current['index'] - last['index']
+                if gap >= 3:
+                    valid = True
+                    if last['type'] == 'top':
+                        if current['low'] >= last['high']:
+                            valid = False
+                    else:
+                        if current['high'] <= last['low']:
+                            valid = False
+
+                    if valid:
+                        result.append(current)
+                    else:
+                        if current['type'] == 'top':
+                            if current['high'] > last['high']:
+                                result[-1] = current
+                                changed = True
+                        else:
+                            if current['low'] < last['low']:
+                                result[-1] = current
+                                changed = True
+                else:
+                    # 相邻异类分型间距不足，不构成有效笔，保留旧分型。
+                    pass
+
+            fractals = result
+
+        return fractals
+
+    def _build_confirmed_strokes(
+        self,
+        final_fractals: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """从最终分型序列构建确认完成的笔。"""
+        strokes: List[Dict[str, Any]] = []
+        valid_fractals: List[Dict[str, Any]] = []
+
+        for i in range(len(final_fractals) - 1):
+            from_fractal = final_fractals[i]
+            to_fractal = final_fractals[i + 1]
+
+            if from_fractal['type'] != to_fractal['type']:
+                strokes.append({
+                    'from': from_fractal,
+                    'to': to_fractal,
+                    'length': to_fractal['index'] - from_fractal['index']
+                })
+                if i == 0:
+                    valid_fractals.append(from_fractal)
+                valid_fractals.append(to_fractal)
+
+        return strokes, valid_fractals
+
+    def _resolve_stroke_prices_and_direction(
+        self,
+        from_fractal: Dict[str, Any],
+        to_fractal: Dict[str, Any]
+    ) -> Dict[str, Any]:
+        """根据分型类型得到更适合画线和结构识别的笔价格与方向。"""
+        from_type = from_fractal['type']
+        to_type = to_fractal['type']
+
+        from_price = from_fractal['high'] if from_type == 'top' else from_fractal['low']
+        to_price = to_fractal['high'] if to_type == 'top' else to_fractal['low']
+
+        direction = '上涨' if to_price > from_price else '下跌'
+
+        if from_type == 'top' and to_type == 'bottom' and direction == '上涨':
+            to_price_alt = to_fractal['high']
+            if to_price_alt < from_price:
+                direction = '下跌'
+                to_price = to_price_alt
+
+        if from_type == 'bottom' and to_type == 'top' and direction == '下跌':
+            to_price_alt = to_fractal['low']
+            if to_price_alt > from_price:
+                direction = '上涨'
+                to_price = to_price_alt
+
+        return {
+            'from_price': round(from_price, 2),
+            'to_price': round(to_price, 2),
+            'direction': direction
+        }
+
+    def _build_render_strokes(
+        self,
+        strokes: List[Dict[str, Any]]
+    ) -> Tuple[List[Dict[str, Any]], List[Dict[str, Any]]]:
+        """构建前端当前使用的画线笔列表，并保留对应的分型锚点。"""
+        render_source = strokes[-self.STRUCTURE_STROKE_WINDOW:]
+        stroke_list: List[Dict[str, Any]] = []
+        render_fractals: List[Dict[str, Any]] = []
+
+        for i, stroke in enumerate(render_source):
+            from_fractal = stroke['from']
+            to_fractal = stroke['to']
+            stroke_meta = self._resolve_stroke_prices_and_direction(from_fractal, to_fractal)
+
+            stroke_list.append({
+                'from_date': from_fractal.get('date', str(from_fractal['index'])),
+                'to_date': to_fractal.get('date', str(to_fractal['index'])),
+                'from_price': stroke_meta['from_price'],
+                'to_price': stroke_meta['to_price'],
+                'direction': stroke_meta['direction'],
+                'length': stroke['length'],
+                'from_type': from_fractal['type'],
+                'to_type': to_fractal['type']
+            })
+
+            if i == 0:
+                render_fractals.append(from_fractal)
+            render_fractals.append(to_fractal)
+
+        return stroke_list, render_fractals
+
+    def _append_current_stroke_from_fractal(
+        self,
+        stroke_list: List[Dict[str, Any]],
+        from_fractal: Dict[str, Any],
+        to_date: Any,
+        to_price: float,
+        direction: str,
+        length: int
+    ) -> None:
+        """向画线结果中追加一笔进行中的笔。"""
+        from_price = from_fractal['high'] if from_fractal['type'] == 'top' else from_fractal['low']
+        stroke_list.append({
+            'from_date': from_fractal.get('date', str(from_fractal['index'])),
+            'to_date': to_date,
+            'from_price': round(from_price, 2),
+            'to_price': round(to_price, 2),
+            'direction': direction,
+            'length': length,
+            'from_type': from_fractal['type'],
+            'to_type': 'current',
+            'is_current': True
+        })
+
+    def _append_current_render_stroke(
+        self,
+        stroke_list: List[Dict[str, Any]],
+        render_fractals: List[Dict[str, Any]],
+        processed_df: pd.DataFrame
+    ) -> None:
+        """如果最新K线尚未形成新分型，则补上一笔进行中的延伸笔。"""
+        if not render_fractals or len(processed_df) == 0:
+            return
+
+        last_valid = render_fractals[-1]
+        last_kline = processed_df.iloc[-1]
+        last_kline_index = len(processed_df) - 1
+
+        if last_valid['index'] >= last_kline_index:
+            return
+
+        latest_high = last_kline['high']
+        latest_low = last_kline['low']
+        latest_close = last_kline['close']
+        latest_date = last_kline.get('date', str(last_kline_index))
+
+        if last_valid['type'] == 'top':
+            from_price = last_valid['high']
+            if latest_close < from_price:
+                self._append_current_stroke_from_fractal(
+                    stroke_list, last_valid, latest_date, latest_low, '下跌',
+                    last_kline_index - last_valid['index']
+                )
+            else:
+                if len(render_fractals) >= 2 and render_fractals[-2]['type'] == 'bottom':
+                    prev_valid = render_fractals[-2]
+                    if stroke_list and stroke_list[-1].get('to_type') == 'top':
+                        stroke_list.pop()
+                    self._append_current_stroke_from_fractal(
+                        stroke_list, prev_valid, latest_date, latest_high, '上涨',
+                        last_kline_index - prev_valid['index']
+                    )
+                else:
+                    self._append_current_stroke_from_fractal(
+                        stroke_list, last_valid, latest_date, latest_high, '上涨',
+                        last_kline_index - last_valid['index']
+                    )
+        else:
+            from_price = last_valid['low']
+            if latest_close > from_price:
+                self._append_current_stroke_from_fractal(
+                    stroke_list, last_valid, latest_date, latest_high, '上涨',
+                    last_kline_index - last_valid['index']
+                )
+            else:
+                if len(render_fractals) >= 2 and render_fractals[-2]['type'] == 'top':
+                    prev_valid = render_fractals[-2]
+                    if stroke_list and stroke_list[-1].get('to_type') == 'bottom':
+                        stroke_list.pop()
+                    self._append_current_stroke_from_fractal(
+                        stroke_list, prev_valid, latest_date, latest_low, '下跌',
+                        last_kline_index - prev_valid['index']
+                    )
+                else:
+                    self._append_current_stroke_from_fractal(
+                        stroke_list, last_valid, latest_date, latest_low, '下跌',
+                        last_kline_index - last_valid['index']
+                    )
+
+    def _build_line_geometry(self, stroke_list: List[Dict[str, Any]]) -> Dict[str, Any]:
+        """提供给后续画线优化直接消费的几何数据。"""
+        if not stroke_list:
+            return {
+                'price_range': None,
+                'points': [],
+                'segments': [],
+                'point_count': 0,
+                'segment_count': 0
+            }
+
+        prices = [price for stroke in stroke_list for price in (stroke['from_price'], stroke['to_price'])]
+        min_price = min(prices)
+        max_price = max(prices)
+        price_span = max_price - min_price or 1
+
+        points: List[Dict[str, Any]] = []
+        for i, stroke in enumerate(stroke_list):
+            if i == 0:
+                points.append({
+                    'sequence': 0,
+                    'price': stroke['from_price'],
+                    'date': stroke['from_date'],
+                    'type': stroke['from_type'],
+                    'role': 'from'
+                })
+            points.append({
+                'sequence': i + 1,
+                'price': stroke['to_price'],
+                'date': stroke['to_date'],
+                'type': stroke['to_type'],
+                'role': 'to',
+                'is_current': bool(stroke.get('is_current'))
+                })
+
+        total_points = len(points)
+        for i, point in enumerate(points):
+            point['x_ratio'] = round(i / (total_points - 1), 6) if total_points > 1 else 0.0
+            point['y_ratio'] = round(1 - ((point['price'] - min_price) / price_span), 6)
+
+            point_type = point.get('type')
+            if point_type == 'top':
+                point['label_side'] = 'above'
+            elif point_type == 'bottom':
+                point['label_side'] = 'below'
+            elif point_type == 'current' and i > 0:
+                point['label_side'] = 'above' if point['price'] >= points[i - 1]['price'] else 'below'
+            else:
+                point['label_side'] = 'below'
+
+        segments = []
+        for i, stroke in enumerate(stroke_list):
+            segments.append({
+                'sequence': i,
+                'from_point': i,
+                'to_point': i + 1,
+                'direction': stroke['direction'],
+                'length': stroke['length'],
+                'is_current': bool(stroke.get('is_current')),
+                'from_price': stroke['from_price'],
+                'to_price': stroke['to_price']
+            })
+
+        return {
+            'price_range': {
+                'min': round(min_price, 2),
+                'max': round(max_price, 2),
+                'range': round(max_price - min_price, 2)
+            },
+            'points': points,
+            'segments': segments,
+            'point_count': len(points),
+            'segment_count': len(segments)
+        }
+
+    def _build_render_payload(self, line_geometry: Dict[str, Any]) -> Dict[str, Any]:
+        """基于原始几何层，构建前端 SVG 可直接消费的画线 payload。"""
+        payload = self._create_empty_render_payload()
+        points = line_geometry.get('points', [])
+        segments = line_geometry.get('segments', [])
+        if not points:
+            return payload
+
+        viewport = payload['viewport']
+        padding = viewport['padding']
+        draw_width = viewport['draw_width']
+        draw_height = viewport['draw_height']
+        label_box = viewport['label_box']
+        label_box_width = label_box['width']
+        label_box_height = label_box['height']
+        date_label_y = viewport['date_label_y']
+
+        render_points: List[Dict[str, Any]] = []
+        total_points = len(points)
+        for point in points:
+            x = padding['left'] + (point.get('x_ratio', 0.0) * draw_width)
+            y = padding['top'] + (point.get('y_ratio', 0.0) * draw_height)
+            label_side = point.get('label_side', 'below')
+            label_y = y - 15 if label_side == 'above' else y + 18
+            point_type = point.get('type')
+            is_current = bool(point.get('is_current'))
+
+            if point_type == 'top':
+                marker_fill = '#ef4444'
+            elif point_type == 'current':
+                marker_fill = '#fbbf24'
+            else:
+                marker_fill = '#22c55e'
+
+            show_date_label = (
+                point.get('sequence') in (0, total_points - 1)
+                or is_current
+            )
+
+            render_points.append({
+                'sequence': point.get('sequence', 0),
+                'type': point_type,
+                'role': point.get('role'),
+                'price': float(point.get('price', 0.0)),
+                'price_label': f"{float(point.get('price', 0.0)):.1f}",
+                'date': self._normalize_render_date(point.get('date')),
+                'date_label': self._normalize_render_date(point.get('date'), date_only=True),
+                'x': round(float(x), 3),
+                'y': round(float(y), 3),
+                'label_x': round(float(x), 3),
+                'label_y': round(float(label_y), 3),
+                'label_side': label_side,
+                'label_box_width': label_box_width,
+                'label_box_height': label_box_height,
+                'marker_radius': 5,
+                'marker_fill': marker_fill,
+                'marker_stroke': 'white',
+                'marker_stroke_width': 1.5,
+                'show_date_label': show_date_label,
+                'date_label_y': date_label_y,
+                'is_current': is_current
+            })
+
+        render_segments: List[Dict[str, Any]] = []
+        for segment in segments:
+            from_point = render_points[segment['from_point']]
+            to_point = render_points[segment['to_point']]
+            is_current = bool(segment.get('is_current'))
+            direction = segment.get('direction')
+            render_segments.append({
+                'sequence': segment.get('sequence', 0),
+                'from_point': segment['from_point'],
+                'to_point': segment['to_point'],
+                'x1': from_point['x'],
+                'y1': from_point['y'],
+                'x2': to_point['x'],
+                'y2': to_point['y'],
+                'direction': direction,
+                'length': segment.get('length', 0),
+                'is_current': is_current,
+                'stroke': '#ef4444' if direction == '上涨' else '#22c55e',
+                'stroke_width': 2,
+                'stroke_dasharray': '4,2' if is_current else None
+            })
+
+        payload['price_range'] = line_geometry.get('price_range')
+        payload['points'] = render_points
+        payload['segments'] = render_segments
+        payload['point_count'] = len(render_points)
+        payload['segment_count'] = len(render_segments)
+        return payload
+
+    def _build_structure_pipeline_metadata(
+        self,
+        lookback: int,
+        actual_lookback: int,
+        recent: pd.DataFrame,
+        processed_df: pd.DataFrame,
+        top_fractals: List[Dict[str, Any]],
+        bottom_fractals: List[Dict[str, Any]],
+        validated_fractals: List[Dict[str, Any]],
+        final_fractals: List[Dict[str, Any]],
+        strokes: List[Dict[str, Any]],
+        stroke_list: List[Dict[str, Any]],
+        valid_range_info: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """暴露结构识别流水线的中间统计，便于后续画线优化和调试。"""
+        return {
+            'lookback_requested': lookback,
+            'lookback_used': actual_lookback,
+            'analysis_kline_count': len(recent),
+            'processed_kline_count': len(processed_df),
+            'valid_range_applied': valid_range_info is not None,
+            'render_window_size': self.STRUCTURE_STROKE_WINDOW,
+            'raw_fractal_count': {
+                'top': len(top_fractals),
+                'bottom': len(bottom_fractals),
+                'total': len(top_fractals) + len(bottom_fractals)
+            },
+            'validated_fractal_count': len(validated_fractals),
+            'final_fractal_count': len(final_fractals),
+            'confirmed_stroke_count': len(strokes),
+            'render_stroke_count': len(stroke_list),
+            'has_current_stroke': bool(stroke_list and stroke_list[-1].get('is_current'))
+        }
+
+    def _run_structure_pipeline(self, df: pd.DataFrame, lookback: int) -> Optional[Dict[str, Any]]:
+        """执行结构识别前半段流水线，集中产出后续分类与画线所需中间结果。"""
+        actual_lookback = min(lookback, len(df))
+        if actual_lookback < self.STRUCTURE_MIN_KLINES:
+            return None
+
+        recent = df.tail(actual_lookback).copy().reset_index(drop=True)
+        trend_direction = self._determine_structure_trend(recent)
+
+        valid_range = self._find_valid_range(recent)
+        if valid_range:
+            recent = recent.iloc[valid_range['start_idx']:valid_range['end_idx'] + 1].copy().reset_index(drop=True)
+        valid_range_info = self._serialize_valid_range(valid_range)
+
+        processed_df = self._process_containment(recent)
+        top_fractals, bottom_fractals = self._detect_fractals(processed_df)
+        validated_fractals = self._merge_and_validate_fractals(top_fractals, bottom_fractals)
+        final_fractals = self._build_strokes_iterative(validated_fractals)
+        strokes, valid_fractals = self._build_confirmed_strokes(final_fractals)
+        stroke_list, render_fractals = self._build_render_strokes(strokes)
+        self._append_current_render_stroke(stroke_list, render_fractals, processed_df)
+
+        return {
+            'actual_lookback': actual_lookback,
+            'recent': recent,
+            'trend_direction': trend_direction,
+            'valid_range_info': valid_range_info,
+            'processed_df': processed_df,
+            'top_fractals': top_fractals,
+            'bottom_fractals': bottom_fractals,
+            'validated_fractals': validated_fractals,
+            'final_fractals': final_fractals,
+            'strokes': strokes,
+            'valid_fractals': valid_fractals,
+            'stroke_list': stroke_list
+        }
+
+    def _apply_peak_structure_override(
+        self,
+        result: Dict[str, Any],
+        peak_analysis: Dict[str, Any],
+        judgment_criteria: List[str]
+    ) -> None:
+        """峰值切片后，将战术焦点收敛到右侧结构。"""
+        result['structure_details']['peak_analysis'] = peak_analysis
+
+        right_structure_type = peak_analysis['right_structure']
+        result['structure_type'] = right_structure_type
+        result['structure_stage'] = f"峰值{peak_analysis['peak_price']:.2f}后{right_structure_type}"
+
+        if peak_analysis['peak_type'] == 'mountain_peak':
+            left_structure_warning = {
+                'type': 'mountain_peak_left',
+                'title': '⚠️ 左侧风险警示',
+                'left_structure': peak_analysis['left_structure'],
+                'peak_price': peak_analysis['peak_price'],
+                'warning': '这是"下跌中继平台"，不是底！',
+                'risk_description': (
+                    f'左侧曾有{peak_analysis["left_structure"]}上涨至{peak_analysis["peak_price"]:.2f}，'
+                    f'一旦右侧{right_structure_type}破位，下方将出现巨大真空区，杀跌速度会极其迅猛。'
+                ),
+                'key_defense': '绝对防守底线：右侧平台下轨',
+                'action_hint': '破位无条件清仓，绝不扛单'
+            }
+        else:
+            left_structure_warning = {
+                'type': 'valley_bottom_left',
+                'title': '💡 左侧机会提示',
+                'left_structure': peak_analysis['left_structure'],
+                'valley_price': peak_analysis['peak_price'],
+                'opportunity': '这是"上涨中继平台"，有继续上涨潜力！',
+                'opportunity_description': (
+                    f'左侧经历{peak_analysis["left_structure"]}下跌至{peak_analysis["peak_price"]:.2f}后反弹，'
+                    f'右侧{right_structure_type}若突破上方压力，上方空间可能打开。'
+                ),
+                'key_resistance': '关键阻力位：右侧平台上轨',
+                'action_hint': '突破可加仓，失败则减仓观望'
+            }
+
+        result['structure_details']['left_structure_warning'] = left_structure_warning
+
+        peak_type_name = '山峰' if peak_analysis['peak_type'] == 'mountain_peak' else '山谷'
+        left_comp_summary = [f"{mc['type']}({len(mc['strokes'])}笔)" for mc in peak_analysis['left_components']]
+        right_comp_summary = [f"{mc['type']}({len(mc['strokes'])}笔)" for mc in peak_analysis['right_components']]
+
+        judgment_criteria.append("")
+        judgment_criteria.append("📊 峰值切片分析：")
+        judgment_criteria.append(f"极值点: {peak_analysis['peak_price']:.2f} ({peak_type_name})")
+        judgment_criteria.append(
+            f"左侧结构: {peak_analysis['left_structure']} ({' → '.join(left_comp_summary) if left_comp_summary else '未完成'})"
+        )
+        judgment_criteria.append(
+            f"右侧结构: {peak_analysis['right_structure']} ({' → '.join(right_comp_summary) if right_comp_summary else '未完成'})"
+        )
+
+        judgment_criteria.append("")
+        judgment_criteria.append(f"⚔️ 战术层面：聚焦右侧{right_structure_type}，按该结构执行操作")
+        if peak_analysis['peak_type'] == 'mountain_peak':
+            judgment_criteria.append("🚨 战略警示：左侧上涨已过，当前是下跌中继平台")
+            judgment_criteria.append("💡 操作要点：破位即清仓，绝不扛单")
+        else:
+            judgment_criteria.append("🌟 战略提示：左侧下跌已结束，当前是上涨中继平台")
+            judgment_criteria.append("💡 操作要点：突破可加仓，失败则减仓")
+
+    def _apply_structure_fallback(
+        self,
+        result: Dict[str, Any],
+        stroke_count: int,
+        inflection_count: int,
+        macro_components: List['TrinityStockAnalyzer.MacroComponent'],
+        judgment_criteria: List[str]
+    ) -> None:
+        """当聚类分类失效时，用原始笔数兜底。"""
+        if result['structure_type'] != 'unknown' and macro_components:
+            return
+
+        if stroke_count == 3:
+            result['structure_type'] = 'D三段式'
+            result['structure_stage'] = 'd1-d4拐点区间'
+            result['description'] = f"D三段式结构，{stroke_count}笔{inflection_count}拐点"
+            judgment_criteria.append("✅ D类结构（兜底）：笔数=3")
+        elif stroke_count == 5:
+            result['structure_type'] = 'C单平台式'
+            result['structure_stage'] = 'c1-c6拐点区间'
+            result['description'] = f"单平台结构，{stroke_count}笔{inflection_count}拐点"
+            judgment_criteria.append("✅ C类结构（兜底）：笔数=5")
+        elif stroke_count == 9:
+            result['structure_type'] = 'B双平台式'
+            result['structure_stage'] = 'b1-b10拐点区间'
+            result['description'] = f"B双平台式结构，{stroke_count}笔{inflection_count}拐点"
+            judgment_criteria.append("✅ B类结构（兜底）：笔数=9")
+        elif stroke_count < 3:
+            result['structure_type'] = '结构未完成'
+            result['structure_stage'] = f'{inflection_count}个拐点'
+            result['description'] = f"结构未完成，{stroke_count}笔"
+            judgment_criteria.append(f"⚠️ 笔数={stroke_count} < 3，结构未完成")
+        elif stroke_count in [4, 6, 7, 8]:
+            result['structure_type'] = '延伸结构'
+            result['structure_stage'] = f'{inflection_count}个拐点'
+            result['description'] = f"延伸结构，{stroke_count}笔，建议升维分析"
+            judgment_criteria.append(f"⚠️ 笔数={stroke_count}，非标准结构，建议升维分析")
+        else:
+            result['structure_type'] = '复杂结构'
+            result['structure_stage'] = f'{inflection_count}个拐点'
+            result['description'] = f"复杂结构，{stroke_count}笔，需人工确认"
+            judgment_criteria.append(f"⚠️ 笔数={stroke_count}，结构复杂")
     
     def detect_structure(self, df: pd.DataFrame, lookback: int = 200, macd_status: str = None) -> Dict:
         """
@@ -1989,714 +2821,113 @@ class TrinityStockAnalyzer:
         - description: 描述
         - structure_details: 结构详细信息
         """
-        result = {
-            'structure_type': 'unknown',
-            'structure_stage': 'unknown',
-            'trend_direction': 'unknown',
-            'inflection_points': 0,
-            'segment_count': 0,
-            'description': '',
-            'structure_details': {
-                'top_fractals': [],  # 顶分型列表
-                'bottom_fractals': [],  # 底分型列表
-                'strokes': [],  # 笔列表
-                'judgment_criteria': ''  # 判断标准说明
-            }
-        }
-        
-        # 如果数据量不足，使用所有可用数据
-        actual_lookback = min(lookback, len(df))
-        if actual_lookback < 60:
+        result = self._create_structure_result()
+
+        pipeline = self._run_structure_pipeline(df, lookback)
+        if pipeline is None:
+            actual_lookback = min(lookback, len(df))
             result['description'] = '数据不足以判断结构'
-            result['structure_details']['judgment_criteria'] = '数据不足，需要至少60根K线'
-            return result
-        
-        recent = df.tail(actual_lookback).copy()
-        recent = recent.reset_index(drop=True)
-        
-        # 计算趋势方向
-        first_half_mean = recent.head(len(recent)//2)['close'].mean()
-        second_half_mean = recent.tail(len(recent)//2)['close'].mean()
-        trend_change = (second_half_mean - first_half_mean) / first_half_mean * 100
-        
-        if trend_change > 5:
-            result['trend_direction'] = '上涨'
-        elif trend_change < -5:
-            result['trend_direction'] = '下跌'
-        else:
-            result['trend_direction'] = '震荡'
-        
-        # ============ 新增：有效区间确定 ============
-        # 根据 MACD 状态切换和 MA55 破位来确定有效区间
-        valid_range = self._find_valid_range(recent)
-        
-        if valid_range:
-            # 截取有效区间内的数据
-            start_idx = valid_range['start_idx']
-            end_idx = valid_range['end_idx']
-            recent = recent.iloc[start_idx:end_idx + 1].copy()
-            recent = recent.reset_index(drop=True)
-            
-            # 存储有效区间信息
-            result['structure_details']['valid_range'] = {
-                'start_date': valid_range['start_date'],
-                'end_date': valid_range['end_date'],
-                'start_price': valid_range['start_price'],
-                'end_price': valid_range['end_price'],
-                'origin_type': valid_range['origin_type'],  # 'high' 或 'low'
-                'break_type': valid_range.get('break_type', 'MA55')  # 破位类型
+            result['structure_details']['judgment_criteria'] = (
+                f'数据不足，需要至少{self.STRUCTURE_MIN_KLINES}根K线'
+            )
+            result['structure_details']['pipeline'] = {
+                'lookback_requested': lookback,
+                'lookback_used': actual_lookback,
+                'valid_range_applied': False
             }
-        else:
-            # 没有找到有效区间，使用原始数据
-            result['structure_details']['valid_range'] = None
-        
-        # ============ 第一步：处理K线包含关系 ============
-        # 缠论包含关系处理：
-        # 如果相邻两根K线存在包含关系（一根K线的高低点完全包含在另一根内），
-        # 则合并为一根K线，方向与前一根非包含K线相同
-        
-        def process_containment(df):
-            """处理K线包含关系（缠论标准：上涨取高，下跌取低）
-
-            缠论标准规则：
-            - 上涨趋势中：合并取 high=max, low=max（保留强势方向）
-            - 下跌趋势中：合并取 high=min, low=min（保留弱势方向）
-            - 方向由已处理的前两根非包含K线的高低点关系决定
-            """
-            if len(df) < 3:
-                return df
-
-            processed = []
-            i = 0
-            while i < len(df):
-                if i == 0:
-                    processed.append(df.iloc[i].to_dict())
-                    i += 1
-                    continue
-
-                curr = df.iloc[i]
-                prev = pd.Series(processed[-1])
-
-                curr_high = curr['high']
-                curr_low = curr['low']
-                prev_high = prev['high']
-                prev_low = prev['low']
-
-                # 判断包含关系
-                has_containment = (
-                    (curr_high <= prev_high and curr_low >= prev_low) or
-                    (prev_high <= curr_high and prev_low >= curr_low)
-                )
-
-                if has_containment:
-                    # 根据前两根已处理K线判断合并方向
-                    # 上涨（前K线高点 > 前前K线高点）：取高（high=max, low=max）
-                    # 下跌（前K线高点 < 前前K线高点）：取低（high=min, low=min）
-                    if len(processed) >= 2:
-                        prev_prev = processed[-2]
-                        is_up = prev_high >= prev_prev['high']
-                    else:
-                        # 仅有一根已处理K线，默认按上涨处理（取大）
-                        is_up = True
-
-                    if is_up:
-                        merged_high = max(prev_high, curr_high)
-                        merged_low = max(prev_low, curr_low)
-                    else:
-                        merged_high = min(prev_high, curr_high)
-                        merged_low = min(prev_low, curr_low)
-
-                    processed[-1]['high'] = merged_high
-                    processed[-1]['low'] = merged_low
-                    if 'date' in curr:
-                        processed[-1]['date'] = curr['date']
-                    if 'close' in curr:
-                        processed[-1]['close'] = curr['close']
-                else:
-                    processed.append(curr.to_dict())
-
-                i += 1
-
-            return pd.DataFrame(processed)
-        
-        # 处理包含关系后的K线
-        processed_df = process_containment(recent)
-        
-        # ============ 第二步：识别顶底分型 ============
-        # 缠论标准定义：
-        # 顶分型：三根K线中，中间K线的高点最高，低点也最高（相对左右两根）
-        # 底分型：三根K线中，中间K线的低点最低，高点也最低（相对左右两根）
-        top_fractals = []  # 存储顶分型
-        bottom_fractals = []  # 存储底分型
-        
-        for i in range(1, len(processed_df) - 1):
-            prev_high = processed_df.iloc[i-1]['high']
-            curr_high = processed_df.iloc[i]['high']
-            next_high = processed_df.iloc[i+1]['high']
-            prev_low = processed_df.iloc[i-1]['low']
-            curr_low = processed_df.iloc[i]['low']
-            next_low = processed_df.iloc[i+1]['low']
-            
-            # 顶分型：中间K线高点最高，且低点比左右两根K线的低点都高
-            if curr_high > prev_high and curr_high > next_high:
-                if curr_low > prev_low and curr_low > next_low:
-                    top_fractals.append({
-                        'index': i,
-                        'date': processed_df.iloc[i].get('date', str(i)),
-                        'high': curr_high,
-                        'low': curr_low,
-                        'type': 'top'
-                    })
-            
-            # 底分型：中间K线低点最低，且高点比左右两根K线的高点都低
-            if curr_low < prev_low and curr_low < next_low:
-                if curr_high < prev_high and curr_high < next_high:
-                    bottom_fractals.append({
-                        'index': i,
-                        'date': processed_df.iloc[i].get('date', str(i)),
-                        'high': curr_high,
-                        'low': curr_low,
-                        'type': 'bottom'
-                    })
-        
-        # 存储分型信息
-        result['structure_details']['top_fractals'] = [
-            {'index': f['index'], 'date': f['date'], 'high': round(f['high'], 2)} 
-            for f in top_fractals[-10:]  # 只保留最近10个
-        ]
-        result['structure_details']['bottom_fractals'] = [
-            {'index': f['index'], 'date': f['date'], 'low': round(f['low'], 2)} 
-            for f in bottom_fractals[-10:]
-        ]
-        
-        # ============ 第二步：合并相邻的同类型分型，并验证有效性 ============
-        # 合并所有分型，按时间排序
-        all_fractals = []
-        for f in top_fractals:
-            all_fractals.append({**f, 'type': 'top'})
-        for f in bottom_fractals:
-            all_fractals.append({**f, 'type': 'bottom'})
-        all_fractals.sort(key=lambda x: x['index'])
-        
-        # 过滤相邻的同类型分型，保留更极端的
-        # 同时验证分型的有效性：顶分型高点 > 前一个底分型低点，底分型低点 < 前一个顶分型高点
-        filtered_fractals = []
-        for f in all_fractals:
-            if not filtered_fractals:
-                filtered_fractals.append(f)
-            else:
-                last = filtered_fractals[-1]
-                if last['type'] == f['type']:
-                    # 同类型，保留更极端的
-                    if f['type'] == 'top':
-                        # 保留高点更高的
-                        if f['high'] > last['high']:
-                            filtered_fractals[-1] = f
-                    else:
-                        # 保留低点更低的
-                        if f['low'] < last['low']:
-                            filtered_fractals[-1] = f
-                else:
-                    # 不同类型，需要验证有效性
-                    if f['type'] == 'top':
-                        # 顶分型的高点必须高于前一个底分型的低点
-                        if f['high'] > last['low']:
-                            filtered_fractals.append(f)
-                    else:
-                        # 底分型的低点必须低于前一个顶分型的高点
-                        if f['low'] < last['high']:
-                            filtered_fractals.append(f)
-        
-        all_fractals = filtered_fractals
-        
-        # ============ 第三步：构建笔（使用迭代合并算法）============
-        
-        # 过滤无效的笔：相邻分型必须是顶底交替，且至少间隔3根K线
-        # 使用迭代合并策略：当相邻分型间隔太近时，保留更极端的分型
-        
-        def build_strokes_iterative(fractals):
-            """
-            迭代构建笔，使用缠论标准算法：
-            1. 相邻分型间隔必须 >= 3
-            2. 如果间隔太近，保留更极端的分型（顶分型留高点更高的，底分型留低点更低的）
-            3. 重复检查直到稳定
-            """
-            if len(fractals) < 2:
-                return fractals
-            
-            # 持续迭代直到稳定
-            changed = True
-            while changed:
-                changed = False
-                result = [fractals[0]]
-                
-                for i in range(1, len(fractals)):
-                    current = fractals[i]
-                    last = result[-1]
-                    
-                    if current['type'] == last['type']:
-                        # 同类型，保留更极端的
-                        if current['type'] == 'top':
-                            if current['high'] > last['high']:
-                                result[-1] = current
-                                changed = True
-                        else:
-                            if current['low'] < last['low']:
-                                result[-1] = current
-                                changed = True
-                    else:
-                        # 不同类型，检查间隔
-                        gap = current['index'] - last['index']
-                        
-                        if gap >= 3:
-                            # 检查方向有效性
-                            valid = True
-                            if last['type'] == 'top':
-                                if current['low'] >= last['high']:
-                                    valid = False
-                            else:
-                                if current['high'] <= last['low']:
-                                    valid = False
-                            
-                            if valid:
-                                result.append(current)
-                            else:
-                                # 方向无效，保留更极端的
-                                if current['type'] == 'top':
-                                    if current['high'] > last['high']:
-                                        result[-1] = current
-                                        changed = True
-                                else:
-                                    if current['low'] < last['low']:
-                                        result[-1] = current
-                                        changed = True
-                        else:
-                            # 间隔太近（gap < 3），不同类型
-                            # 缠论规则：相邻异类分型不能构成有效笔，保留旧分型（last），跳过新分型（current）
-                            # 错误做法：用新分型替换旧分型（会导致重要极值点如高点209.88被错误丢弃）
-                            pass  # 直接跳过 current，保留 last
-                
-                fractals = result
-            
             return result
-        
-        # 执行迭代构建
-        final_fractals = build_strokes_iterative(all_fractals)
-        
-        # 从最终分型构建笔
-        strokes = []
-        valid_fractals = []
-        
-        # 相邻的顶底分型形成一笔
-        for i in range(len(final_fractals) - 1):
-            from_f = final_fractals[i]
-            to_f = final_fractals[i + 1]
-            
-            # 确保是顶底交替
-            if from_f['type'] != to_f['type']:
-                strokes.append({
-                    'from': from_f,
-                    'to': to_f,
-                    'length': to_f['index'] - from_f['index']
-                })
-                if i == 0:
-                    valid_fractals.append(from_f)
-                valid_fractals.append(to_f)
-        
-        # 存储笔信息 - 使用更合理的价格比较判断方向
-        stroke_list = []
-        for s in strokes[-15:]:
-            from_type = s['from']['type']
-            to_type = s['to']['type']
-            
-            # 根据分型类型确定起止价格
-            # 关键改进：对于笔的起点和终点，应该比较的是"关键价格点"
-            # 顶分型：关注高点（最高点）
-            # 底分型：关注低点（最低点）
-            
-            if from_type == 'top':
-                # 从顶分型开始，起点用高点
-                from_price = s['from']['high']
-            else:
-                # 从底分型开始，起点用低点
-                from_price = s['from']['low']
-            
-            if to_type == 'top':
-                # 到顶分型结束，终点用高点
-                to_price = s['to']['high']
-            else:
-                # 到底分型结束，终点用低点
-                to_price = s['to']['low']
-            
-            # 根据实际价格变化判断方向
-            # 但需要考虑：如果从顶到底，但终点低点 > 起点高点，说明这个底分型无效
-            # 如果从底到顶，但终点高点 < 起点低点，说明这个顶分型无效
-            # 这些情况应该在之前的验证中已经过滤，这里只是双重检查
-            
-            if to_price > from_price:
-                direction = '上涨'
-            else:
-                direction = '下跌'
-            
-            # 双重检查：验证方向与分型类型的一致性
-            # 从顶分型到顶分型，应该是下跌笔（to_price < from_price）
-            # 从底分型到顶分型，应该是上涨笔（to_price > from_price）
-            if from_type == 'top' and to_type == 'bottom' and direction == '上涨':
-                # 异常：从顶到底却判断为上涨，说明这个底分型有问题
-                # 尝试使用底分型的高点来比较
-                to_price_alt = s['to']['high']
-                if to_price_alt < from_price:
-                    direction = '下跌'
-                    to_price = to_price_alt
-            
-            if from_type == 'bottom' and to_type == 'top' and direction == '下跌':
-                # 异常：从底到顶却判断为下跌，说明这个顶分型有问题
-                # 尝试使用顶分型的低点来比较
-                to_price_alt = s['to']['low']
-                if to_price_alt > from_price:
-                    direction = '上涨'
-                    to_price = to_price_alt
-            
-            stroke_list.append({
-                'from_date': s['from'].get('date', str(s['from']['index'])),
-                'to_date': s['to'].get('date', str(s['to']['index'])),
-                'from_price': round(from_price, 2),
-                'to_price': round(to_price, 2),
-                'direction': direction,
-                'length': s['length'],
-                'from_type': s['from']['type'],  # 顶分型或底分型
-                'to_type': s['to']['type']
-            })
-        
-        # 重新构建 valid_fractals，确保与 stroke_list 一致
-        # valid_fractals 应该只包含 stroke_list 中出现的分型
-        valid_fractals_for_current = []
-        if stroke_list:
-            # 获取 stroke_list 对应的原始 strokes
-            start_idx = len(strokes) - len(stroke_list)
-            # 第一笔的起点
-            if start_idx >= 0 and start_idx < len(strokes):
-                valid_fractals_for_current.append(strokes[start_idx]['from'])
-            # 每一笔的终点
-            for s in strokes[start_idx:]:
-                valid_fractals_for_current.append(s['to'])
-        
-        # ============ 检查是否需要添加"当前进行中的笔" ============
-        # 如果最后一笔的结束点不是最新的K线，需要添加一个未完成的笔
-        # 注意：这里使用 processed_df 因为分型是基于处理后的K线识别的
-        if valid_fractals_for_current and len(processed_df) > 0:
-            last_valid = valid_fractals_for_current[-1]
-            last_kline = processed_df.iloc[-1]
-            last_kline_index = len(processed_df) - 1
-            
-            # 调试日志已移除
-            
-            # 如果最后一个拐点不是最后一根K线
-            if last_valid['index'] < last_kline_index:
-                # 获取最新K线的价格
-                latest_high = last_kline['high']
-                latest_low = last_kline['low']
-                latest_close = last_kline['close']
-                latest_date = last_kline.get('date', str(last_kline_index))
-                
-                # 根据最后一个拐点的类型，确定起点价格
-                # 缠论规则：进行中的笔应该延伸到当前K线的极值点
-                if last_valid['type'] == 'top':
-                    # 顶分型，起点用高点
-                    from_price = last_valid['high']
-                    
-                    # 判断价格走势方向
-                    if latest_close < from_price:
-                        # 价格确实下跌，画下跌笔到最低点（使用最低价更准确）
-                        stroke_list.append({
-                            'from_date': last_valid.get('date', str(last_valid['index'])),
-                            'to_date': latest_date,
-                            'from_price': round(from_price, 2),
-                            'to_price': round(latest_low, 2),  # 使用最低价
-                            'direction': '下跌',
-                            'length': last_kline_index - last_valid['index'],
-                            'from_type': last_valid['type'],
-                            'to_type': 'current',
-                            'is_current': True
-                        })
-                    else:
-                        # 价格上涨超过顶分型高点，顶分型可能无效
-                        # 需要回溯到上一个底分型，画上涨笔到最高点
-                        if len(valid_fractals_for_current) >= 2:
-                            prev_valid = valid_fractals_for_current[-2]
-                            if prev_valid['type'] == 'bottom':
-                                # 移除最后一笔（因为它以可能无效的顶分型结束）
-                                if stroke_list and stroke_list[-1].get('to_type') == 'top':
-                                    stroke_list.pop()
-                                
-                                # 从上一个底分型开始添加上涨笔
-                                from_price = prev_valid['low']
-                                stroke_list.append({
-                                    'from_date': prev_valid.get('date', str(prev_valid['index'])),
-                                    'to_date': latest_date,
-                                    'from_price': round(from_price, 2),
-                                    'to_price': round(latest_high, 2),  # 使用最高价
-                                    'direction': '上涨',
-                                    'length': last_kline_index - prev_valid['index'],
-                                    'from_type': prev_valid['type'],
-                                    'to_type': 'current',
-                                    'is_current': True
-                                })
-                        else:
-                            # 没有前一个拐点，直接从顶分型画上涨笔（这种情况较少见）
-                            stroke_list.append({
-                                'from_date': last_valid.get('date', str(last_valid['index'])),
-                                'to_date': latest_date,
-                                'from_price': round(from_price, 2),
-                                'to_price': round(latest_high, 2),
-                                'direction': '上涨',
-                                'length': last_kline_index - last_valid['index'],
-                                'from_type': last_valid['type'],
-                                'to_type': 'current',
-                                'is_current': True
-                            })
-                else:
-                    # 底分型，起点用低点
-                    from_price = last_valid['low']
-                    
-                    # 判断价格走势方向
-                    if latest_close > from_price:
-                        # 价格确实上涨，画上涨笔到最高点（使用最高价更准确）
-                        stroke_list.append({
-                            'from_date': last_valid.get('date', str(last_valid['index'])),
-                            'to_date': latest_date,
-                            'from_price': round(from_price, 2),
-                            'to_price': round(latest_high, 2),  # 使用最高价
-                            'direction': '上涨',
-                            'length': last_kline_index - last_valid['index'],
-                            'from_type': last_valid['type'],
-                            'to_type': 'current',
-                            'is_current': True
-                        })
-                    else:
-                        # 价格继续下跌，底分型可能无效
-                        # 需要回溯到上一个顶分型，画下跌笔到最低点
-                        if len(valid_fractals_for_current) >= 2:
-                            prev_valid = valid_fractals_for_current[-2]
-                            if prev_valid['type'] == 'top':
-                                # 移除最后一笔（因为它以可能无效的底分型结束）
-                                if stroke_list and stroke_list[-1].get('to_type') == 'bottom':
-                                    stroke_list.pop()
-                                
-                                # 从上一个顶分型开始添加下跌笔
-                                from_price = prev_valid['high']
-                                stroke_list.append({
-                                    'from_date': prev_valid.get('date', str(prev_valid['index'])),
-                                    'to_date': latest_date,
-                                    'from_price': round(from_price, 2),
-                                    'to_price': round(latest_low, 2),  # 使用最低价
-                                    'direction': '下跌',
-                                    'length': last_kline_index - prev_valid['index'],
-                                    'from_type': prev_valid['type'],
-                                    'to_type': 'current',
-                                    'is_current': True
-                                })
-                        else:
-                            # 没有前一个拐点，直接从底分型画下跌笔（这种情况较少见）
-                            stroke_list.append({
-                                'from_date': last_valid.get('date', str(last_valid['index'])),
-                                'to_date': latest_date,
-                                'from_price': round(from_price, 2),
-                                'to_price': round(latest_low, 2),
-                                'direction': '下跌',
-                                'length': last_kline_index - last_valid['index'],
-                                'from_type': last_valid['type'],
-                                'to_type': 'current',
-                                'is_current': True
-                            })
-        
+
+        actual_lookback = pipeline['actual_lookback']
+        recent = pipeline['recent']
+        result['trend_direction'] = pipeline['trend_direction']
+
+        valid_range_info = pipeline['valid_range_info']
+        result['structure_details']['valid_range'] = valid_range_info
+
+        processed_df = pipeline['processed_df']
+        top_fractals = pipeline['top_fractals']
+        bottom_fractals = pipeline['bottom_fractals']
+        result['structure_details']['top_fractals'] = self._serialize_fractals(top_fractals, 'high')
+        result['structure_details']['bottom_fractals'] = self._serialize_fractals(bottom_fractals, 'low')
+
+        validated_fractals = pipeline['validated_fractals']
+        final_fractals = pipeline['final_fractals']
+        strokes = pipeline['strokes']
+        valid_fractals = pipeline['valid_fractals']
+        stroke_list = pipeline['stroke_list']
+
         result['structure_details']['strokes'] = stroke_list
-        
-        # 更新统计
+        line_geometry = self._build_line_geometry(stroke_list)
+        result['structure_details']['line_geometry'] = line_geometry
+        result['structure_details']['render_payload'] = self._build_render_payload(line_geometry)
+
         stroke_count = len(strokes)
         inflection_count = len(valid_fractals)
         result['segment_count'] = stroke_count
         result['inflection_points'] = inflection_count
-        
-        # ============ 第三步：箱体聚类合并（Price Clustering）============
-        # 将机械的多笔聚类成宏观组件（平台/连接段）
-        # 解决量化系统"死板"问题：让走势从"机械的13笔"蜕变成"宏观的3大段"
-        
-        judgment_criteria = []
-        judgment_criteria.append(f"识别到 {len(top_fractals)} 个顶分型，{len(bottom_fractals)} 个底分型")
-        judgment_criteria.append(f"过滤后得到 {stroke_count} 笔，{inflection_count} 个拐点")
-        
-        # 获取有效区间信息
-        valid_range_info = result['structure_details'].get('valid_range')
+        result['structure_details']['pipeline'] = self._build_structure_pipeline_metadata(
+            lookback=lookback,
+            actual_lookback=actual_lookback,
+            recent=recent,
+            processed_df=processed_df,
+            top_fractals=top_fractals,
+            bottom_fractals=bottom_fractals,
+            validated_fractals=validated_fractals,
+            final_fractals=final_fractals,
+            strokes=strokes,
+            stroke_list=stroke_list,
+            valid_range_info=valid_range_info
+        )
+
+        judgment_criteria = [
+            f"识别到 {len(top_fractals)} 个顶分型，{len(bottom_fractals)} 个底分型",
+            f"过滤后得到 {stroke_count} 笔，{inflection_count} 个拐点"
+        ]
+
         if valid_range_info:
             judgment_criteria.append(f"有效区间: {valid_range_info['start_date']} ~ {valid_range_info['end_date']}")
             judgment_criteria.append(f"原点类型: {'高点' if valid_range_info['origin_type'] == 'high' else '低点'}")
-        
-        # 执行箱体聚类
+
         macro_components = self._consolidate_boxes(stroke_list, threshold=0.55)
-        
-        # 存储聚类结果
         result['structure_details']['macro_components'] = [mc.to_dict() for mc in macro_components]
         judgment_criteria.append(f"聚类算法: 将 {stroke_count} 笔聚类为 {len(macro_components)} 个宏观组件")
-        
-        # ============ 第四步：基于宏观组件分类结构类型 ============
-        # 核心逻辑：
-        # - 1个组件 = C类（单平台）或 D类（单边）
-        # - 2个组件 = B类（双平台）或 A类（趋势启动/突破）
-        # - 3个组件 = B类（平台+连接+平台）或 A类（趋势中继）
-        
+
         if macro_components:
-            # 使用聚类算法分类
-            structure_type, structure_stage, description, extra_criteria = \
+            structure_type, structure_stage, description, extra_criteria = (
                 self._classify_structure_by_macro_components(macro_components, result['trend_direction'])
-            
+            )
             result['structure_type'] = structure_type
             result['structure_stage'] = structure_stage
             result['description'] = description
             judgment_criteria.extend(extra_criteria)
         else:
-            # 聚类失败，使用原始笔数判断（兜底逻辑）
             judgment_criteria.append("⚠️ 聚类算法失败，使用原始笔数判断")
-        
-        # ============ 峰值切片分析（Peak Slicing）============
-        # 当走势跨度较长（>=4个组件），检测是否存在"山峰/山谷"形态
-        # 核心逻辑：以全局最高点/最低点为界，将走势劈成两半，分别识别结构
-        
+
         peak_analysis = self._analyze_peak_structure(stroke_list, macro_components)
-        
         if peak_analysis['is_peak_structure']:
-            # 存储峰值分析结果
-            result['structure_details']['peak_analysis'] = peak_analysis
-            
-            # ============ 关键优化：战术层面聚焦右半部分 ============
-            # 根据Gemini建议：
-            # - 战术层面：聚焦右半部分，按右半部分的结构类型执行操作
-            # - 战略层面：左半部分作为风险警示（下跌中继平台一旦破位，杀伤力极大）
-            
-            # 使用右半部分的结构类型作为当前操作依据
-            right_structure_type = peak_analysis['right_structure']
-            result['structure_type'] = right_structure_type
-            result['structure_stage'] = f"峰值{peak_analysis['peak_price']:.2f}后{right_structure_type}"
-            
-            # ============ 构建左侧风险警示（战略层面）============
-            left_structure_warning = None
-            if peak_analysis['peak_type'] == 'mountain_peak':
-                # 山峰形态：右侧是下跌结构，左侧上涨结构作为风险警示
-                left_structure_warning = {
-                    'type': 'mountain_peak_left',
-                    'title': '⚠️ 左侧风险警示',
-                    'left_structure': peak_analysis['left_structure'],
-                    'peak_price': peak_analysis['peak_price'],
-                    'warning': '这是"下跌中继平台"，不是底！',
-                    'risk_description': f'左侧曾有{peak_analysis["left_structure"]}上涨至{peak_analysis["peak_price"]:.2f}，'
-                                        f'一旦右侧{right_structure_type}破位，下方将出现巨大真空区，杀跌速度会极其迅猛。',
-                    'key_defense': '绝对防守底线：右侧平台下轨',
-                    'action_hint': '破位无条件清仓，绝不扛单'
-                }
-            else:
-                # 山谷形态：右侧是上涨结构，左侧下跌结构作为机会提示
-                left_structure_warning = {
-                    'type': 'valley_bottom_left',
-                    'title': '💡 左侧机会提示',
-                    'left_structure': peak_analysis['left_structure'],
-                    'valley_price': peak_analysis['peak_price'],
-                    'opportunity': '这是"上涨中继平台"，有继续上涨潜力！',
-                    'opportunity_description': f'左侧经历{peak_analysis["left_structure"]}下跌至{peak_analysis["peak_price"]:.2f}后反弹，'
-                                                f'右侧{right_structure_type}若突破上方压力，上方空间可能打开。',
-                    'key_resistance': '关键阻力位：右侧平台上轨',
-                    'action_hint': '突破可加仓，失败则减仓观望'
-                }
-            
-            result['structure_details']['left_structure_warning'] = left_structure_warning
-            
-            # 构建详细的判断依据
-            peak_type_name = '山峰' if peak_analysis['peak_type'] == 'mountain_peak' else '山谷'
-            left_comp_summary = []
-            for mc in peak_analysis['left_components']:
-                left_comp_summary.append(f"{mc['type']}({len(mc['strokes'])}笔)")
-            right_comp_summary = []
-            for mc in peak_analysis['right_components']:
-                right_comp_summary.append(f"{mc['type']}({len(mc['strokes'])}笔)")
-            
-            judgment_criteria.append(f"")
-            judgment_criteria.append(f"📊 峰值切片分析：")
-            judgment_criteria.append(f"极值点: {peak_analysis['peak_price']:.2f} ({peak_type_name})")
-            judgment_criteria.append(f"左侧结构: {peak_analysis['left_structure']} ({' → '.join(left_comp_summary) if left_comp_summary else '未完成'})")
-            judgment_criteria.append(f"右侧结构: {peak_analysis['right_structure']} ({' → '.join(right_comp_summary) if right_comp_summary else '未完成'})")
-            
-            # 根据峰值类型给出操作建议
-            if peak_analysis['peak_type'] == 'mountain_peak':
-                judgment_criteria.append(f"")
-                judgment_criteria.append(f"⚔️ 战术层面：聚焦右侧{right_structure_type}，按该结构执行操作")
-                judgment_criteria.append(f"🚨 战略警示：左侧上涨已过，当前是下跌中继平台")
-                judgment_criteria.append(f"💡 操作要点：破位即清仓，绝不扛单")
-            else:
-                judgment_criteria.append(f"")
-                judgment_criteria.append(f"⚔️ 战术层面：聚焦右侧{right_structure_type}，按该结构执行操作")
-                judgment_criteria.append(f"🌟 战略提示：左侧下跌已结束，当前是上涨中继平台")
-                judgment_criteria.append(f"💡 操作要点：突破可加仓，失败则减仓")
-            
-            result['description'] = f"{right_structure_type}（峰值切片：{peak_analysis['description']}）"
-        
-        # ============ 兜底逻辑：基于原始笔数的分类（当聚类失败时）============
-        if result['structure_type'] == 'unknown' or not macro_components:
-            # 原始的分类逻辑作为兜底
-            if stroke_count == 3:
-                # D类：3笔4拐点
-                result['structure_type'] = 'D三段式'
-                result['structure_stage'] = 'd1-d4拐点区间'
-                result['description'] = f"D三段式结构，{stroke_count}笔{inflection_count}拐点"
-                judgment_criteria.append("✅ D类结构（兜底）：笔数=3")
-            
-            elif stroke_count == 5:
-                # A类或C类
-                result['structure_type'] = 'C单平台式'
-                result['structure_stage'] = 'c1-c6拐点区间'
-                result['description'] = f"单平台结构，{stroke_count}笔{inflection_count}拐点"
-                judgment_criteria.append("✅ C类结构（兜底）：笔数=5")
-            
-            elif stroke_count == 9:
-                # B类
-                result['structure_type'] = 'B双平台式'
-                result['structure_stage'] = 'b1-b10拐点区间'
-                result['description'] = f"B双平台式结构，{stroke_count}笔{inflection_count}拐点"
-                judgment_criteria.append("✅ B类结构（兜底）：笔数=9")
-            
-            elif stroke_count < 3:
-                result['structure_type'] = '结构未完成'
-                result['structure_stage'] = f'{inflection_count}个拐点'
-                result['description'] = f"结构未完成，{stroke_count}笔"
-                judgment_criteria.append(f"⚠️ 笔数={stroke_count} < 3，结构未完成")
-            
-            elif stroke_count in [4, 6, 7, 8]:
-                result['structure_type'] = '延伸结构'
-                result['structure_stage'] = f'{inflection_count}个拐点'
-                result['description'] = f"延伸结构，{stroke_count}笔，建议升维分析"
-                judgment_criteria.append(f"⚠️ 笔数={stroke_count}，非标准结构，建议升维分析")
-            
-            else:
-                result['structure_type'] = '复杂结构'
-                result['structure_stage'] = f'{inflection_count}个拐点'
-                result['description'] = f"复杂结构，{stroke_count}笔，需人工确认"
-                judgment_criteria.append(f"⚠️ 笔数={stroke_count}，结构复杂")
-        
+            self._apply_peak_structure_override(result, peak_analysis, judgment_criteria)
+
+        self._apply_structure_fallback(
+            result=result,
+            stroke_count=stroke_count,
+            inflection_count=inflection_count,
+            macro_components=macro_components,
+            judgment_criteria=judgment_criteria
+        )
+
         result['description'] = f"识别为{result['structure_type']}，{result['trend_direction']}趋势"
         result['structure_details']['judgment_criteria'] = '\n'.join(judgment_criteria)
-        
-        # ============ 第五步：添加预测性分析 ============
-        # 根据当前结构阶段，提供预测性提醒
-        prediction = self._analyze_structure_prediction(
-            result['structure_type'], 
-            stroke_count, 
+        result['structure_details']['prediction'] = self._analyze_structure_prediction(
+            result['structure_type'],
+            stroke_count,
             inflection_count,
-            stroke_list,  # 使用处理后的笔列表（包含方向信息）
+            stroke_list,
             valid_fractals,
             result['trend_direction'],
             recent,
-            macd_status  # 传递MACD状态用于判断d3不稳定点
+            macd_status
         )
-        result['structure_details']['prediction'] = prediction
-        
+
         return result
     
     def _analyze_structure_prediction(
