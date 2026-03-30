@@ -1,5 +1,6 @@
 import { NextRequest, NextResponse } from 'next/server';
-import { LLMClient, Config, HeaderUtils } from 'coze-coding-dev-sdk';
+import { buildAiDecisionPayload } from '@/lib/ai-analysis-payload';
+import { runCodexStrategyAnalysis } from '@/lib/codex-strategy-analysis';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -306,78 +307,78 @@ const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师�
 6. **禁止绝对表述**：不使用"必定"、"一定"等词汇
 7. **重点标识**：对于系统标记的重点提醒（key_alerts），要特别关注并在报告中突出展示`;
 
-/**
- * 从完整分析数据中提取关键结果（供AI使用）
- */
-function extractKeyResults(analysisData: any) {
-  const result: any = {
-    stock_code: analysisData.stock_code,
-    stock_name: analysisData.stock_name,
-    analysis_time: analysisData.analysis_time,
-  };
-  
-  // 收集所有重点提醒
-  const allAlerts: string[] = [];
-  
-  // 1. 提取各周期核心指标
-  const periods: any = {};
-  for (const [level, data] of Object.entries(analysisData.periods || {})) {
-    const periodData = data as any;
-    if (periodData.error) continue;
-    
-    // 收集重点提醒
-    if (periodData.key_alerts && Array.isArray(periodData.key_alerts)) {
-      periodData.key_alerts.forEach((alert: string) => {
-        allAlerts.push(`【${level}】${alert}`);
-      });
-    }
-    
-    periods[level] = {
-      // MACD时空状态
-      macd: {
-        status: periodData.macd?.status,
-        description: periodData.macd?.description,
-        divergence_note: periodData.macd?.divergence_note,
-      },
-      // 均线系统
-      ma: {
-        ma55: periodData.moving_averages?.MA55,
-        ma233: periodData.moving_averages?.MA233,
-        price_vs_ma55: periodData.moving_averages?.price_vs_ma55,
-        price_vs_ma233: periodData.moving_averages?.price_vs_ma233,
-        ma_status: periodData.moving_averages?.ma_status,
-      },
-      // 均线物理性质（新增）
-      ma_physics: periodData.ma_physics,
-      // 突破形态识别（新增）
-      breakthrough: periodData.breakthrough,
-      // 结构拓扑
-      structure: {
-        type: periodData.structure?.structure_type,
-        stage: periodData.structure?.structure_stage,
-        trend: periodData.structure?.trend_direction,
-        inflection_points: periodData.structure?.inflection_points,
-        description: periodData.structure?.description,
-      },
-      // 预测性分析
-      prediction: periodData.structure?.structure_details?.prediction,
-      // 关键价位
-      latest_price: periodData.latest_price,
-      price_change_pct: periodData.price_change_pct,
-    };
+function buildAiDecisionPrompt(code: string, payload: ReturnType<typeof buildAiDecisionPayload>) {
+  return `## 股票决策解读任务
+
+**股票代码**：${code}
+**股票名称**：${payload.stock_name || '未知'}
+**分析时间**：${payload.analysis_time}
+
+---
+
+## 系统已完成的决策输入
+
+以下 JSON 是系统从 analyze 结果中提炼出的“决策结论层”，不是原始K线。请直接基于这些结论做策略解读，不要重新分析K线或计算指标。
+
+\`\`\`json
+${JSON.stringify(payload, null, 2)}
+\`\`\`
+
+---
+
+## 你的任务
+
+请输出一份偏“决策建议”而不是“重新分析”的报告，重点使用：
+- \`level_nesting.summary / spacetime_confirmation / trading_decision\`
+- \`multi_dimension_operation\`
+- 各周期的 \`macd.status\`、\`structure\`、\`latest_price\`
+- 日线的 \`ma / ma_physics / breakthrough / prediction\`
+- 30分钟的 \`prediction\`
+- \`key_alerts\`
+
+## 输出结构
+
+### 一、先给结论
+- 当前操作方向：买入 / 卖出 / 持有 / 观望
+- 一句话理由：先说最核心的因果链
+
+### 二、跨级别决策依据
+- 用周线→日线→30分钟/15分钟的顺序解释
+- 优先解读 \`multi_dimension_operation\` 和 \`level_nesting\`
+- 如果系统结论之间有冲突，要明确指出冲突来自哪里
+
+### 三、关键信号与关键价位
+- 重点解读日线 MA55/MA233、均线物理性质、突破/跌破形态
+- 提炼最值得盯的支撑位、压力位、止损位
+- 如果 30分钟预测对入场时机有帮助，要单独指出
+
+### 四、仓位与执行方案
+- 起手仓位建议
+- 加仓条件
+- 减仓/止盈条件
+- 若判断暂不适合操作，明确写“等待什么条件出现”
+
+### 五、风险与应对
+- 说明最需要警惕的失败场景
+- 给出“若X发生，则应对Y”的条件句
+
+## 额外要求
+
+- 不使用“必定”“一定”“百分之百”等绝对表达
+- 不要复述 JSON 字段名，重点做解读和决策落地
+- 如果信息不足以支持激进操作，请明确倾向保守应对`;
+}
+
+function buildAiCodexConfigOverrides() {
+  const overrides: string[] = [];
+  const reasoningEffort = process.env.AI_ANALYSIS_CODEX_REASONING_EFFORT || 'medium';
+  overrides.push(`model_reasoning_effort="${reasoningEffort}"`);
+
+  if (process.env.AI_ANALYSIS_CODEX_MODEL) {
+    overrides.push(`model="${process.env.AI_ANALYSIS_CODEX_MODEL}"`);
   }
-  result.periods = periods;
-  
-  // 2. 提取级别嵌套分析
-  result.level_nesting = analysisData.level_nesting;
-  
-  // 3. 提取多维度操作建议（核心）
-  result.multi_dimension_operation = analysisData.multi_dimension_operation;
-  
-  // 4. 汇总所有重点提醒（新增）
-  result.key_alerts = allAlerts.length > 0 ? allAlerts : null;
-  
-  return result;
+
+  return overrides;
 }
 
 /**
@@ -400,161 +401,15 @@ export async function POST(request: NextRequest) {
 
     console.log(`[AI Analysis] 开始分析 ${code}`);
 
-    // 提取请求头
-    const customHeaders = HeaderUtils.extractForwardHeaders(request.headers);
+    const aiDecisionPayload = buildAiDecisionPayload(analysisData);
+    const userPrompt = buildAiDecisionPrompt(code, aiDecisionPayload);
 
-    // 初始化 LLM 客户端
-    const config = new Config();
-    const client = new LLMClient(config, customHeaders);
-
-    // 提取关键结果（AI直接使用已计算好的结果）
-    const keyResults = extractKeyResults(analysisData);
-
-    // 构建分析提示词（专注于策略分析）
-    const userPrompt = `## 股票分析任务
-
-**股票代码**：${code}
-**股票名称**：${keyResults.stock_name || '未知'}
-**分析时间**：${keyResults.analysis_time}
-
----
-
-## 系统已计算的分析结果
-
-以下是系统经过复杂计算得出的结论，请直接解读这些结果：
-
-\`\`\`json
-${JSON.stringify(keyResults, null, 2)}
-\`\`\`
-
----
-
-## 你的任务
-
-请基于以上系统计算结果，输出一份专业的策略分析报告。报告结构如下：
-
-### 📊 一、多周期时空状态总览
-**直接解读数据中的 \`level_nesting.summary\` 和各周期 \`macd.status\`**
-
-请以表格形式呈现：
-| 周期 | MACD状态 | 结构类型 | 关键特征 |
-|------|----------|----------|----------|
-| 周线 | ? | ? | ? |
-| 日线 | ? | ? | ? |
-| 60分钟 | ? | ? | ? |
-| 30分钟 | ? | ? | ? |
-
-### 📈 二、均线物理性质解读（新增）
-**解读数据中的 \`ma_physics\` 字段**
-
-重点分析日线级别：
-1. **支撑与压制**：MA55/MA233当前角色是什么？是否近期有触及确认？
-2. **牵引性**：股价是否过度偏离均线？是否存在回归引力？
-3. **共振性**：MA55与MA233是否粘合？共振区间在哪里？
-4. **关键信号**：系统标记的关键信号有哪些？
-
-### 🔄 三、突破/跌破形态识别（新增）
-**解读数据中的 \`breakthrough\` 字段**
-
-如果有突破/跌破事件，请分析：
-1. **方向判断**：是突破（up，向上穿越均线）还是跌破（down，向下穿越均线）？
-2. **形态类型**：属于哪种类型？
-   - 突破：假突破/有效突破/慢速突破/回抽突破/反向突破
-   - 跌破：假跌破/有效跌破/慢速跌破/回抽跌破/反向跌破
-3. **有效性判断**：系统判断是否有效？
-   - 有效突破：均线由压制转为支撑，看涨信号
-   - 有效跌破：均线由支撑转为压制，看跌信号
-4. **置信度**：系统给出的置信度如何？
-5. **应对策略**：基于形态和方向，应如何应对？
-
-### 📊 四、三维度操作建议解读
-**直接解读数据中的 \`multi_dimension_operation\` 字段**
-
-系统已为你计算好三个维度的操作建议，请解读每个维度：
-
-1. **维度一（周线→日线）**：大级别趋势判断
-   - 大级别状态：\`multi_dimension_operation.dimension1.major_status\`
-   - 小级别结构：\`multi_dimension_operation.dimension1.minor_structure\`
-   - 系统建议：\`multi_dimension_operation.dimension1.advice.operation_advice\`
-   - **你的解读**：是否认同？有什么补充？
-
-2. **维度二（日线→30分钟）**：具体买卖点
-   - 大级别状态：\`multi_dimension_operation.dimension2.major_status\`
-   - 小级别结构：\`multi_dimension_operation.dimension2.minor_structure\`
-   - 系统建议：\`multi_dimension_operation.dimension2.advice.operation_advice\`
-   - **你的解读**：当前是否适合操作？关键价位在哪里？
-
-3. **维度三（60分钟→15分钟）**：短线/日内操作
-   - 大级别状态：\`multi_dimension_operation.dimension3.major_status\`
-   - 小级别结构：\`multi_dimension_operation.dimension3.minor_structure\`
-   - 系统建议：\`multi_dimension_operation.dimension3.advice.operation_advice\`
-   - **你的解读**：短线操作的风险和机会？
-
-### 🎯 五、结构预测解读
-**解读各周期的 \`prediction\` 字段**
-
-重点关注日线和30分钟的结构预测：
-- 当前所处拐点位置
-- 结构完成预期
-- 方向选择可能性
-
-### 🚨 六、重点提醒（新增）
-**解读数据中的 \`key_alerts\` 字段**
-
-系统已自动识别出以下重点信号：
-\`\`\`
-${keyResults.key_alerts ? keyResults.key_alerts.join('\n') : '无特殊提醒'}
-\`\`\`
-
-请针对这些重点信号给出具体的应对策略。
-
-### ⚠️ 七、风险提示
-基于数据中的背离信号（\`macd.divergence_note\`）和均线状态（\`ma.ma_status\`），指出：
-- 潜在风险点
-- 需要警惕的信号
-- 止损位建议
-
-### 💡 八、综合操作建议
-**核心部分：给出明确的应对策略**
-
-根据以上分析，给出最终建议：
-
-**1. 当前操作方向**：买入 / 卖出 / 持有 / 观望
-
-**2. 仓位管理建议**：
-- **起手仓位**：若建仓，建议起手仓位比例（参考正金字塔模型）
-- **加仓条件**：满足什么条件可加仓？（如进入极强状态、突破回踩确认）
-- **补仓策略**：若被套，是否满足右侧补仓条件？（V型反转+突破MA55+底分型）
-- **止盈策略**：若盈利，是否需要倒金字塔止盈？（结构末端+小级别背离）
-
-**3. 关键价位**：
-- 支撑位：？（参考MA55、MA233、中枢下沿）
-- 压力位：？（参考结构拐点、中枢上沿）
-
-**4. 止损铁律**：
-- 止损级别：依据什么级别建仓，就必须依据什么级别止损
-- 止损价位：？（明确价位，禁止破位后放大周期找借口）
-
-**5. 预期目标**：？
-
----
-
-**重要提示**：
-- 不要重新计算任何指标，直接解读系统给出的结果
-- 所有数据都是系统经过精确计算得出的结论
-- 你需要做的是：解读含义、分析联动、给出应对策略
-- 特别关注仓位管理铁律：正金字塔加仓、固定止损、右侧补仓、倒金字塔止盈
-- 重点关注系统标记的重点提醒（key_alerts）`;
-
-    // 调用大模型
-    const messages = [
-      { role: 'system' as const, content: TRINITY_SYSTEM_PROMPT },
-      { role: 'user' as const, content: userPrompt }
-    ];
-
-    const response = await client.invoke(messages, {
-      model: 'glm-4-7-251222',
-      temperature: 0.7,
+    const timeoutMs = Number.parseInt(process.env.AI_ANALYSIS_CODEX_TIMEOUT_MS || '', 10);
+    const report = await runCodexStrategyAnalysis({
+      systemPrompt: TRINITY_SYSTEM_PROMPT,
+      userPrompt,
+      timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
+      configOverrides: buildAiCodexConfigOverrides(),
     });
 
     console.log(`[AI Analysis] 分析完成`);
@@ -563,7 +418,7 @@ ${keyResults.key_alerts ? keyResults.key_alerts.join('\n') : '无特殊提醒'}
       success: true,
       data: {
         code,
-        report: response.content,
+        report,
         generatedAt: new Date().toISOString()
       }
     });

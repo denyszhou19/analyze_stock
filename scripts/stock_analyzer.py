@@ -2392,8 +2392,7 @@ class TrinityStockAnalyzer:
         if last_valid['index'] >= last_kline_index:
             return
 
-        latest_high = last_kline['high']
-        latest_low = last_kline['low']
+        # 已确认笔锚定分型极值；未完成当前笔锚定最新收盘价，减少日内高低点噪音并反映“当下”位置。
         latest_close = last_kline['close']
         latest_date = last_kline.get('date', str(last_kline_index))
 
@@ -2401,7 +2400,7 @@ class TrinityStockAnalyzer:
             from_price = last_valid['high']
             if latest_close < from_price:
                 self._append_current_stroke_from_fractal(
-                    stroke_list, last_valid, latest_date, latest_low, '下跌',
+                    stroke_list, last_valid, latest_date, latest_close, '下跌',
                     last_kline_index - last_valid['index']
                 )
             else:
@@ -2410,19 +2409,19 @@ class TrinityStockAnalyzer:
                     if stroke_list and stroke_list[-1].get('to_type') == 'top':
                         stroke_list.pop()
                     self._append_current_stroke_from_fractal(
-                        stroke_list, prev_valid, latest_date, latest_high, '上涨',
+                        stroke_list, prev_valid, latest_date, latest_close, '上涨',
                         last_kline_index - prev_valid['index']
                     )
                 else:
                     self._append_current_stroke_from_fractal(
-                        stroke_list, last_valid, latest_date, latest_high, '上涨',
+                        stroke_list, last_valid, latest_date, latest_close, '上涨',
                         last_kline_index - last_valid['index']
                     )
         else:
             from_price = last_valid['low']
             if latest_close > from_price:
                 self._append_current_stroke_from_fractal(
-                    stroke_list, last_valid, latest_date, latest_high, '上涨',
+                    stroke_list, last_valid, latest_date, latest_close, '上涨',
                     last_kline_index - last_valid['index']
                 )
             else:
@@ -2431,12 +2430,12 @@ class TrinityStockAnalyzer:
                     if stroke_list and stroke_list[-1].get('to_type') == 'bottom':
                         stroke_list.pop()
                     self._append_current_stroke_from_fractal(
-                        stroke_list, prev_valid, latest_date, latest_low, '下跌',
+                        stroke_list, prev_valid, latest_date, latest_close, '下跌',
                         last_kline_index - prev_valid['index']
                     )
                 else:
                     self._append_current_stroke_from_fractal(
-                        stroke_list, last_valid, latest_date, latest_low, '下跌',
+                        stroke_list, last_valid, latest_date, latest_close, '下跌',
                         last_kline_index - last_valid['index']
                     )
 

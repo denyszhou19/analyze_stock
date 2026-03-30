@@ -65,6 +65,51 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertTrue(all(point["marker_fill"] == "#ef4444" for point in top_points))
         self.assertTrue(all(point["marker_fill"] == "#22c55e" for point in bottom_points))
 
+    def test_render_payload_current_point_uses_latest_close_price(self) -> None:
+        result = self.analyzer.detect_structure(self.df)
+
+        payload = result["structure_details"]["render_payload"]
+        latest_close = round(float(self.df.iloc[-1]["close"]), 2)
+
+        self.assertEqual(payload["points"][-1]["type"], "current")
+        self.assertEqual(payload["points"][-1]["price"], latest_close)
+
+    def test_append_current_render_stroke_uses_latest_close_after_top(self) -> None:
+        stroke_list = []
+        render_fractals = [
+            {"index": 0, "type": "top", "high": 12.5, "low": 11.6, "date": "2024-01-07 00:00:00"},
+        ]
+        processed_df = pd.DataFrame(
+            [
+                {"date": pd.Timestamp("2024-01-07"), "high": 12.5, "low": 11.6, "close": 12.1},
+                {"date": pd.Timestamp("2024-01-08"), "high": 12.9, "low": 11.2, "close": 11.8},
+            ]
+        )
+
+        self.analyzer._append_current_render_stroke(stroke_list, render_fractals, processed_df)
+
+        self.assertEqual(len(stroke_list), 1)
+        self.assertEqual(stroke_list[0]["direction"], "下跌")
+        self.assertEqual(stroke_list[0]["to_price"], 11.8)
+
+    def test_append_current_render_stroke_uses_latest_close_after_bottom(self) -> None:
+        stroke_list = []
+        render_fractals = [
+            {"index": 0, "type": "bottom", "high": 9.6, "low": 8.4, "date": "2024-01-07 00:00:00"},
+        ]
+        processed_df = pd.DataFrame(
+            [
+                {"date": pd.Timestamp("2024-01-07"), "high": 9.6, "low": 8.4, "close": 8.9},
+                {"date": pd.Timestamp("2024-01-08"), "high": 10.5, "low": 8.8, "close": 10.1},
+            ]
+        )
+
+        self.analyzer._append_current_render_stroke(stroke_list, render_fractals, processed_df)
+
+        self.assertEqual(len(stroke_list), 1)
+        self.assertEqual(stroke_list[0]["direction"], "上涨")
+        self.assertEqual(stroke_list[0]["to_price"], 10.1)
+
 
 if __name__ == "__main__":
     unittest.main()
