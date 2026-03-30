@@ -31,7 +31,7 @@
 
 ## 总体设计
 
-每个周期的分析结果保留原有字段，并在 `structure` 下新增两个层次：
+每个周期的分析结果保留原有字段，并在 `structure` 下新增三个层次：
 
 1. `archetype`
    说明这段走势当前更像哪种结构原型，以及这个判断的成熟度和置信度。
@@ -41,6 +41,79 @@
    说明此刻能不能做、该做什么、等什么触发、什么情况失效。
 
 顶层继续保留三位一体的级别嵌套分析，并升级 `level_nesting.trading_decision`，让它成为“综合执行建议总线”。
+
+## 补充策略约束
+
+以下策略不是可选说明，而是本次设计必须编码进字段和规则层的硬约束：
+
+### 级别嵌套分析（三维度）
+
+- 维度一：`weekly -> daily`
+  - 用于判断大级别趋势方向。
+- 维度二：`daily -> hour30`
+  - 用于寻找具体买卖点。
+- 维度三：`hour60 -> hour15`
+  - 用于日内或短线操作。
+
+总原则：
+
+- 分析自上而下。
+- 交易自下而上。
+
+这意味着：
+
+- `weekly / daily` 决定环境偏向和是否允许进攻。
+- `hour30 / hour15` 决定是否满足执行触发。
+- 顶层 `trading_decision` 必须同时暴露主导级别和执行级别，避免“只看小级别就贸然交易”。
+
+### 补仓/做T原则
+
+- 15 分钟反弹：最多补总仓位的 `1/4`。
+- 30 分钟反弹：最多补总仓位的 `1/3`。
+- 60 分钟或日线反弹：最多补总仓位的 `1/2`。
+- 多头排列只做正 T。
+- 空头排列只做反 T。
+- 做 T 以快进快出为原则，最多按 `3` 个点的短线收益预期执行“见好就收”。
+
+### 仓位管理铁律
+
+#### 起手与加仓法则
+
+- 起手仓位用于轻仓试探，优先出现在：
+  - `C` 类中枢底部试仓。
+  - 突破回踩后的首个确认点。
+- 加仓遵循正金字塔递减法则：
+  - 第一次加仓：不超过起手仓位的 `100%`。
+  - 第二次加仓：不超过第一次加仓的 `50%`。
+  - 第三次加仓：不超过第二次加仓的 `50%`。
+- 追加筹码必须发生在“浮盈 + 有效突破 + 更强状态确认”之后，不允许逆势摊低成本。
+
+#### 固定止损铁律
+
+- 依据什么级别建仓，就必须依据什么级别止损。
+- 若基于日线结构建仓，则日线破位必须触发日线级别止损。
+- 严禁在原建仓级别失效后，擅自放大到更高级别寻找“新支撑位”来自我安慰式死扛。
+
+#### 右侧补仓铁律
+
+- 禁止左侧补仓，不允许在下跌半山腰摊平。
+- 右侧补仓必须同时满足：
+  - 价格完成 `V` 型反转。
+  - 有效突破 `MA55`。
+  - 或者出现确认的日线底分型。
+- 补仓资金必须单独具备止损止盈计划。
+- 补仓额度仍受执行级别限制，遵守 `15m=1/4`、`30m=1/3`、`60m/日线=1/2` 的上限。
+
+#### 倒金字塔跟踪止盈
+
+- 触发条件优先为：
+  - `A` 类结构末端（如 `a5-a6`）。
+  - `B` 类结构末端（如 `b9`）。
+  - 同时伴随 15/30 分钟顶背离。
+- 止盈采用倒金字塔：
+  - 首次抛售较大比例利润筹码。
+  - 后续随着回落逐步减少抛售量。
+  - 保留底仓以应对“时间换空间”的横盘继续上行。
 
 ## 数据模型
 
@@ -102,14 +175,38 @@ structure: {
     direction: 'long' | 'short' | 'neutral';
     setup_quality: 'A' | 'B' | 'C' | 'avoid';
     rationale: string;
+    timing_timeframe?: 'daily' | 'hour60' | 'hour30' | 'hour15';
+    timeframe_cap_ratio?: number;
     trigger: string[];
     invalidation: string[];
     confirmation: string[];
     entry_style: 'breakout_follow' | 'pullback_confirm' | 'platform_reversal' | 'trend_hold' | 'wait';
     position_sizing: {
+      starter: string;
       initial: string;
       add_on: string;
       max: string;
+      pyramid_rule: {
+        model: 'positive_pyramid';
+        add_step_rules: string[];
+      };
+    };
+    t_trade_rule: {
+      mode: 'positive_only' | 'negative_only' | 'disabled';
+      max_quick_take_profit_points: number;
+    };
+    risk_rules: {
+      stop_loss_basis: 'same_timeframe';
+      no_timeframe_upcast_after_break: true;
+      no_left_side_averaging_down: true;
+      right_side_add_only: true;
+      right_side_add_conditions: string[];
+    };
+    take_profit_plan: {
+      model: 'inverted_pyramid' | 'none';
+      triggers: string[];
+      ladder: string[];
+      keep_runner: boolean;
     };
     key_levels: Array<{
       price: number;
@@ -139,15 +236,40 @@ trading_decision: {
   direction: 'long' | 'short' | 'neutral';
   setup_quality: 'A' | 'B' | 'C' | 'avoid';
   rationale: string;
+  analysis_order: 'top_down';
+  execution_order: 'bottom_up';
   primary_timeframe: 'weekly' | 'daily' | 'hour60' | 'hour30' | 'hour15';
   timing_timeframe: 'daily' | 'hour60' | 'hour30' | 'hour15';
+  timeframe_cap_ratio: number;
   trigger: string[];
   invalidation: string[];
   confirmation: string[];
   position_sizing: {
+    starter: string;
     initial: string;
     add_on: string;
     max: string;
+    pyramid_rule: {
+      model: 'positive_pyramid';
+      add_step_rules: string[];
+    };
+  };
+  t_trade_rule: {
+    mode: 'positive_only' | 'negative_only' | 'disabled';
+    max_quick_take_profit_points: number;
+  };
+  risk_rules: {
+    stop_loss_basis: 'same_timeframe';
+    no_timeframe_upcast_after_break: true;
+    no_left_side_averaging_down: true;
+    right_side_add_only: true;
+    right_side_add_conditions: string[];
+  };
+  take_profit_plan: {
+    model: 'inverted_pyramid' | 'none';
+    triggers: string[];
+    ladder: string[];
+    keep_runner: boolean;
   };
   key_levels: Array<{
     price: number;
@@ -292,6 +414,112 @@ trading_decision: {
 - `avoid`
   - 明确不适合出手。
 
+### 级别嵌套与执行顺序
+
+顶层 `trading_decision` 必须明确：
+
+- `analysis_order = top_down`
+- `execution_order = bottom_up`
+- `primary_timeframe`
+  - 当前判断环境和主方向所依赖的主导级别。
+- `timing_timeframe`
+  - 当前寻找具体执行触发的执行级别。
+
+默认语义：
+
+- `weekly -> daily`：大趋势与波段环境。
+- `daily -> hour30`：最核心的买卖点触发层。
+- `hour60 -> hour15`：日内与短线优化层。
+
+如果主导级别与执行级别冲突，`execution` 默认降级为保守：
+
+- `can_trade = false`
+- 或者 `setup_quality` 至多为 `C`
+- 并通过 `wait_reason` 明确指出冲突来自哪个维度。
+
+### 补仓与做 T 规则落地
+
+执行层必须把“补仓比例”和“做 T 方向限制”结构化表达出来。
+
+补仓比例映射：
+
+- `timing_timeframe = hour15` -> `timeframe_cap_ratio = 0.25`
+- `timing_timeframe = hour30` -> `timeframe_cap_ratio = 0.3333`
+- `timing_timeframe = hour60` 或 `daily` -> `timeframe_cap_ratio = 0.5`
+
+做 T 规则映射：
+
+- 多头排列 -> `t_trade_rule.mode = positive_only`
+- 空头排列 -> `t_trade_rule.mode = negative_only`
+- 条件不充分 -> `t_trade_rule.mode = disabled`
+- `t_trade_rule.max_quick_take_profit_points = 3`
+
+### 仓位管理与风控规则落地
+
+#### 起手仓位与正金字塔加仓
+
+`position_sizing` 必须编码：
+
+- `starter`
+  - 用于表达起手试仓位。
+- `pyramid_rule.model = positive_pyramid`
+- `pyramid_rule.add_step_rules`
+  - 至少包含：
+    - 第一次加仓 `<= 起手仓位 100%`
+    - 第二次加仓 `<= 第一次加仓 50%`
+    - 第三次加仓 `<= 第二次加仓 50%`
+
+只有在以下条件同时较优时，才允许 `action = add`：
+
+- 当前已有浮盈。
+- 出现有效突破或回抽确认。
+- 时空状态未转弱。
+
+#### 同级别止损
+
+`risk_rules` 必须固定表达：
+
+- `stop_loss_basis = same_timeframe`
+- `no_timeframe_upcast_after_break = true`
+
+解释原则：
+
+- 日线建仓失败，必须按日线止损。
+- 30 分钟建仓失败，必须按 30 分钟止损。
+- 不允许在原有建仓级别失效后，转去周线/月线找理由继续持有。
+
+#### 禁止左侧补仓，仅允许右侧补仓
+
+`risk_rules` 必须固定表达：
+
+- `no_left_side_averaging_down = true`
+- `right_side_add_only = true`
+- `right_side_add_conditions`
+  - 至少包含：
+    - `V` 型反转
+    - 有效突破 `MA55`
+    - 或确认的日线底分型
+
+若上述条件不满足，即便未触发绝对止损，也不允许生成“补仓”结论。
+
+#### 倒金字塔跟踪止盈
+
+`take_profit_plan` 必须支持：
+
+- `model = inverted_pyramid`
+- `triggers`
+  - 至少支持：
+    - `A` 类末端
+    - `B` 类末端
+    - 15/30 分钟顶背离
+- `ladder`
+  - 用于表达分批止盈比例，例如：
+    - 首抛 `50%`
+    - 二抛 `30%`
+    - 三抛 `15%`
+- `keep_runner = true`
+  - 表达保留底仓让利润奔跑。
+
 ### 执行层关键字段来源
 
 - `trigger`
@@ -302,6 +530,12 @@ trading_decision: {
   - 来自次级别 D 结构、MACD 共振、时空确认等加分项。
 - `key_levels`
   - 汇总 `prediction.key_price_levels`、最近确认分型、平台上下沿、MA55/MA233、突破关键位。
+- `timeframe_cap_ratio`
+  - 来自执行级别对应的补仓比例上限。
+- `risk_rules`
+  - 来自同级别止损、禁止左侧补仓、只做右侧补仓等硬规则。
+- `take_profit_plan`
+  - 来自结构末端 + 小级别背离触发的倒金字塔止盈模型。
 
 ## 与现有代码的集成方式
 
