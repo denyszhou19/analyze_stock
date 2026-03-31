@@ -77,9 +77,11 @@ function resolveAnchorPoint(
 function resolveProjectionVector(payload: ProjectionPayload, anchorPoint: ProjectionPoint) {
   const prevSegment = payload.segments.find((segment) => segment.to_point === anchorPoint.sequence);
   if (prevSegment) {
+    const previousDx = prevSegment.x2 - prevSegment.x1;
+    const previousDy = prevSegment.y2 - prevSegment.y1;
     return {
-      dx: prevSegment.x2 - prevSegment.x1,
-      dy: prevSegment.y2 - prevSegment.y1,
+      dx: Math.abs(previousDx) || 36,
+      dy: previousDy === 0 ? -12 : -previousDy,
     };
   }
 

@@ -37,6 +37,8 @@ test('buildProjectedSegmentOverlay returns a synthetic projected line when next 
   assert.ok(overlay);
   assert.equal(overlay?.x1, 200);
   assert.equal(overlay?.y1, 100);
+  assert.ok((overlay?.x2 ?? 0) > (overlay?.x1 ?? 0));
+  assert.ok((overlay?.y2 ?? 0) < (overlay?.y1 ?? 0));
   assert.equal(overlay?.label, 'd3→d4');
   assert.equal(overlay?.targetLabel, 'd4');
 });
