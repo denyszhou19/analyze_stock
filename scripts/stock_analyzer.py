@@ -2784,8 +2784,6 @@ class TrinityStockAnalyzer:
                 role = 'current'
             elif idx == start_index:
                 role = 'start'
-            elif prefix and idx < start_index:
-                role = 'background'
 
             show_label = True
             if structure_family in ('complex', 'unfinished'):
@@ -2821,8 +2819,6 @@ class TrinityStockAnalyzer:
                 role = 'current'
             elif segment_id == next_segment_id:
                 role = 'projected'
-            elif prefix and (from_index < start_index or to_index < start_index):
-                role = 'background'
 
             show_label = True
             if structure_family in ('complex', 'unfinished'):

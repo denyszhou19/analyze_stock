@@ -253,6 +253,10 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         point_label_map = {item["point_id"]: item for item in explainability["point_labels"]}
         self.assertEqual(point_label_map[labeled_geometry["points"][0]["point_id"]]["label"], "")
         self.assertEqual(point_label_map[labeled_geometry["points"][1]["point_id"]]["label"], "")
+        allowed_point_roles = {"start", "current", "normal", "projected"}
+        allowed_segment_roles = {"current", "projected", "normal"}
+        self.assertTrue(all(item["role"] in allowed_point_roles for item in explainability["point_labels"]))
+        self.assertTrue(all(item["role"] in allowed_segment_roles for item in explainability["segment_labels"]))
 
     def test_build_structure_explainability_limits_visible_labels_for_complex_structure(self) -> None:
         line_geometry = {
