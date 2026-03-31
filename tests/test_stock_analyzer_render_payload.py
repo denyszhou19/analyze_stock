@@ -232,11 +232,11 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             "segment_count": 4,
         }
         prediction = {
-            "current_stage": "d4拐点",
-            "next_stage": "结构完成，等待方向选择",
+            "current_stage": "d2拐点",
+            "next_stage": "d3拐点",
         }
 
-        _, explainability = self.analyzer._build_structure_explainability(
+        labeled_geometry, explainability = self.analyzer._build_structure_explainability(
             "D三段式",
             line_geometry,
             prediction,
@@ -244,8 +244,51 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             structure_start_point_index=2,
         )
 
-        self.assertEqual(explainability["structure_start_point_id"], "d3")
-        self.assertNotEqual(explainability["structure_start_point_id"], "d1")
+        self.assertEqual(explainability["structure_start_point_id"], "d1")
+        self.assertEqual(explainability["current_point_id"], "d2")
+        self.assertEqual(explainability["current_segment"]["label"], "d1→d2")
+        self.assertEqual(explainability["next_segment_preview"]["label"], "d2→d3")
+        self.assertFalse(labeled_geometry["points"][0]["point_id"].startswith("d"))
+        self.assertFalse(labeled_geometry["points"][1]["point_id"].startswith("d"))
+        point_label_map = {item["point_id"]: item for item in explainability["point_labels"]}
+        self.assertEqual(point_label_map[labeled_geometry["points"][0]["point_id"]]["label"], "")
+        self.assertEqual(point_label_map[labeled_geometry["points"][1]["point_id"]]["label"], "")
+
+    def test_build_structure_explainability_limits_visible_labels_for_complex_structure(self) -> None:
+        line_geometry = {
+            "price_range": {"min": 8.0, "max": 12.0, "range": 4.0},
+            "points": [
+                {"sequence": 0, "price": 12.0, "date": "2024-01-01", "type": "top", "role": "from"},
+                {"sequence": 1, "price": 9.0, "date": "2024-01-02", "type": "bottom", "role": "to"},
+                {"sequence": 2, "price": 11.0, "date": "2024-01-03", "type": "top", "role": "to"},
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "direction": "下跌", "length": 1},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "direction": "上涨", "length": 1},
+            ],
+            "point_count": 3,
+            "segment_count": 2,
+        }
+        prediction = {
+            "current_stage": "第3个拐点",
+            "next_stage": "结构完成，等待方向选择",
+        }
+
+        _, explainability = self.analyzer._build_structure_explainability(
+            "复杂结构",
+            line_geometry,
+            prediction,
+            peak_analysis={},
+        )
+
+        point_labels = {item["point_id"]: item["label"] for item in explainability["point_labels"]}
+        self.assertEqual(point_labels["p1"], "p1")
+        self.assertEqual(point_labels["p3"], "p3")
+        self.assertEqual(point_labels["p2"], "")
+
+        non_empty_segment_labels = [item for item in explainability["segment_labels"] if item["label"]]
+        self.assertEqual(len(non_empty_segment_labels), 1)
+        self.assertEqual(non_empty_segment_labels[0]["label"], "p2→p3")
 
     def test_analyze_structure_prediction_uses_completion_stage_for_d_with_four_inflections(self) -> None:
         recent = pd.DataFrame(

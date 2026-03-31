@@ -2666,10 +2666,19 @@ class TrinityStockAnalyzer:
         structure_family, prefix = self._resolve_structure_family(structure_type)
         points = list((line_geometry or {}).get('points', []))
         segments = list((line_geometry or {}).get('segments', []))
+        start_index = 0
+        if (
+            isinstance(structure_start_point_index, int)
+            and 0 <= structure_start_point_index < len(points)
+        ):
+            start_index = structure_start_point_index
 
         labeled_points: List[Dict[str, Any]] = []
-        for index, point in enumerate(points, start=1):
-            point_id = f'{prefix}{index}' if prefix else f'p{index}'
+        for idx, point in enumerate(points):
+            if prefix and idx >= start_index:
+                point_id = f'{prefix}{idx - start_index + 1}'
+            else:
+                point_id = f'p{idx + 1}'
             labeled_points.append({**point, 'point_id': point_id})
 
         labeled_segments: List[Dict[str, Any]] = []
@@ -2703,8 +2712,10 @@ class TrinityStockAnalyzer:
             prefix,
             point_ids
         )
+        used_current_fallback = False
         if current_point_id is None and point_ids:
             current_point_id = point_ids[-1]
+            used_current_fallback = True
 
         next_point_id = self._extract_stage_point_id(
             prediction_data.get('next_stage', ''),
@@ -2735,12 +2746,14 @@ class TrinityStockAnalyzer:
         if current_point_id and current_point_id in point_index_map:
             current_idx = point_index_map[current_point_id]
             if current_idx > 0:
-                from_point_id = labeled_points[current_idx - 1]['point_id']
-                current_segment = {
-                    'from_point_id': from_point_id,
-                    'to_point_id': current_point_id,
-                    'label': f'{from_point_id}→{current_point_id}',
-                }
+                is_crossing_left_context = prefix and (current_idx - 1) < start_index
+                if not is_crossing_left_context:
+                    from_point_id = labeled_points[current_idx - 1]['point_id']
+                    current_segment = {
+                        'from_point_id': from_point_id,
+                        'to_point_id': current_point_id,
+                        'label': f'{from_point_id}→{current_point_id}',
+                    }
 
         next_segment_preview = None
         if (
@@ -2764,13 +2777,6 @@ class TrinityStockAnalyzer:
         if next_segment_preview:
             next_segment_id = f"{next_segment_preview['from_point_id']}-{next_segment_preview['to_point_id']}"
 
-        start_index = 0
-        if (
-            isinstance(structure_start_point_index, int)
-            and 0 <= structure_start_point_index < len(labeled_points)
-        ):
-            start_index = structure_start_point_index
-
         point_labels = []
         for idx, point in enumerate(labeled_points):
             role = 'normal'
@@ -2778,9 +2784,18 @@ class TrinityStockAnalyzer:
                 role = 'current'
             elif idx == start_index:
                 role = 'start'
+            elif prefix and idx < start_index:
+                role = 'background'
+
+            show_label = True
+            if structure_family in ('complex', 'unfinished'):
+                show_label = role in ('start', 'current')
+            elif prefix and idx < start_index:
+                show_label = False
+
             point_labels.append({
                 'point_id': point['point_id'],
-                'label': point['point_id'],
+                'label': point['point_id'] if show_label else '',
                 'role': role
             })
 
@@ -2806,19 +2821,37 @@ class TrinityStockAnalyzer:
                 role = 'current'
             elif segment_id == next_segment_id:
                 role = 'projected'
+            elif prefix and (from_index < start_index or to_index < start_index):
+                role = 'background'
+
+            show_label = True
+            if structure_family in ('complex', 'unfinished'):
+                show_label = role in ('current', 'projected')
+            elif prefix and (from_index < start_index or to_index < start_index):
+                show_label = False
+
             segment_labels.append({
                 'segment_id': segment_id,
                 'from_point_id': from_point_id,
                 'to_point_id': to_point_id,
-                'label': f'{from_point_id}→{to_point_id}',
+                'label': f'{from_point_id}→{to_point_id}' if show_label else '',
                 'role': role
             })
 
-        display_reason = 'prediction.current_stage 映射当前结构锚点'
+        reason_parts = []
+        if prefix:
+            reason_parts.append('标准结构编号从当前结构起点重新计数')
+        else:
+            reason_parts.append('复杂/未完成结构使用通用锚点，仅突出起点与当前段')
+        if used_current_fallback:
+            reason_parts.append('current_stage 无法映射，已回退到最后确认点')
+        if is_non_segment_completion_state:
+            reason_parts.append('next_stage 为完成/方向选择态，已抑制下一段预览')
         if not prefix:
-            display_reason = '复杂/未完成结构使用通用 p 序号锚点，避免伪造标准编号'
+            reason_parts.append('避免伪造标准编号')
         if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
-            display_reason = f'{display_reason}；峰值切片后聚焦右侧结构'
+            reason_parts.append('峰值切片后聚焦右侧结构')
+        display_reason = '；'.join(reason_parts)
 
         explainability = {
             'structure_family': structure_family,
