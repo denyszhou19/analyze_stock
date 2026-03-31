@@ -4004,7 +4004,10 @@ class TrinityStockAnalyzer:
         nesting_analysis['spacetime_confirmation'] = spacetime_confirmation
         
         # ============ 新增：做T与加仓决策树 ============
-        trading_decision = self.analyze_trading_decision(results)
+        trading_decision = self.analyze_trading_decision(
+            results,
+            spacetime_confirmation=spacetime_confirmation,
+        )
         nesting_analysis['trading_decision'] = trading_decision
         
         return nesting_analysis
@@ -4137,7 +4140,11 @@ class TrinityStockAnalyzer:
         
         return confirmation
 
-    def analyze_trading_decision(self, results: Dict) -> Dict:
+    def analyze_trading_decision(
+        self,
+        results: Dict,
+        spacetime_confirmation: Optional[Dict] = None,
+    ) -> Dict:
         """
         做T与加仓决策树分析（维度六）
         
@@ -4158,7 +4165,31 @@ class TrinityStockAnalyzer:
             't_type': None,
             'core_questions': {},
             'analysis': '',
-            'action_hint': ''
+            'action_hint': '',
+            'can_trade': False,
+            'action': 'wait',
+            'direction': 'neutral',
+            'setup_quality': 'avoid',
+            'rationale': '',
+            'analysis_order': 'top_down',
+            'execution_order': 'bottom_up',
+            'primary_timeframe': 'daily',
+            'timing_timeframe': 'daily',
+            'timeframe_cap_ratio': 0.5,
+            'trigger': [],
+            'invalidation': [],
+            'confirmation': [],
+            'position_sizing': {},
+            't_trade_rule': {},
+            'risk_rules': {
+                'stop_loss_basis': 'same_timeframe',
+            },
+            'take_profit_plan': {
+                'model': 'none',
+            },
+            'key_levels': [],
+            'risk_flags': [],
+            'wait_reason': None,
         }
         
         weekly = results.get('weekly', {})
@@ -4166,6 +4197,40 @@ class TrinityStockAnalyzer:
         hour60 = results.get('hour60', {})
         hour30 = results.get('hour30', {})
         hour15 = results.get('hour15', {})
+        daily_execution = daily.get('structure', {}).get('execution', {}) if isinstance(daily, dict) else {}
+        spacetime = spacetime_confirmation
+        if spacetime is None:
+            spacetime = results.get('nesting_analysis', {}).get('spacetime_confirmation', {})
+        if not isinstance(spacetime, dict):
+            spacetime = {}
+
+        stable_execution_fields = [
+            'can_trade',
+            'action',
+            'direction',
+            'setup_quality',
+            'rationale',
+            'timing_timeframe',
+            'timeframe_cap_ratio',
+            'trigger',
+            'invalidation',
+            'confirmation',
+            'position_sizing',
+            't_trade_rule',
+            'risk_rules',
+            'take_profit_plan',
+            'key_levels',
+            'risk_flags',
+            'wait_reason',
+        ]
+        for field in stable_execution_fields:
+            if field in daily_execution:
+                decision[field] = daily_execution[field]
+        risk_rules = decision.get('risk_rules') or {}
+        if not isinstance(risk_rules, dict):
+            risk_rules = {}
+        risk_rules['stop_loss_basis'] = 'same_timeframe'
+        decision['risk_rules'] = risk_rules
         
         # ============ 问题1：大级别态势 ============
         weekly_status = weekly.get('macd', {}).get('status', '未知') if 'error' not in weekly else '无数据'
@@ -4203,8 +4268,6 @@ class TrinityStockAnalyzer:
         }
         
         # ============ 问题3：前期调整质检 ============
-        # 获取时空确认结果
-        spacetime = results.get('nesting_analysis', {}).get('spacetime_confirmation', {})
         adjustment_qualified = spacetime.get('spacetime_resonance', False) if spacetime else False
         
         decision['core_questions']['adjustment_quality'] = {
@@ -4225,44 +4288,57 @@ class TrinityStockAnalyzer:
             'description': '日线和60分钟均在MA55上方' if ma55_confirmed else 'MA55位置未确认'
         }
         
-        # ============ 决策判断 ============
-        
-        # 极强状态共振：日线或周线MACD零轴附近金叉，切入极强状态
         extremely_strong = daily_status == '极强' or weekly_status == '极强'
-        
-        # 判断决策类型
-        if extremely_strong and ma55_confirmed:
+        action = decision.get('action')
+        rationale = decision.get('rationale') or '等待更明确信号'
+        if action == 'buy':
             decision['decision_type'] = '加仓'
-            decision['analysis'] = '极强状态共振！MACD切入极强状态，价格将无视常规结构压制。严禁做反T，立刻加仓！'
-            decision['action_hint'] = '极强状态确认，建议加仓，防守位设为60分钟MA55'
-        
-        elif major_resonance_up and not micro_divergence and adjustment_qualified and ma55_confirmed:
-            decision['decision_type'] = '加仓'
-            decision['analysis'] = '大级别共振向上，无微观背离，前期调整质检通过，MA55确认。满足加仓条件。'
-            decision['action_hint'] = '建议加仓，防守位设为60分钟MA55'
-        
-        elif micro_divergence:
+            decision['analysis'] = f"自上而下分析后，日线执行总线给出买入信号。{rationale}"
+            decision['action_hint'] = '按 bottom_up 执行，等待次级别触发后分批介入'
+        elif action in ['sell', 'reduce']:
             decision['decision_type'] = '做T'
             decision['t_type'] = '反T'
-            decision['analysis'] = f'存在{micro_divergence_type}，偏向反T（先卖后买）。'
-            decision['action_hint'] = '利用均线牵引性，急拉触碰MA55时卖出，回落接回'
-        
-        elif daily_status in ['弱', '极弱']:
-            decision['decision_type'] = '做T'
-            decision['t_type'] = '反T'
-            decision['analysis'] = f'日线处于{daily_status}状态，适合反T。'
-            decision['action_hint'] = '空头排列下只做反T，急拉触碰MA55时卖出，回落接回'
-        
-        elif daily_status in ['强', '中偏强'] and daily_ma55_position == 'above':
-            decision['decision_type'] = '做T'
-            decision['t_type'] = '正T'
-            decision['analysis'] = f'日线处于{daily_status}状态，MA55上方，适合正T。'
-            decision['action_hint'] = '多头排列下可做正T，利用盘中急跌在次级别结构下轨买入，冲高抛出'
-        
-        else:
+            decision['analysis'] = f"自上而下分析后，日线执行总线偏向减仓或反T。{rationale}"
+            decision['action_hint'] = '优先减仓锁定利润，等待次级别回补机会'
+        elif action == 'hold':
             decision['decision_type'] = '观望'
-            decision['analysis'] = '当前条件不满足做T或加仓，建议观望。'
-            decision['action_hint'] = '等待更明确信号'
+            decision['analysis'] = f"当前以持仓跟随为主。{rationale}"
+            decision['action_hint'] = '维持仓位，等待更清晰的加减仓触发'
+        else:
+            if extremely_strong and ma55_confirmed:
+                decision['decision_type'] = '加仓'
+                decision['analysis'] = '极强状态共振！MACD切入极强状态，价格将无视常规结构压制。严禁做反T，立刻加仓！'
+                decision['action_hint'] = '极强状态确认，建议加仓，防守位设为60分钟MA55'
+            elif major_resonance_up and not micro_divergence and adjustment_qualified and ma55_confirmed:
+                decision['decision_type'] = '加仓'
+                decision['analysis'] = '大级别共振向上，无微观背离，前期调整质检通过，MA55确认。满足加仓条件。'
+                decision['action_hint'] = '建议加仓，防守位设为60分钟MA55'
+            elif micro_divergence:
+                decision['decision_type'] = '做T'
+                decision['t_type'] = '反T'
+                decision['analysis'] = f'存在{micro_divergence_type}，偏向反T（先卖后买）。'
+                decision['action_hint'] = '利用均线牵引性，急拉触碰MA55时卖出，回落接回'
+            elif daily_status in ['弱', '极弱']:
+                decision['decision_type'] = '做T'
+                decision['t_type'] = '反T'
+                decision['analysis'] = f'日线处于{daily_status}状态，适合反T。'
+                decision['action_hint'] = '空头排列下只做反T，急拉触碰MA55时卖出，回落接回'
+            elif daily_status in ['强', '中偏强'] and daily_ma55_position == 'above':
+                decision['decision_type'] = '做T'
+                decision['t_type'] = '正T'
+                decision['analysis'] = f'日线处于{daily_status}状态，MA55上方，适合正T。'
+                decision['action_hint'] = '多头排列下可做正T，利用盘中急跌在次级别结构下轨买入，冲高抛出'
+            else:
+                decision['decision_type'] = '观望'
+                decision['analysis'] = '当前条件不满足做T或加仓，建议观望。'
+                decision['action_hint'] = '等待更明确信号'
+
+        if adjustment_qualified:
+            resonance_confirmation = '时空共振确认，执行可信度提升'
+            confirmations = decision.get('confirmation') or []
+            if resonance_confirmation not in confirmations:
+                confirmations = list(confirmations) + [resonance_confirmation]
+            decision['confirmation'] = confirmations
         
         return decision
     

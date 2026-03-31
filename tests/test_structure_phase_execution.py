@@ -273,6 +273,62 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertEqual(structure['execution']['timing_timeframe'], 'hour30')
         self.assertAlmostEqual(structure['execution']['timeframe_cap_ratio'], 1 / 3, places=3)
 
+    def test_analyze_trading_decision_exposes_orders_caps_and_stop_rules(self) -> None:
+        results = {
+            'daily': {
+                'macd': {'status': '强'},
+                'moving_averages': {'price_vs_ma55': 'above'},
+                'structure': {
+                    'execution': {
+                        'can_trade': True,
+                        'action': 'buy',
+                        'direction': 'long',
+                        'setup_quality': 'A',
+                        'rationale': '日线回抽确认，执行条件满足',
+                        'timing_timeframe': 'daily',
+                        'timeframe_cap_ratio': 0.5,
+                        'trigger': ['MA55支撑有效后重新转强'],
+                        'invalidation': ['跌破同级别止损位 99.2 立即退出'],
+                        'confirmation': ['突破形态有效'],
+                        'position_sizing': {'initial': '20%-30%'},
+                        't_trade_rule': {'mode': 'positive_only'},
+                        'risk_rules': {
+                            'stop_loss_basis': 'same_timeframe',
+                        },
+                        'take_profit_plan': {
+                            'model': 'inverted_pyramid',
+                        },
+                        'key_levels': [{'price': 99.2, 'type': 'stop'}],
+                        'risk_flags': [],
+                        'wait_reason': None,
+                    },
+                },
+            },
+            'weekly': {'macd': {'status': '强'}},
+            'hour60': {'moving_averages': {'price_vs_ma55': 'above'}},
+            'hour30': {'macd': {'top_divergence': False}},
+            'hour15': {'macd': {'top_divergence': False}},
+            'nesting_analysis': {},
+        }
+        spacetime_confirmation = {
+            'spacetime_resonance': True,
+            'analysis': '时空共振确认',
+        }
+
+        decision = self.analyzer.analyze_trading_decision(
+            results,
+            spacetime_confirmation=spacetime_confirmation,
+        )
+
+        self.assertTrue(decision['can_trade'])
+        self.assertEqual(decision['analysis_order'], 'top_down')
+        self.assertEqual(decision['execution_order'], 'bottom_up')
+        self.assertEqual(decision['timing_timeframe'], 'daily')
+        self.assertAlmostEqual(decision['timeframe_cap_ratio'], 0.5, places=3)
+        self.assertEqual(decision['risk_rules']['stop_loss_basis'], 'same_timeframe')
+        self.assertEqual(decision['take_profit_plan']['model'], 'inverted_pyramid')
+        self.assertIn('时空共振', ' '.join(decision['confirmation']))
+
 
 if __name__ == '__main__':
     unittest.main()
