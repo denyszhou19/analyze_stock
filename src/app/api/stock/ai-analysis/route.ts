@@ -329,11 +329,13 @@ ${JSON.stringify(payload, null, 2)}
 ## 你的任务
 
 请输出一份偏“决策建议”而不是“重新分析”的报告，重点使用：
-- \`level_nesting.summary / spacetime_confirmation / trading_decision\`
+- \`level_nesting.trading_decision\`，优先吸收其中“先分析后执行”的结论
+- 各周期的 \`execution_phase / execution\`，优先说明当前是否可执行、该怎么执行
+- 日线的 \`ma / ma_physics / breakthrough\`
+- \`level_nesting.summary / spacetime_confirmation\`
 - \`multi_dimension_operation\`
 - 各周期的 \`macd.status\`、\`structure\`、\`latest_price\`
-- 日线的 \`ma / ma_physics / breakthrough / prediction\`
-- 30分钟的 \`prediction\`
+- 日线与 30分钟的 \`prediction\`
 - \`key_alerts\`
 
 ## 输出结构
@@ -344,7 +346,9 @@ ${JSON.stringify(payload, null, 2)}
 
 ### 二、跨级别决策依据
 - 用周线→日线→30分钟/15分钟的顺序解释
-- 优先解读 \`multi_dimension_operation\` 和 \`level_nesting\`
+- 优先解读 \`level_nesting.trading_decision\`，明确 \`analysis_order = top_down\`、\`execution_order = bottom_up\`
+- 再结合各周期 \`execution_phase / execution\` 说明执行级别、动作和仓位上限
+- 然后补充 \`multi_dimension_operation\` 与 \`level_nesting.summary / spacetime_confirmation\`
 - 如果系统结论之间有冲突，要明确指出冲突来自哪里
 
 ### 三、关键信号与关键价位
@@ -366,7 +370,9 @@ ${JSON.stringify(payload, null, 2)}
 
 - 不使用“必定”“一定”“百分之百”等绝对表达
 - 不要复述 JSON 字段名，重点做解读和决策落地
-- 如果信息不足以支持激进操作，请明确倾向保守应对`;
+- 如果信息不足以支持激进操作，请明确倾向保守应对
+- \`ABCD\` 结构标签与 \`archetype\` 只是结构原型和背景解释，不代表未来一定会完整走完
+- \`archetype\` 不能单独当作交易开关；交易动作必须结合 \`trading_decision\`、\`execution_phase\`、\`execution\` 与日线关键信号`;
 }
 
 function buildAiCodexConfigOverrides() {

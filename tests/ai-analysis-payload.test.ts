@@ -110,6 +110,46 @@ const sampleAnalysisData = {
         inflection_points: 21,
         segment_count: 20,
         description: '识别为A五段式，上涨趋势',
+        archetype: {
+          primary: 'A五段式',
+          maturity: 'late',
+          confidence: 'medium',
+          reason: 'Impulse -> Pullback -> Impulse',
+          alternatives: [
+            {
+              type: 'C单平台式',
+              confidence: 0.35,
+              reason: '平台段占比仍高',
+            },
+          ],
+        },
+        execution_phase: {
+          code: 'pullback_confirm',
+          label: '回抽确认',
+          bias: 'bullish',
+          tradable: true,
+          maturity: 'mid',
+          reason: 'MA55支撑有效',
+        },
+        execution: {
+          can_trade: true,
+          action: 'buy',
+          direction: 'long',
+          setup_quality: 'A',
+          rationale: '日线回抽确认，执行条件满足',
+          timing_timeframe: 'daily',
+          timeframe_cap_ratio: 0.5,
+          trigger: ['MA55支撑有效后重新转强'],
+          invalidation: ['跌破同级别止损位 159.99 立即退出'],
+          confirmation: ['突破形态有效', '次级别结构继续共振'],
+          position_sizing: { initial: '20%-30%' },
+          t_trade_rule: { mode: 'positive_only' },
+          risk_rules: { stop_loss_basis: 'same_timeframe' },
+          take_profit_plan: { model: 'inverted_pyramid' },
+          key_levels: [{ price: 159.99, type: 'stop', note: '最近确认底分型' }],
+          risk_flags: [],
+          wait_reason: null,
+        },
         structure_details: {
           prediction: {
             current_stage: 'a3',
@@ -195,6 +235,8 @@ const sampleAnalysisData = {
       t_type: null,
       analysis: '当前条件不满足做T或加仓，建议观望。',
       action_hint: '等待更明确信号',
+      analysis_order: 'top_down',
+      execution_order: 'bottom_up',
       core_questions: {
         major_resonance: {
           description: '周线与日线未共振向上',
@@ -237,10 +279,36 @@ test('buildAiDecisionPayload keeps strategy-critical summaries and trims heavy s
 
   assert.equal(result.periods?.daily?.macd?.status, '中偏弱');
   assert.equal(result.periods?.daily?.structure?.type, 'A五段式');
+  assert.deepEqual(result.periods?.daily?.structure?.archetype, {
+    primary: 'A五段式',
+    maturity: 'late',
+    confidence: 'medium',
+    reason: 'Impulse -> Pullback -> Impulse',
+    alternatives: [
+      {
+        type: 'C单平台式',
+        confidence: 0.35,
+        reason: '平台段占比仍高',
+      },
+    ],
+  });
+  assert.deepEqual(result.periods?.daily?.execution_phase, {
+    code: 'pullback_confirm',
+    label: '回抽确认',
+    bias: 'bullish',
+    tradable: true,
+    maturity: 'mid',
+    reason: 'MA55支撑有效',
+  });
+  assert.equal(result.periods?.daily?.execution?.action, 'buy');
+  assert.equal(result.periods?.daily?.execution?.timeframe_cap_ratio, 0.5);
   assert.equal(result.periods?.daily?.latest_price, 163.35);
+  assert.equal(result.periods?.daily?.price_change_pct, -1.6);
   assert.equal(result.periods?.daily?.ma_physics?.support_pressure_status, 'MA55支撑有效');
   assert.equal(result.periods?.daily?.breakthrough?.pattern_type, '反向突破');
   assert.equal(result.periods?.daily?.prediction?.current_stage, 'a3');
+  assert.equal(result.level_nesting?.trading_decision?.analysis_order, 'top_down');
+  assert.equal(result.level_nesting?.trading_decision?.execution_order, 'bottom_up');
 
   assert.equal(result.periods?.hour30?.prediction?.prediction_alert, '接近方向选择位');
 

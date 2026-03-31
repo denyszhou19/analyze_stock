@@ -32,7 +32,48 @@ function summarizePeriod(periodData: any, level: string) {
       stage: periodData.structure?.structure_stage,
       trend: periodData.structure?.trend_direction,
       description: periodData.structure?.description,
+      archetype: periodData.structure?.archetype
+        ? compactRecord({
+            primary: periodData.structure.archetype.primary,
+            maturity: periodData.structure.archetype.maturity,
+            confidence: periodData.structure.archetype.confidence,
+            reason: periodData.structure.archetype.reason,
+            alternatives: periodData.structure.archetype.alternatives,
+          })
+        : undefined,
     }),
+    execution_phase: periodData.structure?.execution_phase
+      ? compactRecord({
+          code: periodData.structure.execution_phase.code,
+          label: periodData.structure.execution_phase.label,
+          bias: periodData.structure.execution_phase.bias,
+          tradable: periodData.structure.execution_phase.tradable,
+          maturity: periodData.structure.execution_phase.maturity,
+          reason: periodData.structure.execution_phase.reason,
+        })
+      : undefined,
+    execution: periodData.structure?.execution
+      ? compactRecord({
+          can_trade: periodData.structure.execution.can_trade,
+          action: periodData.structure.execution.action,
+          direction: periodData.structure.execution.direction,
+          setup_quality: periodData.structure.execution.setup_quality,
+          rationale: periodData.structure.execution.rationale,
+          timing_timeframe: periodData.structure.execution.timing_timeframe,
+          timeframe_cap_ratio: periodData.structure.execution.timeframe_cap_ratio,
+          trigger: periodData.structure.execution.trigger,
+          invalidation: periodData.structure.execution.invalidation,
+          confirmation: periodData.structure.execution.confirmation,
+          entry_style: periodData.structure.execution.entry_style,
+          position_sizing: periodData.structure.execution.position_sizing,
+          t_trade_rule: periodData.structure.execution.t_trade_rule,
+          risk_rules: periodData.structure.execution.risk_rules,
+          take_profit_plan: periodData.structure.execution.take_profit_plan,
+          key_levels: periodData.structure.execution.key_levels,
+          risk_flags: periodData.structure.execution.risk_flags,
+          wait_reason: periodData.structure.execution.wait_reason,
+        })
+      : undefined,
     latest_price: periodData.latest_price,
     price_change_pct: periodData.price_change_pct,
   });
@@ -101,6 +142,8 @@ function summarizeLevelNesting(levelNesting: any) {
           t_type: levelNesting.trading_decision.t_type,
           analysis: levelNesting.trading_decision.analysis,
           action_hint: levelNesting.trading_decision.action_hint,
+          analysis_order: levelNesting.trading_decision.analysis_order,
+          execution_order: levelNesting.trading_decision.execution_order,
           core_questions: levelNesting.trading_decision.core_questions,
         })
       : undefined,
