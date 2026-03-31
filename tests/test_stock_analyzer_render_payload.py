@@ -324,6 +324,50 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertEqual(prediction["next_stage"], "结构完成，等待方向选择")
         self.assertIsNone(explainability["next_segment_preview"])
 
+    def test_resolve_peak_structure_start_point_index_maps_to_segment_to_point_when_peak_at_to_endpoint(self) -> None:
+        line_geometry = {
+            "points": [
+                {"sequence": 0, "price": 9.0},
+                {"sequence": 1, "price": 12.0},
+                {"sequence": 2, "price": 10.0},
+                {"sequence": 3, "price": 15.0},
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "from_price": 9.0, "to_price": 12.0},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "from_price": 12.0, "to_price": 10.0},
+                {"sequence": 2, "from_point": 2, "to_point": 3, "from_price": 10.0, "to_price": 15.0},
+            ],
+        }
+        peak_analysis = {"is_peak_structure": True, "peak_index": 2, "peak_price": 15.0}
+
+        start_index = self.analyzer._resolve_peak_structure_start_point_index(
+            line_geometry,
+            peak_analysis,
+        )
+
+        self.assertEqual(start_index, 3)
+
+    def test_resolve_peak_structure_start_point_index_maps_to_segment_from_point_when_peak_at_from_endpoint(self) -> None:
+        line_geometry = {
+            "points": [
+                {"sequence": 0, "price": 9.0},
+                {"sequence": 1, "price": 14.0},
+                {"sequence": 2, "price": 11.0},
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "from_price": 9.0, "to_price": 14.0},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "from_price": 14.0, "to_price": 11.0},
+            ],
+        }
+        peak_analysis = {"is_peak_structure": True, "peak_index": 1, "peak_price": 14.0}
+
+        start_index = self.analyzer._resolve_peak_structure_start_point_index(
+            line_geometry,
+            peak_analysis,
+        )
+
+        self.assertEqual(start_index, 1)
+
 
 if __name__ == "__main__":
     unittest.main()

@@ -2832,6 +2832,59 @@ class TrinityStockAnalyzer:
         }
         return labeled_geometry, explainability
 
+    def _resolve_peak_structure_start_point_index(
+        self,
+        line_geometry: Dict[str, Any],
+        peak_analysis: Optional[Dict[str, Any]]
+    ) -> Optional[int]:
+        """Map peak stroke index to the actual extreme endpoint point index."""
+        if not isinstance(peak_analysis, dict) or not peak_analysis.get('is_peak_structure'):
+            return None
+
+        peak_index = peak_analysis.get('peak_index')
+        if not isinstance(peak_index, int):
+            return None
+
+        segments = list((line_geometry or {}).get('segments', []))
+        points = list((line_geometry or {}).get('points', []))
+        if peak_index < 0 or peak_index >= len(segments):
+            return None
+
+        peak_segment = segments[peak_index]
+        from_point = peak_segment.get('from_point')
+        to_point = peak_segment.get('to_point')
+        if not isinstance(from_point, int) or not isinstance(to_point, int):
+            return None
+        if from_point < 0 or to_point < 0:
+            return None
+        if points and (from_point >= len(points) or to_point >= len(points)):
+            return None
+
+        peak_price = peak_analysis.get('peak_price')
+        from_price = peak_segment.get('from_price')
+        to_price = peak_segment.get('to_price')
+        if (
+            isinstance(peak_price, (int, float))
+            and isinstance(from_price, (int, float))
+            and isinstance(to_price, (int, float))
+        ):
+            peak_val = float(peak_price)
+            from_diff = abs(float(from_price) - peak_val)
+            to_diff = abs(float(to_price) - peak_val)
+            if from_diff < to_diff:
+                return from_point
+            if to_diff < from_diff:
+                return to_point
+
+        peak_type = peak_analysis.get('peak_type')
+        if isinstance(from_price, (int, float)) and isinstance(to_price, (int, float)):
+            if peak_type == 'mountain_peak':
+                return from_point if float(from_price) >= float(to_price) else to_point
+            if peak_type == 'valley_bottom':
+                return from_point if float(from_price) <= float(to_price) else to_point
+
+        return to_point
+
     def _build_structure_pipeline_metadata(
         self,
         lookback: int,
@@ -3156,9 +3209,10 @@ class TrinityStockAnalyzer:
         structure_start_point_index = None
         peak_analysis = result['structure_details'].get('peak_analysis')
         if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
-            peak_index = peak_analysis.get('peak_index')
-            if isinstance(peak_index, int):
-                structure_start_point_index = peak_index
+            structure_start_point_index = self._resolve_peak_structure_start_point_index(
+                line_geometry,
+                peak_analysis
+            )
 
         labeled_geometry, explainability = self._build_structure_explainability(
             result['structure_type'],
