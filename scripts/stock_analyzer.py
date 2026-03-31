@@ -2659,7 +2659,8 @@ class TrinityStockAnalyzer:
         structure_type: str,
         line_geometry: Dict[str, Any],
         prediction: Dict[str, Any],
-        peak_analysis: Optional[Dict[str, Any]]
+        peak_analysis: Optional[Dict[str, Any]],
+        structure_start_point_index: Optional[int] = None
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Attach stable point/segment ids and build explainability metadata."""
         structure_family, prefix = self._resolve_structure_family(structure_type)
@@ -2710,11 +2711,23 @@ class TrinityStockAnalyzer:
             prefix,
             point_ids
         )
+        next_stage_text = str(prediction_data.get('next_stage', '')).lower()
         if next_point_id is None and prefix:
-            next_stage_text = str(prediction_data.get('next_stage', '')).lower()
             projected_match = re.search(rf'{re.escape(prefix)}(\d+)', next_stage_text)
             if projected_match:
                 next_point_id = f'{prefix}{projected_match.group(1)}'
+        stage_point_token = False
+        if prefix:
+            stage_point_token = bool(re.search(rf'{re.escape(prefix)}\d+', next_stage_text))
+        else:
+            stage_point_token = bool(
+                re.search(r'第\s*\d+\s*个?拐点', next_stage_text)
+                or re.search(r'p\d+', next_stage_text)
+            )
+        is_non_segment_completion_state = (
+            ('结构完成' in next_stage_text or '方向选择' in next_stage_text)
+            and not stage_point_token
+        )
 
         point_index_map = {point['point_id']: idx for idx, point in enumerate(labeled_points)}
 
@@ -2735,6 +2748,7 @@ class TrinityStockAnalyzer:
             and next_point_id
             and current_point_id in point_index_map
             and current_point_id != next_point_id
+            and not is_non_segment_completion_state
         ):
             next_segment_preview = {
                 'from_point_id': current_point_id,
@@ -2750,12 +2764,19 @@ class TrinityStockAnalyzer:
         if next_segment_preview:
             next_segment_id = f"{next_segment_preview['from_point_id']}-{next_segment_preview['to_point_id']}"
 
+        start_index = 0
+        if (
+            isinstance(structure_start_point_index, int)
+            and 0 <= structure_start_point_index < len(labeled_points)
+        ):
+            start_index = structure_start_point_index
+
         point_labels = []
         for idx, point in enumerate(labeled_points):
             role = 'normal'
             if point['point_id'] == current_point_id:
                 role = 'current'
-            elif idx == 0:
+            elif idx == start_index:
                 role = 'start'
             point_labels.append({
                 'point_id': point['point_id'],
@@ -2801,7 +2822,7 @@ class TrinityStockAnalyzer:
 
         explainability = {
             'structure_family': structure_family,
-            'structure_start_point_id': labeled_points[0]['point_id'] if labeled_points else None,
+            'structure_start_point_id': labeled_points[start_index]['point_id'] if labeled_points else None,
             'current_point_id': current_point_id,
             'current_segment': current_segment,
             'next_segment_preview': next_segment_preview,
@@ -3132,11 +3153,19 @@ class TrinityStockAnalyzer:
         )
         result['structure_details']['prediction'] = prediction
 
+        structure_start_point_index = None
+        peak_analysis = result['structure_details'].get('peak_analysis')
+        if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
+            peak_index = peak_analysis.get('peak_index')
+            if isinstance(peak_index, int):
+                structure_start_point_index = peak_index
+
         labeled_geometry, explainability = self._build_structure_explainability(
             result['structure_type'],
             line_geometry,
             prediction,
-            result['structure_details'].get('peak_analysis')
+            peak_analysis,
+            structure_start_point_index=structure_start_point_index
         )
         result['structure_details']['line_geometry'] = labeled_geometry
         result['structure_details']['explainability'] = explainability
@@ -3213,7 +3242,23 @@ class TrinityStockAnalyzer:
             #   - 在下跌结构中，d4是空头衰竭买入机会
             #   - 在上涨结构中，d4是多头衰竭卖出机会
             
-            if inflection_count >= 3:
+            if inflection_count >= 4:
+                # 已经到达d4拐点，结构完成
+                prediction['current_stage'] = 'd4拐点'
+                prediction['next_stage'] = '结构完成，等待方向选择'
+                prediction['prediction_alert'] = '⚠️ D三段式已完成！结构完美，即将选择方向。'
+
+                # d4判断：空头衰竭买入机会 or 多头衰竭卖出机会
+                if len(strokes) >= 3:
+                    last_stroke = strokes[-1]
+                    if last_stroke.get('direction') == '下跌':
+                        prediction['action_hint'] = 'd4是空头衰竭买入机会，可关注建仓信号'
+                    else:
+                        prediction['action_hint'] = 'd4是多头衰竭卖出机会，可关注减仓信号'
+
+                prediction['confidence'] = 'high'
+
+            elif inflection_count >= 3:
                 # 当前在d3拐点，即将形成d4
                 prediction['current_stage'] = 'd3拐点'
                 prediction['next_stage'] = 'd4拐点（结构完成）'
@@ -3268,22 +3313,6 @@ class TrinityStockAnalyzer:
                         prediction['key_price_levels'] = [
                             {'price': target_price, 'type': 'd4目标', 'note': '空头衰竭买入机会'}
                         ]
-                
-                prediction['confidence'] = 'high'
-                
-            elif inflection_count >= 4:
-                # 已经到达d4拐点，结构完成
-                prediction['current_stage'] = 'd4拐点'
-                prediction['next_stage'] = '结构完成，等待方向选择'
-                prediction['prediction_alert'] = '⚠️ D三段式已完成！结构完美，即将选择方向。'
-                
-                # d4判断：空头衰竭买入机会 or 多头衰竭卖出机会
-                if len(strokes) >= 3:
-                    last_stroke = strokes[-1]
-                    if last_stroke.get('direction') == '下跌':
-                        prediction['action_hint'] = 'd4是空头衰竭买入机会，可关注建仓信号'
-                    else:
-                        prediction['action_hint'] = 'd4是多头衰竭卖出机会，可关注减仓信号'
                 
                 prediction['confidence'] = 'high'
                 

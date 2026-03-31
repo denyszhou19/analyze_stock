@@ -212,6 +212,118 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertIsNotNone(explainability["next_segment_preview"])
         self.assertEqual(explainability["next_segment_preview"]["label"], "d3→d4")
 
+    def test_build_structure_explainability_uses_override_start_anchor_for_peak_slice(self) -> None:
+        line_geometry = {
+            "price_range": {"min": 9.0, "max": 15.0, "range": 6.0},
+            "points": [
+                {"sequence": 0, "price": 9.0, "date": "2024-01-01", "type": "bottom", "role": "from"},
+                {"sequence": 1, "price": 13.0, "date": "2024-01-02", "type": "top", "role": "to"},
+                {"sequence": 2, "price": 11.0, "date": "2024-01-03", "type": "bottom", "role": "to"},
+                {"sequence": 3, "price": 15.0, "date": "2024-01-04", "type": "top", "role": "to"},
+                {"sequence": 4, "price": 10.0, "date": "2024-01-05", "type": "bottom", "role": "to"},
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "direction": "上涨", "length": 1},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "direction": "下跌", "length": 1},
+                {"sequence": 2, "from_point": 2, "to_point": 3, "direction": "上涨", "length": 1},
+                {"sequence": 3, "from_point": 3, "to_point": 4, "direction": "下跌", "length": 1},
+            ],
+            "point_count": 5,
+            "segment_count": 4,
+        }
+        prediction = {
+            "current_stage": "d4拐点",
+            "next_stage": "结构完成，等待方向选择",
+        }
+
+        _, explainability = self.analyzer._build_structure_explainability(
+            "D三段式",
+            line_geometry,
+            prediction,
+            peak_analysis={"is_peak_structure": True},
+            structure_start_point_index=2,
+        )
+
+        self.assertEqual(explainability["structure_start_point_id"], "d3")
+        self.assertNotEqual(explainability["structure_start_point_id"], "d1")
+
+    def test_analyze_structure_prediction_uses_completion_stage_for_d_with_four_inflections(self) -> None:
+        recent = pd.DataFrame(
+            [{"close": 10.0, "high": 10.5, "low": 9.5}]
+        )
+        prediction = self.analyzer._analyze_structure_prediction(
+            structure_type="D三段式",
+            stroke_count=3,
+            inflection_count=4,
+            strokes=[
+                {"direction": "上涨", "from_price": 9.0, "to_price": 12.0},
+                {"direction": "下跌", "from_price": 12.0, "to_price": 10.0},
+                {"direction": "上涨", "from_price": 10.0, "to_price": 13.0},
+            ],
+            valid_fractals=[
+                {"type": "bottom", "high": 10.2, "low": 9.0},
+                {"type": "top", "high": 12.0, "low": 10.8},
+                {"type": "bottom", "high": 11.1, "low": 9.7},
+                {"type": "top", "high": 12.4, "low": 10.9},
+            ],
+            trend_direction="上涨",
+            recent=recent,
+            macd_status="中偏强",
+        )
+
+        self.assertEqual(prediction["current_stage"], "d4拐点")
+        self.assertEqual(prediction["next_stage"], "结构完成，等待方向选择")
+
+    def test_build_structure_explainability_suppresses_next_preview_when_d_completion_state(self) -> None:
+        recent = pd.DataFrame(
+            [{"close": 10.0, "high": 10.5, "low": 9.5}]
+        )
+        prediction = self.analyzer._analyze_structure_prediction(
+            structure_type="D三段式",
+            stroke_count=3,
+            inflection_count=4,
+            strokes=[
+                {"direction": "上涨", "from_price": 9.0, "to_price": 12.0},
+                {"direction": "下跌", "from_price": 12.0, "to_price": 10.0},
+                {"direction": "上涨", "from_price": 10.0, "to_price": 13.0},
+            ],
+            valid_fractals=[
+                {"type": "bottom", "high": 10.2, "low": 9.0},
+                {"type": "top", "high": 12.0, "low": 10.8},
+                {"type": "bottom", "high": 11.1, "low": 9.7},
+                {"type": "top", "high": 12.4, "low": 10.9},
+            ],
+            trend_direction="上涨",
+            recent=recent,
+            macd_status="中偏强",
+        )
+        line_geometry = {
+            "price_range": {"min": 9.0, "max": 13.0, "range": 4.0},
+            "points": [
+                {"sequence": 0, "price": 9.0, "date": "2024-01-01", "type": "bottom", "role": "from"},
+                {"sequence": 1, "price": 12.0, "date": "2024-01-02", "type": "top", "role": "to"},
+                {"sequence": 2, "price": 10.0, "date": "2024-01-03", "type": "bottom", "role": "to"},
+                {"sequence": 3, "price": 13.0, "date": "2024-01-04", "type": "top", "role": "to"},
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "direction": "上涨", "length": 1},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "direction": "下跌", "length": 1},
+                {"sequence": 2, "from_point": 2, "to_point": 3, "direction": "上涨", "length": 1},
+            ],
+            "point_count": 4,
+            "segment_count": 3,
+        }
+
+        _, explainability = self.analyzer._build_structure_explainability(
+            "D三段式",
+            line_geometry,
+            prediction,
+            peak_analysis={},
+        )
+
+        self.assertEqual(prediction["next_stage"], "结构完成，等待方向选择")
+        self.assertIsNone(explainability["next_segment_preview"])
+
 
 if __name__ == "__main__":
     unittest.main()
