@@ -1,5 +1,8 @@
 # 工程规则
 
+> 项目级默认协作规范见 `AGENTS.md`。
+> 本文件只补充 `stock_analyzer.py`、结构识别与分析链路相关的专项强约束；若与 `AGENTS.md` 不冲突，两者同时适用。
+
 ## 技术栈
 
 - **前端**：Next.js 16 + React 19 + TypeScript + Tailwind CSS
