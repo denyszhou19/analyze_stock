@@ -132,6 +132,51 @@ test('StructureExplainabilityPanel renders visible topology summary blocks and s
         trend_direction: '上涨',
         inflection_points: 4,
         description: '主升之后进入回抽确认',
+        interpretation: {
+          macro_background: {
+            label: '偏多',
+            direction: 'bullish',
+          },
+          focus_structure: {
+            archetype_label: 'A五段式原型',
+            maturity: 'developing',
+            start_anchor: {
+              point_id: 'a1',
+              price: 10.5,
+              date: '2026-03-21 00:00',
+            },
+            reference_origin: {
+              point_id: null,
+              price: 9.8,
+              date: '2026-02-10 00:00',
+            },
+            display_reason: '主升趋势中的右侧确认阶段',
+          },
+          current_leg: {
+            label: 'a4→live 上行形成中',
+            direction: 'up',
+            status: 'forming',
+          },
+          next_confirmation: {
+            label: '等待 a5 确认',
+            type: 'pivot',
+            trigger: '等待新的确认拐点',
+          },
+          scenario_paths: [
+            {
+              code: 'up_break',
+              label: '上破前高',
+              trigger: '重新站上 12.80',
+              effect: '延续 A 推进',
+            },
+            {
+              code: 'down_break',
+              label: '跌破回抽低点',
+              trigger: '失守 11.60',
+              effect: '转入更深修正',
+            },
+          ],
+        },
         archetype: {
           primary: 'A五段式',
           reason: '第三段延伸后等待末端确认',
@@ -206,18 +251,29 @@ test('StructureExplainabilityPanel renders visible topology summary blocks and s
   assert.match(html, /当前阶段/);
   assert.match(html, /执行建议/);
   assert.match(html, /结构原型/);
+  assert.match(html, /背景 偏多/);
+  assert.match(html, /当前段 a4→live 上行形成中/);
+  assert.match(html, /背景/);
   assert.match(html, /结构起点/);
   assert.match(html, /当前段/);
-  assert.match(html, /下一段预期/);
-  assert.match(html, /a1/);
-  assert.match(html, /a3→a4/);
-  assert.match(html, /a4→a5/);
+  assert.match(html, /下一确认/);
+  assert.match(html, /偏多/);
+  assert.match(html, /A五段式原型/);
+  assert.match(html, /开展中/);
+  assert.match(html, /a4→live 上行形成中/);
+  assert.match(html, /等待 a5 确认/);
+  assert.match(html, /a1 @ 10.50/);
+  assert.match(html, /参考原点 2026-02-10 @ 9.80/);
+  assert.match(html, /改判路径/);
+  assert.match(html, /上破前高/);
+  assert.match(html, /跌破回抽低点/);
   assert.match(html, /prediction/);
   assert.match(html, /peak_analysis/);
   assert.match(html, /left_structure_warning/);
   assert.match(html, /judgment_criteria/);
   assert.match(html, /data-has-payload="true"/);
   assert.match(html, /data-has-explainability="true"/);
+  assert.doesNotMatch(html, /trend-上涨/);
 });
 
 test('StructureExplainabilityPanel falls back gracefully when explainability is absent', async () => {

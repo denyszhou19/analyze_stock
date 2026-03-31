@@ -9,6 +9,64 @@ export interface StructureArchetypeAlternative {
   reason?: string | null;
 }
 
+export interface StructureInterpretationMacroBackground {
+  label?: string | null;
+  direction?: string | null;
+  confidence?: string | null;
+  basis?: string[] | null;
+}
+
+export interface StructureInterpretationAnchor {
+  point_id?: string | null;
+  price?: number | null;
+  date?: string | null;
+  semantic?: string | null;
+}
+
+export interface StructureInterpretationFocusStructure {
+  focus_mode?: string | null;
+  archetype_family?: string | null;
+  archetype_label?: string | null;
+  maturity?: string | null;
+  directional_bias?: string | null;
+  summary?: string | null;
+  start_anchor?: StructureInterpretationAnchor | null;
+  reference_origin?: StructureInterpretationAnchor | null;
+  display_reason?: string | null;
+}
+
+export interface StructureInterpretationCurrentLeg {
+  last_confirmed_point_id?: string | null;
+  live_point_id?: string | null;
+  from_point_id?: string | null;
+  to_point_id?: string | null;
+  label?: string | null;
+  direction?: string | null;
+  status?: string | null;
+}
+
+export interface StructureInterpretationNextConfirmation {
+  label?: string | null;
+  type?: string | null;
+  trigger?: string | null;
+  target_point_id?: string | null;
+}
+
+export interface StructureInterpretationScenarioPath {
+  code?: string | null;
+  label?: string | null;
+  trigger?: string | null;
+  effect?: string | null;
+}
+
+export interface StructureInterpretation {
+  macro_background?: StructureInterpretationMacroBackground | null;
+  focus_structure?: StructureInterpretationFocusStructure | null;
+  current_leg?: StructureInterpretationCurrentLeg | null;
+  next_confirmation?: StructureInterpretationNextConfirmation | null;
+  scenario_paths?: StructureInterpretationScenarioPath[] | null;
+}
+
 export interface StructureArchetype {
   primary?: string | null;
   maturity?: string | null;
@@ -129,6 +187,7 @@ export interface StructureData {
   inflection_points: number;
   segment_count: number;
   description: string;
+  interpretation?: StructureInterpretation | null;
   archetype?: StructureArchetype | null;
   execution_phase?: StructureExecutionPhase | null;
   execution?: StructureExecution | null;

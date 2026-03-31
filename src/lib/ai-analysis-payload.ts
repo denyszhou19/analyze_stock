@@ -32,6 +32,37 @@ function summarizePeriod(periodData: any, level: string) {
       stage: periodData.structure?.structure_stage,
       trend: periodData.structure?.trend_direction,
       description: periodData.structure?.description,
+      interpretation: periodData.structure?.interpretation
+        ? compactRecord({
+            macro_background: compactRecord({
+              label: periodData.structure.interpretation.macro_background?.label,
+              direction: periodData.structure.interpretation.macro_background?.direction,
+              basis: periodData.structure.interpretation.macro_background?.basis,
+            }),
+            focus_structure: compactRecord({
+              focus_mode: periodData.structure.interpretation.focus_structure?.focus_mode,
+              archetype_label:
+                periodData.structure.interpretation.focus_structure?.archetype_label,
+              maturity: periodData.structure.interpretation.focus_structure?.maturity,
+              directional_bias:
+                periodData.structure.interpretation.focus_structure?.directional_bias,
+              summary: periodData.structure.interpretation.focus_structure?.summary,
+            }),
+            current_leg: compactRecord({
+              label: periodData.structure.interpretation.current_leg?.label,
+              direction: periodData.structure.interpretation.current_leg?.direction,
+              status: periodData.structure.interpretation.current_leg?.status,
+            }),
+            next_confirmation: periodData.structure.interpretation.next_confirmation
+              ? compactRecord({
+                  label: periodData.structure.interpretation.next_confirmation.label,
+                  type: periodData.structure.interpretation.next_confirmation.type,
+                  trigger: periodData.structure.interpretation.next_confirmation.trigger,
+                })
+              : undefined,
+            scenario_paths: periodData.structure.interpretation.scenario_paths,
+          })
+        : undefined,
       archetype: periodData.structure?.archetype
         ? compactRecord({
             primary: periodData.structure.archetype.primary,

@@ -1548,7 +1548,6 @@ export default function StockAnalysisPage() {
                       executionSummary={executionSummary}
                       setupQualityLabel={setupQualityLabel}
                       structureColors={STRUCTURE_COLORS}
-                      getTrendStyle={getTrendStyle}
                     />
                   </CardContent>
                 </Card>

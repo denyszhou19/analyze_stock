@@ -318,3 +318,73 @@ test('buildAiDecisionPayload keeps strategy-critical summaries and trims heavy s
   assert.equal((result.level_nesting as Record<string, unknown>).dimension1, undefined);
   assert.equal((result.periods?.daily as Record<string, unknown>).volume, undefined);
 });
+
+test('buildAiDecisionPayload includes interpretation summary for downstream strategy analysis', () => {
+  const payload = buildAiDecisionPayload({
+    periods: {
+      daily: {
+        latest_price: 163.35,
+        structure: {
+          structure_type: 'C单平台式',
+          structure_stage: '峰值209.88后C单平台式',
+          trend_direction: '上涨',
+          description: '旧描述',
+          interpretation: {
+            macro_background: {
+              label: '偏多',
+              direction: 'bullish',
+              basis: ['价格在 MA55 上方', 'MA55 高于 MA233'],
+            },
+            focus_structure: {
+              focus_mode: 'peak_slice_right',
+              archetype_label: 'C平台原型',
+              maturity: 'developing',
+              directional_bias: 'range',
+              summary: '峰值后右侧平台整理',
+            },
+            current_leg: {
+              label: 'c3→live 下行形成中',
+              direction: 'down',
+              status: 'forming',
+            },
+            next_confirmation: {
+              label: '等待 c4 确认',
+              type: 'pivot',
+              trigger: '等待底分型确认',
+            },
+            scenario_paths: [
+              {
+                code: 'up_break',
+                label: '上破上沿',
+                trigger: '突破 181.99',
+                effect: '升级为推进结构',
+              },
+            ],
+          },
+        },
+      },
+    },
+  });
+
+  assert.equal(payload.periods.daily.structure.interpretation.macro_background.label, '偏多');
+  assert.equal(
+    payload.periods.daily.structure.interpretation.focus_structure.archetype_label,
+    'C平台原型'
+  );
+  assert.equal(
+    payload.periods.daily.structure.interpretation.current_leg.label,
+    'c3→live 下行形成中'
+  );
+  assert.equal(
+    payload.periods.daily.structure.interpretation.next_confirmation.trigger,
+    '等待底分型确认'
+  );
+  assert.deepEqual(payload.periods.daily.structure.interpretation.scenario_paths, [
+    {
+      code: 'up_break',
+      label: '上破上沿',
+      trigger: '突破 181.99',
+      effect: '升级为推进结构',
+    },
+  ]);
+});

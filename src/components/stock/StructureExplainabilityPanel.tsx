@@ -34,24 +34,25 @@ interface ExecutionSummaryLike {
 interface StructureExplainabilityPanelProps {
   structure: Pick<
     StructureData,
-    'structure_type' | 'trend_direction' | 'inflection_points' | 'description' | 'archetype' | 'structure_details'
+    'structure_type' | 'inflection_points' | 'description' | 'interpretation' | 'archetype' | 'structure_details'
   >;
   executionSummary: ExecutionSummaryLike;
   setupQualityLabel?: string | null;
   structureColors: Record<string, string>;
-  getTrendStyle: (trend: string) => string;
 }
 
 interface SummaryBlockProps {
   label: string;
   value: string;
+  note?: string | null;
 }
 
-function SummaryBlock({ label, value }: SummaryBlockProps) {
+function SummaryBlock({ label, value, note }: SummaryBlockProps) {
   return (
     <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
       <div className="mt-2 text-sm font-medium text-foreground">{value}</div>
+      {note && <div className="mt-1 text-xs text-muted-foreground">{note}</div>}
     </div>
   );
 }
@@ -108,7 +109,6 @@ export function StructureExplainabilityPanel({
   executionSummary,
   setupQualityLabel,
   structureColors,
-  getTrendStyle,
 }: StructureExplainabilityPanelProps) {
   const viewModel = buildStructureExplainabilityViewModel(structure);
   const details = structure.structure_details;
@@ -118,19 +118,31 @@ export function StructureExplainabilityPanel({
   const payload = details?.render_payload;
   const explainability = details?.explainability ?? null;
   const visibleStart = viewModel.topology.startLabel ?? '待确认';
+  const visibleStartMeta = viewModel.topology.startMetaLabel;
+  const visibleBackground = viewModel.interpretation.backgroundLabel ?? '待确认';
   const visibleCurrent =
     viewModel.topology.currentSegmentLabel ??
+    viewModel.interpretation.currentLegLabel ??
     viewModel.topology.currentLabel ??
     prediction?.current_stage ??
     '待确认';
   const visibleNext =
-    viewModel.topology.nextSegmentLabel ?? prediction?.next_stage ?? '待确认';
+    viewModel.topology.nextSegmentLabel ??
+    viewModel.interpretation.nextConfirmationLabel ??
+    prediction?.next_stage ??
+    '待确认';
   const topologyReason =
+    viewModel.interpretation.displayReason ??
     viewModel.topology.displayReason ??
     viewModel.topology.fallbackText ??
+    prediction?.prediction_alert ??
     structure.description;
   const archetypeContext =
     executionSummary.archetypeReason ?? viewModel.archetype.reason ?? structure.description;
+  const visibleArchetypeLabel =
+    viewModel.interpretation.archetypeLabel ?? executionSummary.archetypeLabel ?? viewModel.archetype.primaryLabel;
+  const visibleMaturity = viewModel.interpretation.maturityLabel;
+  const scenarioPaths = structure.interpretation?.scenario_paths ?? [];
   const peakAnalysisDisplay = peakAnalysis ? getPeakAnalysisDisplay(peakAnalysis) : null;
   const predictionTone =
     prediction?.confidence === 'high'
@@ -186,12 +198,18 @@ export function StructureExplainabilityPanel({
             <div className="flex flex-wrap gap-2">
               <Badge
                 className={
-                  structureColors[executionSummary.archetypeLabel || ''] ||
+                  structureColors[visibleArchetypeLabel || ''] ||
                   'border border-border bg-muted text-muted-foreground'
                 }
               >
-                {executionSummary.archetypeLabel || '暂无原型'}
+                {visibleArchetypeLabel || '暂无原型'}
+                {peakAnalysis?.is_peak_structure && peakAnalysisDisplay && (
+                  <span className="ml-1">{peakAnalysisDisplay.badgeSuffix}</span>
+                )}
               </Badge>
+              {visibleMaturity && (
+                <Badge variant="outline">成熟度 {visibleMaturity}</Badge>
+              )}
               {viewModel.archetype.alternativeLabels.map((label) => (
                 <Badge key={label} variant="outline">
                   备选 {label}
@@ -254,17 +272,22 @@ export function StructureExplainabilityPanel({
             </div>
 
             <div className="flex flex-wrap gap-2">
-              <Badge className={structureColors[structure.structure_type] || ''}>
-                {structure.structure_type}
+              <Badge className="border border-sky-200 bg-sky-100 text-sky-700">
+                背景 {visibleBackground}
+              </Badge>
+              <Badge
+                className={
+                  structureColors[visibleArchetypeLabel || ''] ||
+                  'border border-border bg-muted text-muted-foreground'
+                }
+              >
+                原型 {visibleArchetypeLabel || structure.structure_type}
+                {visibleMaturity ? ` / ${visibleMaturity}` : ''}
                 {peakAnalysis?.is_peak_structure && peakAnalysisDisplay && (
-                  <span className="ml-1">
-                    {peakAnalysisDisplay.badgeSuffix}
-                  </span>
+                  <span className="ml-1">{peakAnalysisDisplay.badgeSuffix}</span>
                 )}
               </Badge>
-              <Badge className={getTrendStyle(structure.trend_direction)}>
-                {structure.trend_direction}
-              </Badge>
+              <Badge variant="outline">当前段 {visibleCurrent}</Badge>
               {structure.inflection_points > 0 && (
                 <Badge variant="outline">{structure.inflection_points}个拐点</Badge>
               )}
@@ -287,10 +310,11 @@ export function StructureExplainabilityPanel({
             </div>
           )}
 
-          <div className="grid gap-3 md:grid-cols-3">
-            <SummaryBlock label="结构起点" value={visibleStart} />
+          <div className="grid gap-3 md:grid-cols-4">
+            <SummaryBlock label="背景" value={visibleBackground} />
+            <SummaryBlock label="结构起点" value={visibleStart} note={visibleStartMeta} />
             <SummaryBlock label="当前段" value={visibleCurrent} />
-            <SummaryBlock label="下一段预期" value={visibleNext} />
+            <SummaryBlock label="下一确认" value={visibleNext} />
           </div>
 
           <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
@@ -301,6 +325,27 @@ export function StructureExplainabilityPanel({
           </div>
         </CardContent>
       </Card>
+
+      {scenarioPaths.length > 0 && (
+        <SupportSection code="scenario_paths" title="改判路径">
+          <div className="space-y-2">
+            {scenarioPaths.map((path, index) => (
+              <div
+                key={path.code ?? `${path.label ?? 'scenario'}-${index}`}
+                className="rounded-lg border border-border/60 bg-muted/20 p-3"
+              >
+                <div className="text-sm font-semibold text-foreground">{path.label || '路径待确认'}</div>
+                {path.trigger && (
+                  <div className="mt-1 text-xs text-muted-foreground">触发条件: {path.trigger}</div>
+                )}
+                {path.effect && (
+                  <div className="mt-1 text-xs text-muted-foreground">改判结果: {path.effect}</div>
+                )}
+              </div>
+            ))}
+          </div>
+        </SupportSection>
+      )}
 
       {prediction && (
         <SupportSection code="prediction" title="预测提示" className={predictionTone}>
