@@ -3202,6 +3202,203 @@ class TrinityStockAnalyzer:
                     })
         
         return prediction
+
+    def _build_structure_archetype(
+        self,
+        structure_type: str,
+        structure_stage: str,
+        trend_direction: str,
+        macro_components: List[Dict[str, Any]],
+        inflection_count: int,
+        segment_count: int,
+        peak_analysis: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Build a compact structure archetype summary for downstream execution rules."""
+        component_types = [
+            component.get('type')
+            for component in (macro_components or [])
+            if component.get('type')
+        ]
+        component_path = ' -> '.join(component_types) if component_types else '未识别组件'
+        structure_family = structure_type[:1] if structure_type else '未知'
+
+        maturity = 'early'
+        if inflection_count >= 5 or segment_count >= 4:
+            maturity = 'late'
+        elif inflection_count >= 3 or segment_count >= 2:
+            maturity = 'mid'
+
+        confidence = 'low'
+        if len(component_types) >= 2:
+            confidence = 'medium'
+        if peak_analysis and peak_analysis.get('is_peak_structure'):
+            confidence = 'high'
+
+        alternatives = []
+        if structure_family != 'A':
+            alternatives.append('A五段式')
+        if structure_family != 'C' and any(component_type == 'Platform' for component_type in component_types):
+            alternatives.append('C单平台式')
+        if structure_family != 'D' and inflection_count <= 4:
+            alternatives.append('D三段式')
+
+        reason_parts = [component_path]
+        if structure_stage:
+            reason_parts.append(structure_stage)
+        if trend_direction:
+            reason_parts.append(f'{trend_direction}趋势')
+
+        return {
+            'family': structure_family,
+            'primary': structure_type or '未知结构',
+            'maturity': maturity,
+            'confidence': confidence,
+            'reason': ' | '.join(reason_parts),
+            'alternatives': alternatives,
+        }
+
+    def _detect_execution_phase(
+        self,
+        macd_status: str,
+        trend_direction: str,
+        moving_averages: Dict[str, Any],
+        ma_physics: Dict[str, Any],
+        breakthrough: Dict[str, Any],
+        prediction: Dict[str, Any],
+        divergence_note: str,
+    ) -> Dict[str, Any]:
+        """Translate structure, MA, and breakthrough context into a trade execution phase."""
+        support_pressure = ma_physics.get('support_pressure', {}) if isinstance(ma_physics, dict) else {}
+        traction = ma_physics.get('traction', {}) if isinstance(ma_physics, dict) else {}
+        stage = prediction.get('current_stage', '') if isinstance(prediction, dict) else ''
+
+        is_bullish = trend_direction == '上涨'
+        has_pullback_breakthrough = breakthrough.get('pattern_type') == '回抽突破'
+        has_valid_breakthrough = breakthrough.get('is_valid') is True and breakthrough.get('direction') == 'up'
+        has_support = '支撑有效' in str(support_pressure.get('status', ''))
+        pullback_expected = traction.get('pullback_expected') is True
+
+        if (
+            is_bullish
+            and has_pullback_breakthrough
+            and has_valid_breakthrough
+            and has_support
+            and pullback_expected
+            and '顶背离' not in (divergence_note or '')
+        ):
+            return {
+                'code': 'pullback_confirm',
+                'label': '回抽确认',
+                'bias': 'bullish',
+                'tradable': True,
+                'maturity': 'mid' if 'a4' in stage or 'c4' in stage else 'early',
+                'reason': '回抽后支撑有效，突破方向与均线支撑一致',
+            }
+
+        price_vs_ma55 = moving_averages.get('price_vs_ma55') if isinstance(moving_averages, dict) else None
+        ma_status = moving_averages.get('ma_status') if isinstance(moving_averages, dict) else None
+        bullish_context = is_bullish and price_vs_ma55 == 'above' and ma_status == '多头排列'
+        bullish_macd = macd_status in {'中偏强', '强', '极强'}
+
+        if bullish_context and bullish_macd:
+            return {
+                'code': 'trend_follow',
+                'label': '顺势跟随',
+                'bias': 'bullish',
+                'tradable': True,
+                'maturity': 'mid',
+                'reason': '趋势、均线与MACD方向一致',
+            }
+
+        return {
+            'code': 'observe',
+            'label': '等待确认',
+            'bias': 'neutral',
+            'tradable': False,
+            'maturity': 'early',
+            'reason': '尚未形成明确的同向执行条件',
+        }
+
+    def _extract_latest_confirmed_levels(self, prediction: Dict[str, Any]) -> List[Dict[str, Any]]:
+        """Derive same-timeframe confirmed stop references from structure prediction levels."""
+        confirmed_levels = []
+        key_levels = prediction.get('key_price_levels', []) if isinstance(prediction, dict) else []
+
+        for level in key_levels:
+            if not isinstance(level, dict):
+                continue
+
+            level_type = str(level.get('type', ''))
+            note = str(level.get('note', ''))
+            if (
+                level_type == 'stop'
+                or '支撑' in level_type
+                or '底分型' in note
+                or '确认' in note
+            ):
+                confirmed_levels.append(level)
+
+        return confirmed_levels
+
+    def _build_period_execution(
+        self,
+        level: str,
+        latest_price: Optional[float],
+        macd_status: str,
+        moving_averages: Dict[str, Any],
+        ma_physics: Dict[str, Any],
+        breakthrough: Dict[str, Any],
+        phase: Dict[str, Any],
+        archetype: Dict[str, Any],
+        prediction: Dict[str, Any],
+        latest_confirmed_levels: List[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        """Build per-period execution constraints for the current timeframe."""
+        timeframe_cap_ratio_map = {
+            'weekly': 1.0,
+            'daily': 0.5,
+            'hour60': 1 / 3,
+            'hour30': 1 / 3,
+            'hour15': 1 / 3,
+        }
+        timeframe_cap_ratio = timeframe_cap_ratio_map.get(level, 0.5)
+
+        bias = phase.get('bias', 'neutral') if isinstance(phase, dict) else 'neutral'
+        can_trade = bool(phase.get('tradable')) and bias in {'bullish', 'bearish'}
+        action = 'buy' if bias == 'bullish' and can_trade else 'sell' if bias == 'bearish' and can_trade else 'wait'
+
+        stop_reference = latest_confirmed_levels[0] if latest_confirmed_levels else None
+        stop_price = stop_reference.get('price') if isinstance(stop_reference, dict) else None
+
+        return {
+            'can_trade': can_trade,
+            'action': action,
+            'timing_timeframe': level,
+            'timeframe_cap_ratio': timeframe_cap_ratio,
+            'phase_code': phase.get('code'),
+            'phase_label': phase.get('label'),
+            'latest_price': latest_price,
+            'macd_status': macd_status,
+            't_trade_rule': {
+                'mode': 'positive_only' if bias == 'bullish' and can_trade else 'wait',
+                'requires_valid_breakthrough': breakthrough.get('is_valid') is True,
+                'requires_ma_alignment': moving_averages.get('price_vs_ma55') == 'above',
+                'phase': phase.get('code'),
+            },
+            'risk_rules': {
+                'stop_loss_basis': 'same_timeframe',
+                'stop_loss_price': stop_price,
+                'stop_loss_reference': stop_reference,
+                'no_left_side_averaging_down': True,
+                'respect_timeframe_cap': True,
+            },
+            'context': {
+                'archetype_primary': archetype.get('primary'),
+                'archetype_confidence': archetype.get('confidence'),
+                'prediction_confidence': prediction.get('confidence'),
+                'support_status': ma_physics.get('support_pressure', {}).get('status') if isinstance(ma_physics, dict) else None,
+            },
+        }
     
     def calculate_key_levels(self, df: pd.DataFrame) -> Dict:
         """
@@ -3473,6 +3670,7 @@ class TrinityStockAnalyzer:
         df = self.calculate_macd(df)
         
         latest = df.iloc[-1]
+        latest_price = round(float(latest['close']), 2) if pd.notna(latest.get('close')) else None
         
         # 执行各项分析
         ma_analysis = self.analyze_ma_position(latest)
@@ -3488,6 +3686,48 @@ class TrinityStockAnalyzer:
         
         # 新增：突破形态识别
         breakthrough = self.detect_breakthrough_pattern(df)
+
+        structure_details = structure.get('structure_details', {})
+        prediction = structure_details.get('prediction', {})
+        archetype = self._build_structure_archetype(
+            structure_type=structure.get('structure_type'),
+            structure_stage=structure.get('structure_stage'),
+            trend_direction=structure.get('trend_direction'),
+            macro_components=structure_details.get('macro_components', []),
+            inflection_count=structure.get('inflection_points', 0),
+            segment_count=structure.get('segment_count', 0),
+            peak_analysis=structure_details.get('peak_analysis'),
+        )
+        execution_phase = self._detect_execution_phase(
+            macd_status=macd_status.get('status'),
+            trend_direction=structure.get('trend_direction'),
+            moving_averages={
+                'price_vs_ma55': ma_analysis['price_vs_ma55'],
+                'ma_status': ma_analysis['ma_status'],
+            },
+            ma_physics=ma_physics,
+            breakthrough=breakthrough,
+            prediction=prediction,
+            divergence_note=divergence.get('divergence_note', ''),
+        )
+        latest_confirmed_levels = self._extract_latest_confirmed_levels(prediction)
+        structure['structure_archetype'] = archetype
+        structure['execution_phase'] = execution_phase
+        structure['period_execution'] = self._build_period_execution(
+            level=period_name,
+            latest_price=latest_price,
+            macd_status=macd_status.get('status'),
+            moving_averages={
+                'price_vs_ma55': ma_analysis['price_vs_ma55'],
+                'ma_status': ma_analysis['ma_status'],
+            },
+            ma_physics=ma_physics,
+            breakthrough=breakthrough,
+            phase=execution_phase,
+            archetype=archetype,
+            prediction=prediction,
+            latest_confirmed_levels=latest_confirmed_levels,
+        )
         
         # 安全获取pctChg（分钟级别可能没有此字段）
         pct_chg = None
@@ -3502,7 +3742,7 @@ class TrinityStockAnalyzer:
         return {
             'period': period_name,
             'analysis_date': latest['date'].strftime('%Y-%m-%d %H:%M') if pd.notna(latest['date']) else None,
-            'latest_price': round(latest['close'], 2),
+            'latest_price': latest_price,
             'price_change_pct': pct_chg,
             'volume': int(latest['volume']) if pd.notna(latest['volume']) else None,
             
