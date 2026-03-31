@@ -2918,34 +2918,47 @@ class TrinityStockAnalyzer:
         self,
         line_geometry: Dict[str, Any],
         peak_analysis: Optional[Dict[str, Any]],
-        strokes: List[Dict[str, Any]],
+        confirmed_strokes: List[Dict[str, Any]],
+        stroke_list: List[Dict[str, Any]],
         valid_fractals: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """统一导出当前聚焦结构上下文，峰值切片时聚焦到右侧结构。"""
-        structure_start_point_index = self._resolve_peak_structure_start_point_index(
+        render_structure_start_point_index = self._resolve_peak_structure_start_point_index(
             line_geometry,
             peak_analysis
         )
-        focused_strokes = list(strokes or [])
+        render_strokes = list(stroke_list or [])
+        full_confirmed_strokes = list(confirmed_strokes or [])
         focused_valid_fractals = list(valid_fractals or [])
-
-        if (
-            isinstance(structure_start_point_index, int)
-            and structure_start_point_index > 0
-        ):
-            focused_strokes = (
-                focused_strokes[structure_start_point_index:]
-                if structure_start_point_index < len(focused_strokes)
-                else []
+        has_current_stroke = bool(
+            render_strokes and (
+                render_strokes[-1].get('is_current')
+                or render_strokes[-1].get('to_type') == 'current'
             )
+        )
+        render_confirmed_count = len(render_strokes) - (1 if has_current_stroke else 0)
+        render_confirmed_offset = max(0, len(full_confirmed_strokes) - render_confirmed_count)
+
+        render_start_index = 0
+        if isinstance(render_structure_start_point_index, int) and render_structure_start_point_index > 0:
+            render_start_index = min(render_structure_start_point_index, render_confirmed_count)
+
+        confirmed_start_index = render_confirmed_offset + render_start_index
+        focused_strokes = (
+            render_strokes[render_start_index:render_confirmed_count]
+            if render_start_index < render_confirmed_count
+            else []
+        )
+        if confirmed_start_index > 0:
             focused_valid_fractals = (
-                focused_valid_fractals[structure_start_point_index:]
-                if structure_start_point_index < len(focused_valid_fractals)
+                focused_valid_fractals[confirmed_start_index:]
+                if confirmed_start_index < len(focused_valid_fractals)
                 else []
             )
 
         return {
-            'structure_start_point_index': structure_start_point_index,
+            'render_structure_start_point_index': render_structure_start_point_index,
+            'confirmed_structure_start_point_index': confirmed_start_index,
             'strokes': focused_strokes,
             'valid_fractals': focused_valid_fractals,
             'stroke_count': len(focused_strokes),
@@ -3254,14 +3267,15 @@ class TrinityStockAnalyzer:
         focus_context = self._build_structure_focus_context(
             line_geometry=line_geometry,
             peak_analysis=peak_analysis,
-            strokes=stroke_list,
+            confirmed_strokes=strokes,
+            stroke_list=stroke_list,
             valid_fractals=valid_fractals
         )
         stroke_count = focus_context['stroke_count']
         inflection_count = focus_context['inflection_count']
         focused_strokes = focus_context['strokes']
         focused_valid_fractals = focus_context['valid_fractals']
-        structure_start_point_index = focus_context['structure_start_point_index']
+        structure_start_point_index = focus_context['render_structure_start_point_index']
         result['segment_count'] = stroke_count
         result['inflection_points'] = inflection_count
 

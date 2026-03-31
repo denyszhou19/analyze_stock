@@ -514,6 +514,127 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             "c4→c5",
         )
 
+    def test_detect_structure_aligns_peak_focus_between_confirmed_and_render_spaces(self) -> None:
+        recent = pd.DataFrame(
+            [
+                {
+                    "date": pd.Timestamp("2024-04-01"),
+                    "close": 18.0,
+                    "high": 18.4,
+                    "low": 17.6,
+                    "open": 17.9,
+                }
+            ]
+        )
+
+        full_strokes = []
+        valid_fractals = []
+        for i in range(19):
+            valid_fractals.append(
+                {
+                    "index": i,
+                    "type": "bottom" if i % 2 == 0 else "top",
+                    "high": 20.0 + i,
+                    "low": 19.0 + i,
+                    "date": f"2024-02-{i + 1:02d}",
+                }
+            )
+        for i in range(18):
+            full_strokes.append(
+                {
+                    "from_date": f"2024-02-{i + 1:02d}",
+                    "to_date": f"2024-02-{i + 2:02d}",
+                    "from_price": round(20.0 + i, 2),
+                    "to_price": round(20.6 + i, 2),
+                    "direction": "上涨" if i % 2 == 0 else "下跌",
+                    "length": 1,
+                    "from_type": "bottom" if i % 2 == 0 else "top",
+                    "to_type": "top" if i % 2 == 0 else "bottom",
+                }
+            )
+
+        render_confirmed = [dict(stroke) for stroke in full_strokes[-15:]]
+        current_stroke = {
+            "from_date": "2024-02-18",
+            "to_date": "2024-04-01",
+            "from_price": 37.0,
+            "to_price": 38.0,
+            "direction": "上涨",
+            "length": 1,
+            "from_type": "bottom",
+            "to_type": "current",
+            "is_current": True,
+        }
+        stroke_list = render_confirmed + [current_stroke]
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes_count: int) -> None:
+                self.component_type = component_type
+                self.strokes_count = strokes_count
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": [{} for _ in range(self.strokes_count)],
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "上涨",
+            "valid_range_info": None,
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": stroke_list,
+        }
+        macro_components = [
+            StubMacroComponent("上涨结构", 8),
+            StubMacroComponent("单平台", 10),
+        ]
+        peak_analysis = {
+            "is_peak_structure": True,
+            "peak_type": "mountain_peak",
+            "peak_price": render_confirmed[11]["to_price"],
+            "peak_index": 11,
+            "left_structure": "上涨结构",
+            "right_structure": "C单平台式",
+            "left_components": [{"type": "上涨结构", "strokes": [{} for _ in range(8)]}],
+            "right_components": [{"type": "单平台", "strokes": [{}, {}, {}]}],
+        }
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("A五段式", "a1-a6拐点区间", "左侧原始结构", ["mocked classification"]),
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
+
+        self.assertEqual(result["structure_type"], "C单平台式")
+        self.assertEqual(result["segment_count"], 3)
+        self.assertEqual(result["inflection_points"], 4)
+        self.assertEqual(result["structure_details"]["prediction"]["current_stage"], "c4拐点")
+        self.assertEqual(result["structure_details"]["prediction"]["next_stage"], "c5拐点")
+        self.assertEqual(
+            result["structure_details"]["explainability"]["structure_start_point_id"],
+            "c1",
+        )
+        self.assertEqual(
+            result["structure_details"]["explainability"]["current_point_id"],
+            "c4",
+        )
+        self.assertEqual(
+            result["structure_details"]["explainability"]["next_segment_preview"]["label"],
+            "c4→c5",
+        )
+
 
 if __name__ == "__main__":
     unittest.main()
