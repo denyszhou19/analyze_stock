@@ -463,6 +463,33 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertNotEqual(decision['decision_type'], '做T')
         self.assertNotIn('适合正T', decision['analysis'])
 
+    def test_analyze_trading_decision_treats_empty_execution_bus_as_existing_and_waits(self) -> None:
+        results = {
+            'daily': {
+                'macd': {'status': '强'},
+                'moving_averages': {'price_vs_ma55': 'above'},
+                'structure': {
+                    'execution': {},
+                },
+            },
+            'weekly': {'macd': {'status': '强'}},
+            'hour60': {'moving_averages': {'price_vs_ma55': 'above'}},
+            'hour30': {'macd': {'top_divergence': False}},
+            'hour15': {'macd': {'top_divergence': False}},
+            'nesting_analysis': {},
+        }
+
+        decision = self.analyzer.analyze_trading_decision(
+            results,
+            spacetime_confirmation={'spacetime_resonance': False},
+        )
+
+        self.assertEqual(decision['action'], 'wait')
+        self.assertEqual(decision['decision_type'], '观望')
+        self.assertEqual(decision['action_hint'], '等待执行总线触发信号后再行动')
+        self.assertNotEqual(decision['decision_type'], '做T')
+        self.assertNotIn('适合正T', decision['analysis'])
+
 
 if __name__ == '__main__':
     unittest.main()

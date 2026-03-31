@@ -4197,8 +4197,9 @@ class TrinityStockAnalyzer:
         hour60 = results.get('hour60', {})
         hour30 = results.get('hour30', {})
         hour15 = results.get('hour15', {})
-        daily_execution = daily.get('structure', {}).get('execution', {}) if isinstance(daily, dict) else {}
-        has_execution_bus = isinstance(daily_execution, dict) and bool(daily_execution)
+        daily_structure = daily.get('structure', {}) if isinstance(daily, dict) else {}
+        has_execution_bus = isinstance(daily_structure, dict) and 'execution' in daily_structure
+        daily_execution = daily_structure.get('execution', {}) if has_execution_bus else {}
         spacetime = spacetime_confirmation
         if spacetime is None:
             spacetime = results.get('nesting_analysis', {}).get('spacetime_confirmation', {})
@@ -4224,9 +4225,10 @@ class TrinityStockAnalyzer:
             'risk_flags',
             'wait_reason',
         ]
-        for field in stable_execution_fields:
-            if field in daily_execution:
-                decision[field] = daily_execution[field]
+        if isinstance(daily_execution, dict):
+            for field in stable_execution_fields:
+                if field in daily_execution:
+                    decision[field] = daily_execution[field]
         risk_rules = decision.get('risk_rules') or {}
         if not isinstance(risk_rules, dict):
             risk_rules = {}
