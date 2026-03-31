@@ -24,6 +24,7 @@ python stock_analyzer.py --code sh.600000 --days 300 --levels weekly,daily,hour6
 
 import argparse
 import json
+import re
 import sys
 from datetime import datetime, timedelta, timezone
 from typing import Any, Dict, List, Optional, Tuple
@@ -1985,6 +1986,7 @@ class TrinityStockAnalyzer:
                     'segments': []
                 },
                 'render_payload': self._create_empty_render_payload(),
+                'explainability': {},
                 'pipeline': {}
             }
         }
@@ -2555,6 +2557,7 @@ class TrinityStockAnalyzer:
 
             render_points.append({
                 'sequence': point.get('sequence', 0),
+                'point_id': point.get('point_id'),
                 'type': point_type,
                 'role': point.get('role'),
                 'price': float(point.get('price', 0.0)),
@@ -2585,6 +2588,7 @@ class TrinityStockAnalyzer:
             direction = segment.get('direction')
             render_segments.append({
                 'sequence': segment.get('sequence', 0),
+                'segment_id': segment.get('segment_id'),
                 'from_point': segment['from_point'],
                 'to_point': segment['to_point'],
                 'x1': from_point['x'],
@@ -2605,6 +2609,203 @@ class TrinityStockAnalyzer:
         payload['point_count'] = len(render_points)
         payload['segment_count'] = len(render_segments)
         return payload
+
+    def _resolve_structure_family(self, structure_type: str) -> Tuple[str, Optional[str]]:
+        """Map structure type to explainability family and point id prefix."""
+        mapping = {
+            'A五段式': ('A', 'a'),
+            'B双平台式': ('B', 'b'),
+            'C单平台式': ('C', 'c'),
+            'D三段式': ('D', 'd'),
+        }
+        if structure_type in mapping:
+            return mapping[structure_type]
+        if structure_type == '结构未完成':
+            return ('unfinished', None)
+        return ('complex', None)
+
+    def _extract_stage_point_id(
+        self,
+        stage: str,
+        prefix: Optional[str],
+        point_ids: List[str]
+    ) -> Optional[str]:
+        """Extract a point id from stage text and return None when unavailable."""
+        stage_text = str(stage or '').lower()
+        if not stage_text:
+            return None
+
+        candidate: Optional[str] = None
+        if prefix:
+            prefix_text = str(prefix).lower()
+            match = re.search(rf'{re.escape(prefix_text)}(\d+)', stage_text)
+            if match:
+                candidate = f'{prefix_text}{match.group(1)}'
+        else:
+            match = re.search(r'第\s*(\d+)\s*个?拐点', stage_text)
+            if match:
+                candidate = f'p{match.group(1)}'
+            else:
+                fallback_match = re.search(r'p(\d+)', stage_text)
+                if fallback_match:
+                    candidate = f'p{fallback_match.group(1)}'
+
+        if candidate and candidate in point_ids:
+            return candidate
+        return None
+
+    def _build_structure_explainability(
+        self,
+        structure_type: str,
+        line_geometry: Dict[str, Any],
+        prediction: Dict[str, Any],
+        peak_analysis: Optional[Dict[str, Any]]
+    ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
+        """Attach stable point/segment ids and build explainability metadata."""
+        structure_family, prefix = self._resolve_structure_family(structure_type)
+        points = list((line_geometry or {}).get('points', []))
+        segments = list((line_geometry or {}).get('segments', []))
+
+        labeled_points: List[Dict[str, Any]] = []
+        for index, point in enumerate(points, start=1):
+            point_id = f'{prefix}{index}' if prefix else f'p{index}'
+            labeled_points.append({**point, 'point_id': point_id})
+
+        labeled_segments: List[Dict[str, Any]] = []
+        for segment in segments:
+            segment_copy = {**segment}
+            from_index = segment.get('from_point')
+            to_index = segment.get('to_point')
+            if (
+                isinstance(from_index, int)
+                and isinstance(to_index, int)
+                and 0 <= from_index < len(labeled_points)
+                and 0 <= to_index < len(labeled_points)
+            ):
+                from_point_id = labeled_points[from_index]['point_id']
+                to_point_id = labeled_points[to_index]['point_id']
+                segment_copy['segment_id'] = f'{from_point_id}-{to_point_id}'
+            labeled_segments.append(segment_copy)
+
+        labeled_geometry = {
+            **line_geometry,
+            'points': labeled_points,
+            'segments': labeled_segments,
+            'point_count': len(labeled_points),
+            'segment_count': len(labeled_segments)
+        }
+
+        point_ids = [point['point_id'] for point in labeled_points]
+        prediction_data = prediction if isinstance(prediction, dict) else {}
+        current_point_id = self._extract_stage_point_id(
+            prediction_data.get('current_stage', ''),
+            prefix,
+            point_ids
+        )
+        if current_point_id is None and point_ids:
+            current_point_id = point_ids[-1]
+
+        next_point_id = self._extract_stage_point_id(
+            prediction_data.get('next_stage', ''),
+            prefix,
+            point_ids
+        )
+
+        point_index_map = {point['point_id']: idx for idx, point in enumerate(labeled_points)}
+
+        current_segment = None
+        if current_point_id and current_point_id in point_index_map:
+            current_idx = point_index_map[current_point_id]
+            if current_idx > 0:
+                from_point_id = labeled_points[current_idx - 1]['point_id']
+                current_segment = {
+                    'from_point_id': from_point_id,
+                    'to_point_id': current_point_id,
+                    'label': f'{from_point_id}→{current_point_id}',
+                }
+
+        next_segment_preview = None
+        if (
+            current_point_id
+            and next_point_id
+            and current_point_id in point_index_map
+            and next_point_id in point_index_map
+            and current_point_id != next_point_id
+        ):
+            next_segment_preview = {
+                'from_point_id': current_point_id,
+                'to_point_id': next_point_id,
+                'label': f'{current_point_id}→{next_point_id}',
+                'status': 'projected'
+            }
+
+        current_segment_id = None
+        if current_segment:
+            current_segment_id = f"{current_segment['from_point_id']}-{current_segment['to_point_id']}"
+        next_segment_id = None
+        if next_segment_preview:
+            next_segment_id = f"{next_segment_preview['from_point_id']}-{next_segment_preview['to_point_id']}"
+
+        point_labels = []
+        for idx, point in enumerate(labeled_points):
+            role = 'normal'
+            if point['point_id'] == current_point_id:
+                role = 'current'
+            elif idx == 0:
+                role = 'start'
+            point_labels.append({
+                'point_id': point['point_id'],
+                'label': point['point_id'],
+                'role': role
+            })
+
+        segment_labels = []
+        for segment in labeled_segments:
+            segment_id = segment.get('segment_id')
+            from_index = segment.get('from_point')
+            to_index = segment.get('to_point')
+            if (
+                not segment_id
+                or not isinstance(from_index, int)
+                or not isinstance(to_index, int)
+                or from_index < 0
+                or to_index < 0
+                or from_index >= len(labeled_points)
+                or to_index >= len(labeled_points)
+            ):
+                continue
+            from_point_id = labeled_points[from_index]['point_id']
+            to_point_id = labeled_points[to_index]['point_id']
+            role = 'normal'
+            if segment_id == current_segment_id:
+                role = 'current'
+            elif segment_id == next_segment_id:
+                role = 'projected'
+            segment_labels.append({
+                'segment_id': segment_id,
+                'from_point_id': from_point_id,
+                'to_point_id': to_point_id,
+                'label': f'{from_point_id}→{to_point_id}',
+                'role': role
+            })
+
+        display_reason = 'prediction.current_stage 映射当前结构锚点'
+        if not prefix:
+            display_reason = '复杂/未完成结构使用通用 p 序号锚点，避免伪造标准编号'
+        if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
+            display_reason = f'{display_reason}；峰值切片后聚焦右侧结构'
+
+        explainability = {
+            'structure_family': structure_family,
+            'structure_start_point_id': labeled_points[0]['point_id'] if labeled_points else None,
+            'current_point_id': current_point_id,
+            'current_segment': current_segment,
+            'next_segment_preview': next_segment_preview,
+            'point_labels': point_labels,
+            'segment_labels': segment_labels,
+            'display_reason': display_reason
+        }
+        return labeled_geometry, explainability
 
     def _build_structure_pipeline_metadata(
         self,
@@ -2858,7 +3059,6 @@ class TrinityStockAnalyzer:
         result['structure_details']['strokes'] = stroke_list
         line_geometry = self._build_line_geometry(stroke_list)
         result['structure_details']['line_geometry'] = line_geometry
-        result['structure_details']['render_payload'] = self._build_render_payload(line_geometry)
 
         stroke_count = len(strokes)
         inflection_count = len(valid_fractals)
@@ -2916,7 +3116,7 @@ class TrinityStockAnalyzer:
 
         result['description'] = f"识别为{result['structure_type']}，{result['trend_direction']}趋势"
         result['structure_details']['judgment_criteria'] = '\n'.join(judgment_criteria)
-        result['structure_details']['prediction'] = self._analyze_structure_prediction(
+        prediction = self._analyze_structure_prediction(
             result['structure_type'],
             stroke_count,
             inflection_count,
@@ -2926,6 +3126,17 @@ class TrinityStockAnalyzer:
             recent,
             macd_status
         )
+        result['structure_details']['prediction'] = prediction
+
+        labeled_geometry, explainability = self._build_structure_explainability(
+            result['structure_type'],
+            line_geometry,
+            prediction,
+            result['structure_details'].get('peak_analysis')
+        )
+        result['structure_details']['line_geometry'] = labeled_geometry
+        result['structure_details']['explainability'] = explainability
+        result['structure_details']['render_payload'] = self._build_render_payload(labeled_geometry)
 
         return result
     
