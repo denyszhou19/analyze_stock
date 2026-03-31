@@ -181,6 +181,37 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertTrue(explainability["display_reason"])
         self.assertEqual(labeled_geometry["segments"][0]["segment_id"], "p1-p2")
 
+    def test_build_structure_explainability_projects_standard_next_point_not_in_geometry(self) -> None:
+        line_geometry = {
+            "price_range": {"min": 10.0, "max": 14.0, "range": 4.0},
+            "points": [
+                {"sequence": 0, "price": 10.0, "date": "2024-01-01", "type": "bottom", "role": "from"},
+                {"sequence": 1, "price": 13.0, "date": "2024-01-02", "type": "top", "role": "to"},
+                {"sequence": 2, "price": 11.0, "date": "2024-01-03", "type": "bottom", "role": "to"},
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "direction": "上涨", "length": 1},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "direction": "下跌", "length": 1},
+            ],
+            "point_count": 3,
+            "segment_count": 2,
+        }
+        prediction = {
+            "current_stage": "d3拐点",
+            "next_stage": "d4拐点（结构完成）",
+        }
+
+        _, explainability = self.analyzer._build_structure_explainability(
+            "D三段式",
+            line_geometry,
+            prediction,
+            peak_analysis={},
+        )
+
+        self.assertEqual(explainability["current_point_id"], "d3")
+        self.assertIsNotNone(explainability["next_segment_preview"])
+        self.assertEqual(explainability["next_segment_preview"]["label"], "d3→d4")
+
 
 if __name__ == "__main__":
     unittest.main()

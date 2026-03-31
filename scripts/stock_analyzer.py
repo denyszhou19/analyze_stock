@@ -2710,6 +2710,11 @@ class TrinityStockAnalyzer:
             prefix,
             point_ids
         )
+        if next_point_id is None and prefix:
+            next_stage_text = str(prediction_data.get('next_stage', '')).lower()
+            projected_match = re.search(rf'{re.escape(prefix)}(\d+)', next_stage_text)
+            if projected_match:
+                next_point_id = f'{prefix}{projected_match.group(1)}'
 
         point_index_map = {point['point_id']: idx for idx, point in enumerate(labeled_points)}
 
@@ -2729,7 +2734,6 @@ class TrinityStockAnalyzer:
             current_point_id
             and next_point_id
             and current_point_id in point_index_map
-            and next_point_id in point_index_map
             and current_point_id != next_point_id
         ):
             next_segment_preview = {
