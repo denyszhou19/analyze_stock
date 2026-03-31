@@ -264,3 +264,48 @@ test('StructureExplainabilityPanel falls back gracefully when explainability is 
   assert.doesNotMatch(html, /data-slot="topology-svg"/);
   assert.match(html, /暂无可视化拓扑/);
 });
+
+test('StructureExplainabilityPanel does not mislabel null peak_type as valley shape', async () => {
+  const { StructureExplainabilityPanel } = await importStructureExplainabilityPanel();
+
+  const html = renderQuietly(
+    React.createElement(StructureExplainabilityPanel, {
+      structure: {
+        structure_type: '复杂结构',
+        trend_direction: '震荡',
+        inflection_points: 4,
+        description: '峰值类型尚未确认',
+        structure_details: {
+          judgment_criteria: '等待峰值类型确认。',
+          peak_analysis: {
+            is_peak_structure: true,
+            peak_type: null,
+            peak_price: 11.8,
+            peak_index: 2,
+            left_structure: '震荡两笔',
+            right_structure: '震荡一笔',
+            left_components: [],
+            right_components: [],
+            description: '峰值存在，但方向属性尚未确认。',
+          },
+        },
+      },
+      executionSummary: {
+        phaseLabel: null,
+        phaseReason: null,
+        actionLabel: '等待',
+        setupQuality: null,
+        executionReason: null,
+        timeframeCapLabel: null,
+        archetypeLabel: null,
+        archetypeReason: null,
+      },
+      setupQualityLabel: null,
+      structureColors: {},
+      getTrendStyle: (trend: string) => `trend-${trend}`,
+    })
+  );
+
+  assert.match(html, /峰值形态待确认/);
+  assert.doesNotMatch(html, /山谷形态/);
+});

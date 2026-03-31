@@ -23,11 +23,9 @@ import { SmartLoading } from '@/components/ui/smart-loading';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
 import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
-import {
-  type StructureRenderPayload,
-} from '@/components/stock/StructureTopologySvg';
 import type { AnalysisLoadingStage } from '@/lib/analysis-loading-stage';
 import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
+import type { StructureData } from '@/lib/stock-structure-types';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
 import { domToJpeg } from 'modern-screenshot';
 import jsPDF from 'jspdf';
@@ -98,112 +96,6 @@ interface MacdData {
   top_divergence: boolean;
   bottom_divergence: boolean;
   divergence_note: string;
-}
-
-interface StructureData {
-  structure_type: string;
-  structure_stage: string;
-  trend_direction: string;
-  inflection_points: number;
-  segment_count: number;
-  description: string;
-  archetype?: {
-    primary?: string;
-    maturity?: string;
-    confidence?: string;
-    reason?: string;
-    alternatives?: Array<{
-      type: string;
-      confidence: number;
-      reason: string;
-    }>;
-  };
-  execution_phase?: {
-    code?: string;
-    label?: string;
-    bias?: string;
-    tradable?: boolean;
-    maturity?: string;
-    reason?: string;
-  };
-  execution?: {
-    can_trade?: boolean;
-    action?: string;
-    direction?: string;
-    setup_quality?: string;
-    rationale?: string;
-    timing_timeframe?: string;
-    timeframe_cap_ratio?: number;
-    trigger?: string[];
-    invalidation?: string[];
-    confirmation?: string[];
-    entry_style?: string;
-    position_sizing?: Record<string, unknown>;
-    t_trade_rule?: Record<string, unknown>;
-    risk_rules?: Record<string, unknown>;
-    take_profit_plan?: Record<string, unknown>;
-    key_levels?: Array<{
-      price: number;
-      type: string;
-      note?: string;
-    }>;
-    risk_flags?: string[];
-    wait_reason?: string | null;
-  };
-  structure_details?: {
-    top_fractals: Array<{index: number; date: string; high: number}>;
-    bottom_fractals: Array<{index: number; date: string; low: number}>;
-    strokes: Array<{
-      from_date: string;
-      to_date: string;
-      from_price: number;
-      to_price: number;
-      direction: string;
-      length: number;
-      from_type: string;
-      to_type: string;
-      is_current?: boolean;
-    }>;
-    render_payload?: StructureRenderPayload;
-    judgment_criteria: string;
-    prediction?: {
-      current_stage: string;
-      next_stage: string;
-      prediction_alert: string;
-      key_price_levels: Array<{
-        price: number;
-        type: string;
-        note: string;
-      }>;
-      confidence: 'high' | 'medium' | 'low';
-      action_hint: string;
-    };
-    peak_analysis?: {
-      is_peak_structure: boolean;
-      peak_type: 'mountain_peak' | 'valley_bottom' | null;
-      peak_price: number | null;
-      peak_index: number | null;
-      left_structure: string | null;
-      right_structure: string | null;
-      left_components: Array<{type: string; strokes: unknown[]}>;
-      right_components: Array<{type: string; strokes: unknown[]}>;
-      description: string;
-    };
-    left_structure_warning?: {
-      type: 'mountain_peak_left' | 'valley_bottom_left';
-      title: string;
-      left_structure: string;
-      peak_price?: number;
-      valley_price?: number;
-      warning?: string;
-      opportunity?: string;
-      risk_description?: string;
-      opportunity_description?: string;
-      key_defense?: string;
-      key_resistance?: string;
-      action_hint: string;
-    };
-  };
 }
 
 interface KeyLevel {

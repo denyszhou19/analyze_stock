@@ -13,10 +13,12 @@ import {
 } from '../ui/tooltip';
 import {
   StructureTopologySvg,
-  type StructureExplainabilityData,
-  type StructureRenderPayload,
 } from './StructureTopologySvg';
 import { buildStructureExplainabilityViewModel } from '../../lib/structure-explainability-view-model';
+import type {
+  StructureData,
+  StructurePeakAnalysis,
+} from '../../lib/stock-structure-types';
 
 interface ExecutionSummaryLike {
   phaseLabel: string | null;
@@ -30,65 +32,10 @@ interface ExecutionSummaryLike {
 }
 
 interface StructureExplainabilityPanelProps {
-  structure: {
-    structure_type: string;
-    trend_direction: string;
-    inflection_points: number;
-    description: string;
-    archetype?: {
-      primary?: string | null;
-      maturity?: string | null;
-      confidence?: string | null;
-      reason?: string | null;
-      alternatives?: Array<{
-        type?: string | null;
-        confidence?: number | null;
-        reason?: string | null;
-      }> | null;
-    } | null;
-    structure_details?: {
-      render_payload?: StructureRenderPayload;
-      explainability?: StructureExplainabilityData | null;
-      judgment_criteria?: string | null;
-      prediction?: {
-        current_stage: string;
-        next_stage: string;
-        prediction_alert: string;
-        key_price_levels: Array<{
-          price: number;
-          type: string;
-          note: string;
-        }>;
-        confidence: 'high' | 'medium' | 'low';
-        action_hint: string;
-      } | null;
-      peak_analysis?: {
-        is_peak_structure: boolean;
-        peak_type: 'mountain_peak' | 'valley_bottom' | null;
-        peak_price: number | null;
-        peak_index: number | null;
-        left_structure: string | null;
-        right_structure: string | null;
-        left_components: Array<{ type: string; strokes: unknown[] }>;
-        right_components: Array<{ type: string; strokes: unknown[] }>;
-        description: string;
-      } | null;
-      left_structure_warning?: {
-        type: 'mountain_peak_left' | 'valley_bottom_left';
-        title: string;
-        left_structure: string;
-        peak_price?: number;
-        valley_price?: number;
-        warning?: string;
-        opportunity?: string;
-        risk_description?: string;
-        opportunity_description?: string;
-        key_defense?: string;
-        key_resistance?: string;
-        action_hint: string;
-      } | null;
-    } | null;
-  };
+  structure: Pick<
+    StructureData,
+    'structure_type' | 'trend_direction' | 'inflection_points' | 'description' | 'archetype' | 'structure_details'
+  >;
   executionSummary: ExecutionSummaryLike;
   setupQualityLabel?: string | null;
   structureColors: Record<string, string>;
@@ -132,6 +79,30 @@ function SupportSection({ code, title, children, className }: SupportSectionProp
   );
 }
 
+function getPeakAnalysisDisplay(peakAnalysis: StructurePeakAnalysis) {
+  if (peakAnalysis.peak_type === 'mountain_peak') {
+    return {
+      badgeClassName: 'bg-red-100 text-red-700 border border-red-300',
+      badgeLabel: '🏔️ 山峰形态',
+      badgeSuffix: '🏔️',
+    };
+  }
+
+  if (peakAnalysis.peak_type === 'valley_bottom') {
+    return {
+      badgeClassName: 'bg-green-100 text-green-700 border border-green-300',
+      badgeLabel: '⛰️ 山谷形态',
+      badgeSuffix: '⛰️',
+    };
+  }
+
+  return {
+    badgeClassName: 'bg-slate-100 text-slate-700 border border-slate-300',
+    badgeLabel: '◌ 峰值形态待确认',
+    badgeSuffix: '◌',
+  };
+}
+
 export function StructureExplainabilityPanel({
   structure,
   executionSummary,
@@ -160,6 +131,7 @@ export function StructureExplainabilityPanel({
     structure.description;
   const archetypeContext =
     executionSummary.archetypeReason ?? viewModel.archetype.reason ?? structure.description;
+  const peakAnalysisDisplay = peakAnalysis ? getPeakAnalysisDisplay(peakAnalysis) : null;
   const predictionTone =
     prediction?.confidence === 'high'
       ? 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800'
@@ -284,9 +256,9 @@ export function StructureExplainabilityPanel({
             <div className="flex flex-wrap gap-2">
               <Badge className={structureColors[structure.structure_type] || ''}>
                 {structure.structure_type}
-                {peakAnalysis?.is_peak_structure && (
+                {peakAnalysis?.is_peak_structure && peakAnalysisDisplay && (
                   <span className="ml-1">
-                    {peakAnalysis.peak_type === 'mountain_peak' ? '🏔️' : '⛰️'}
+                    {peakAnalysisDisplay.badgeSuffix}
                   </span>
                 )}
               </Badge>
@@ -358,14 +330,8 @@ export function StructureExplainabilityPanel({
         <SupportSection code="peak_analysis" title="峰值分析">
           <div className="space-y-2 text-sm text-muted-foreground">
             <div className="flex flex-wrap items-center gap-2">
-              <Badge
-                className={
-                  peakAnalysis.peak_type === 'mountain_peak'
-                    ? 'bg-red-100 text-red-700 border border-red-300'
-                    : 'bg-green-100 text-green-700 border border-green-300'
-                }
-              >
-                {peakAnalysis.peak_type === 'mountain_peak' ? '🏔️ 山峰形态' : '⛰️ 山谷形态'}
+              <Badge className={peakAnalysisDisplay?.badgeClassName}>
+                {peakAnalysisDisplay?.badgeLabel}
               </Badge>
               {peakAnalysis.peak_price !== null && (
                 <Badge variant="outline">峰值 {peakAnalysis.peak_price.toFixed(2)}</Badge>
