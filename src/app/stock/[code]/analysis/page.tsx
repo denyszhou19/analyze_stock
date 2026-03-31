@@ -28,6 +28,7 @@ import {
 } from '@/components/stock/StructureTopologySvg';
 import type { AnalysisLoadingStage } from '@/lib/analysis-loading-stage';
 import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
+import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
 import { domToJpeg } from 'modern-screenshot';
 import jsPDF from 'jspdf';
 
@@ -106,6 +107,49 @@ interface StructureData {
   inflection_points: number;
   segment_count: number;
   description: string;
+  archetype?: {
+    primary?: string;
+    maturity?: string;
+    confidence?: string;
+    reason?: string;
+    alternatives?: Array<{
+      type: string;
+      confidence: number;
+      reason: string;
+    }>;
+  };
+  execution_phase?: {
+    code?: string;
+    label?: string;
+    bias?: string;
+    tradable?: boolean;
+    maturity?: string;
+    reason?: string;
+  };
+  execution?: {
+    can_trade?: boolean;
+    action?: string;
+    direction?: string;
+    setup_quality?: string;
+    rationale?: string;
+    timing_timeframe?: string;
+    timeframe_cap_ratio?: number;
+    trigger?: string[];
+    invalidation?: string[];
+    confirmation?: string[];
+    entry_style?: string;
+    position_sizing?: Record<string, unknown>;
+    t_trade_rule?: Record<string, unknown>;
+    risk_rules?: Record<string, unknown>;
+    take_profit_plan?: Record<string, unknown>;
+    key_levels?: Array<{
+      price: number;
+      type: string;
+      note?: string;
+    }>;
+    risk_flags?: string[];
+    wait_reason?: string | null;
+  };
   structure_details?: {
     top_fractals: Array<{index: number; date: string; high: number}>;
     bottom_fractals: Array<{index: number; date: string; low: number}>;
@@ -1304,6 +1348,11 @@ export default function StockAnalysisPage() {
             {PERIOD_ORDER.map((level) => {
               const periodData = result.periods[level];
               if (!periodData || periodData.error) return null;
+              const executionSummary = buildExecutionSummary(periodData);
+              const setupQualityLabel =
+                executionSummary.setupQuality === 'avoid'
+                  ? '规避'
+                  : executionSummary.setupQuality;
 
               return (
                 <Card key={level} className="overflow-hidden">
@@ -1602,7 +1651,64 @@ export default function StockAnalysisPage() {
                     <Separator />
 
                     {/* 结构分析 */}
-                    <div className="space-y-2">
+                    <div className="space-y-3">
+                      <div className="grid gap-3 md:grid-cols-3">
+                        <Card className="border-border/60 shadow-none">
+                          <CardContent className="p-3 space-y-2">
+                            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">当前阶段</div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge className="border border-sky-200 bg-sky-100 text-sky-700">
+                                {executionSummary.phaseLabel || '暂无阶段'}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {executionSummary.phaseReason || '等待更多结构与执行信号确认当前阶段。'}
+                            </p>
+                          </CardContent>
+                        </Card>
+
+                        <Card className="border-border/60 shadow-none">
+                          <CardContent className="p-3 space-y-2">
+                            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">执行建议</div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge className="border border-emerald-200 bg-emerald-100 text-emerald-700">
+                                {executionSummary.actionLabel || '等待'}
+                              </Badge>
+                              {setupQualityLabel && (
+                                <Badge variant="outline">形态质量 {setupQualityLabel}</Badge>
+                              )}
+                              {executionSummary.timeframeCapLabel && (
+                                <Badge variant="outline">{executionSummary.timeframeCapLabel}</Badge>
+                              )}
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {executionSummary.executionReason || '当前周期暂无额外执行说明。'}
+                            </p>
+                          </CardContent>
+                        </Card>
+
+                        <Card className="border-border/60 shadow-none">
+                          <CardContent className="p-3 space-y-2">
+                            <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">结构原型</div>
+                            <div className="flex flex-wrap gap-2">
+                              <Badge
+                                className={
+                                  STRUCTURE_COLORS[executionSummary.archetypeLabel || ''] ||
+                                  'border border-border bg-muted text-muted-foreground'
+                                }
+                              >
+                                {executionSummary.archetypeLabel || '暂无原型'}
+                              </Badge>
+                            </div>
+                            <p className="text-sm text-muted-foreground">
+                              {executionSummary.archetypeReason || periodData.structure.description}
+                            </p>
+                          </CardContent>
+                        </Card>
+                      </div>
+
+                      <Separator />
+
                       <div className="flex items-center gap-2">
                         <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">结构拓扑</span>
                         <TooltipProvider>
