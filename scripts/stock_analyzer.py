@@ -4198,6 +4198,7 @@ class TrinityStockAnalyzer:
         hour30 = results.get('hour30', {})
         hour15 = results.get('hour15', {})
         daily_execution = daily.get('structure', {}).get('execution', {}) if isinstance(daily, dict) else {}
+        has_execution_bus = isinstance(daily_execution, dict) and bool(daily_execution)
         spacetime = spacetime_confirmation
         if spacetime is None:
             spacetime = results.get('nesting_analysis', {}).get('spacetime_confirmation', {})
@@ -4291,23 +4292,32 @@ class TrinityStockAnalyzer:
         extremely_strong = daily_status == '极强' or weekly_status == '极强'
         action = decision.get('action')
         rationale = decision.get('rationale') or '等待更明确信号'
-        if action == 'buy':
-            decision['decision_type'] = '加仓'
-            decision['analysis'] = f"自上而下分析后，日线执行总线给出买入信号。{rationale}"
-            decision['action_hint'] = '按 bottom_up 执行，等待次级别触发后分批介入'
-        elif action in ['sell', 'reduce']:
-            decision['decision_type'] = '做T'
-            decision['t_type'] = '反T'
-            decision['analysis'] = f"自上而下分析后，日线执行总线偏向减仓或反T。{rationale}"
-            decision['action_hint'] = '优先减仓锁定利润，等待次级别回补机会'
-        elif action == 'hold':
-            decision['decision_type'] = '观望'
-            decision['analysis'] = f"当前以持仓跟随为主。{rationale}"
-            decision['action_hint'] = '维持仓位，等待更清晰的加减仓触发'
-        elif action == 'wait':
-            decision['decision_type'] = '观望'
-            decision['analysis'] = f"当前执行总线要求继续等待。{rationale}"
-            decision['action_hint'] = '等待执行总线触发信号后再行动'
+        if has_execution_bus:
+            if action == 'buy':
+                decision['decision_type'] = '加仓'
+                decision['analysis'] = f"自上而下分析后，日线执行总线给出买入信号。{rationale}"
+                decision['action_hint'] = '按 bottom_up 执行，等待次级别触发后分批介入'
+            elif action == 'add':
+                decision['decision_type'] = '加仓'
+                decision['analysis'] = f"自上而下分析后，日线执行总线允许右侧加仓。{rationale}"
+                decision['action_hint'] = '按 bottom_up 执行，等待次级别触发后分批加仓'
+            elif action in ['sell', 'reduce']:
+                decision['decision_type'] = '做T'
+                decision['t_type'] = '反T'
+                decision['analysis'] = f"自上而下分析后，日线执行总线偏向减仓或反T。{rationale}"
+                decision['action_hint'] = '优先减仓锁定利润，等待次级别回补机会'
+            elif action == 'hold':
+                decision['decision_type'] = '观望'
+                decision['analysis'] = f"当前以持仓跟随为主。{rationale}"
+                decision['action_hint'] = '维持仓位，等待更清晰的加减仓触发'
+            elif action == 'wait':
+                decision['decision_type'] = '观望'
+                decision['analysis'] = f"当前执行总线要求继续等待。{rationale}"
+                decision['action_hint'] = '等待执行总线触发信号后再行动'
+            else:
+                decision['decision_type'] = '观望'
+                decision['analysis'] = f"当前执行总线动作暂不可识别，保守等待。{rationale}"
+                decision['action_hint'] = '等待执行总线触发信号后再行动'
         else:
             if extremely_strong and ma55_confirmed:
                 decision['decision_type'] = '加仓'

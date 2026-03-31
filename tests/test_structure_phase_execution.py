@@ -374,6 +374,95 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertNotEqual(decision['decision_type'], '做T')
         self.assertNotIn('适合正T', decision['analysis'])
 
+    def test_analyze_trading_decision_maps_add_action_without_falling_back_to_heuristics(self) -> None:
+        results = {
+            'daily': {
+                'macd': {'status': '强'},
+                'moving_averages': {'price_vs_ma55': 'above'},
+                'structure': {
+                    'execution': {
+                        'can_trade': True,
+                        'action': 'add',
+                        'direction': 'long',
+                        'setup_quality': 'A',
+                        'rationale': '日线执行总线允许右侧加仓',
+                        'timing_timeframe': 'daily',
+                        'timeframe_cap_ratio': 0.5,
+                        'trigger': ['回抽确认后二次进攻'],
+                        'invalidation': ['跌破同级别止损位 99.2 立即退出'],
+                        'confirmation': ['突破形态有效'],
+                        'position_sizing': {'initial': '20%-30%'},
+                        't_trade_rule': {'mode': 'positive_only'},
+                        'risk_rules': {'stop_loss_basis': 'same_timeframe'},
+                        'take_profit_plan': {'model': 'inverted_pyramid'},
+                        'key_levels': [{'price': 99.2, 'type': 'stop'}],
+                        'risk_flags': [],
+                        'wait_reason': None,
+                    },
+                },
+            },
+            'weekly': {'macd': {'status': '强'}},
+            'hour60': {'moving_averages': {'price_vs_ma55': 'above'}},
+            'hour30': {'macd': {'top_divergence': False}},
+            'hour15': {'macd': {'top_divergence': False}},
+            'nesting_analysis': {},
+        }
+
+        decision = self.analyzer.analyze_trading_decision(
+            results,
+            spacetime_confirmation={'spacetime_resonance': False},
+        )
+
+        self.assertEqual(decision['action'], 'add')
+        self.assertEqual(decision['decision_type'], '加仓')
+        self.assertEqual(decision['action_hint'], '按 bottom_up 执行，等待次级别触发后分批加仓')
+        self.assertNotIn('适合正T', decision['analysis'])
+
+    def test_analyze_trading_decision_degrades_unknown_action_to_observe_when_execution_bus_exists(self) -> None:
+        results = {
+            'daily': {
+                'macd': {'status': '强'},
+                'moving_averages': {'price_vs_ma55': 'above'},
+                'structure': {
+                    'execution': {
+                        'can_trade': False,
+                        'action': 'unknown',
+                        'direction': 'neutral',
+                        'setup_quality': 'avoid',
+                        'rationale': '执行总线动作暂不可识别，等待人工复核',
+                        'timing_timeframe': 'daily',
+                        'timeframe_cap_ratio': 0.5,
+                        'trigger': ['等待确认性触发'],
+                        'invalidation': ['原建仓级别失效立即退出'],
+                        'confirmation': ['次级别结构继续共振'],
+                        'position_sizing': {'initial': '0%'},
+                        't_trade_rule': {'mode': 'positive_only'},
+                        'risk_rules': {'stop_loss_basis': 'same_timeframe'},
+                        'take_profit_plan': {'model': 'none'},
+                        'key_levels': [],
+                        'risk_flags': ['当前仅满足观察，不满足执行'],
+                        'wait_reason': '等待执行总线输出明确动作',
+                    },
+                },
+            },
+            'weekly': {'macd': {'status': '强'}},
+            'hour60': {'moving_averages': {'price_vs_ma55': 'above'}},
+            'hour30': {'macd': {'top_divergence': False}},
+            'hour15': {'macd': {'top_divergence': False}},
+            'nesting_analysis': {},
+        }
+
+        decision = self.analyzer.analyze_trading_decision(
+            results,
+            spacetime_confirmation={'spacetime_resonance': False},
+        )
+
+        self.assertEqual(decision['action'], 'unknown')
+        self.assertEqual(decision['decision_type'], '观望')
+        self.assertEqual(decision['action_hint'], '等待执行总线触发信号后再行动')
+        self.assertNotEqual(decision['decision_type'], '做T')
+        self.assertNotIn('适合正T', decision['analysis'])
+
 
 if __name__ == '__main__':
     unittest.main()
