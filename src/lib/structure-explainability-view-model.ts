@@ -15,7 +15,42 @@ export interface StructureExplainabilityViewModel {
   };
 }
 
-function resolveAlternativeLabel(item: any): string | null {
+interface ExplainabilitySummary {
+  structure_start_point_id?: string | null;
+  current_point_id?: string | null;
+  current_segment?: {
+    label?: string | null;
+  } | null;
+  next_segment_preview?: {
+    label?: string | null;
+  } | null;
+  display_reason?: string | null;
+}
+
+interface PredictionSummary {
+  current_stage?: string | null;
+  next_stage?: string | null;
+}
+
+interface ArchetypeSummary {
+  primary?: string | null;
+  reason?: string | null;
+  alternatives?: unknown[] | null;
+}
+
+interface StructureExplainabilityInput {
+  structure_type?: string | null;
+  description?: string | null;
+  archetype?: ArchetypeSummary | null;
+  structure_details?: {
+    explainability?: ExplainabilitySummary | null;
+    prediction?: PredictionSummary | null;
+  } | null;
+}
+
+type AlternativeCandidate = string | { type?: string | null; label?: string | null } | null | undefined;
+
+function resolveAlternativeLabel(item: AlternativeCandidate): string | null {
   if (!item) {
     return null;
   }
@@ -31,7 +66,7 @@ function resolveAlternativeLabel(item: any): string | null {
   return null;
 }
 
-function buildFallbackText(prediction: any): string | null {
+function buildFallbackText(prediction?: PredictionSummary | null): string | null {
   const current = prediction?.current_stage;
   const next = prediction?.next_stage;
   if (!current && !next) {
@@ -41,11 +76,20 @@ function buildFallbackText(prediction: any): string | null {
 }
 
 export function buildStructureExplainabilityViewModel(
-  structure?: any
+  structure?: StructureExplainabilityInput
 ): StructureExplainabilityViewModel {
   const explainability = structure?.structure_details?.explainability;
   const prediction = structure?.structure_details?.prediction;
   const archetype = structure?.archetype;
+  const primaryLabel = archetype?.primary ?? structure?.structure_type ?? null;
+  const alternatives = Array.isArray(archetype?.alternatives)
+    ? archetype.alternatives
+        .map((item) => resolveAlternativeLabel(item as AlternativeCandidate))
+        .filter((label): label is string => Boolean(label))
+    : [];
+  const alternativeLabels = Array.from(
+    new Set(alternatives.filter((label) => label !== primaryLabel))
+  );
 
   return {
     topology: {
@@ -58,13 +102,9 @@ export function buildStructureExplainabilityViewModel(
       fallbackText: explainability ? null : buildFallbackText(prediction),
     },
     archetype: {
-      primaryLabel: archetype?.primary ?? structure?.structure_type ?? null,
-      alternativeLabels: Array.isArray(archetype?.alternatives)
-        ? archetype.alternatives
-            .map(resolveAlternativeLabel)
-            .filter((label: string | null): label is string => Boolean(label))
-        : [],
-      reason: archetype?.reason ?? null,
+      primaryLabel,
+      alternativeLabels,
+      reason: archetype?.reason ?? structure?.description ?? null,
     },
   };
 }

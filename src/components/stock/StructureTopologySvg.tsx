@@ -1,5 +1,7 @@
 'use client';
 
+import { buildProjectedSegmentOverlay } from '@/lib/structure-topology-projection';
+
 export interface StructureRenderViewport {
   width: number;
   height: number;
@@ -131,6 +133,7 @@ export function StructureTopologySvg({
   const projectedSegmentId = explainability?.next_segment_preview
     ? `${explainability.next_segment_preview.from_point_id}-${explainability.next_segment_preview.to_point_id}`
     : null;
+  const projectedOverlay = buildProjectedSegmentOverlay(payload, explainability);
 
   return (
     <svg viewBox={viewBox} className={className} preserveAspectRatio="xMidYMid meet">
@@ -155,6 +158,31 @@ export function StructureTopologySvg({
           />
         );
       })}
+
+      {projectedOverlay ? (
+        <g>
+          <line
+            x1={projectedOverlay.x1}
+            y1={projectedOverlay.y1}
+            x2={projectedOverlay.x2}
+            y2={projectedOverlay.y2}
+            stroke="#94a3b8"
+            strokeWidth={2.5}
+            strokeDasharray="6,4"
+          />
+          <circle cx={projectedOverlay.x2} cy={projectedOverlay.y2} r={2.5} fill="#94a3b8" />
+          <text
+            x={projectedOverlay.x2}
+            y={projectedOverlay.y2 - 8}
+            textAnchor="middle"
+            fill="#cbd5e1"
+            fontSize="9"
+            fontWeight="700"
+          >
+            {projectedOverlay.targetLabel}
+          </text>
+        </g>
+      ) : null}
 
       {points.map((point) => (
         <g key={point.sequence}>

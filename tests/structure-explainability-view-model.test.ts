@@ -52,3 +52,33 @@ test('buildStructureExplainabilityViewModel falls back to prediction text when e
   assert.equal(result.topology.hasExplainability, false);
   assert.match(result.topology.fallbackText ?? '', /prediction/);
 });
+
+test('buildStructureExplainabilityViewModel falls back archetype reason to structure description', () => {
+  const result = buildStructureExplainabilityViewModel({
+    structure_type: '复杂结构',
+    description: '结构仍在演化，先跟随关键锚点',
+    archetype: {
+      primary: '复杂结构',
+      alternatives: [],
+    },
+  });
+
+  assert.equal(result.archetype.reason, '结构仍在演化，先跟随关键锚点');
+});
+
+test('buildStructureExplainabilityViewModel de-duplicates alternatives and excludes primary label', () => {
+  const result = buildStructureExplainabilityViewModel({
+    structure_type: 'A五段式',
+    archetype: {
+      primary: 'A五段式',
+      alternatives: [
+        { type: 'A五段式' },
+        { type: 'C单平台式' },
+        { type: 'C单平台式' },
+        'C单平台式',
+      ],
+    },
+  });
+
+  assert.deepEqual(result.archetype.alternativeLabels, ['C单平台式']);
+});
