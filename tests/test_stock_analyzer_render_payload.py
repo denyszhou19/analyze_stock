@@ -1,5 +1,6 @@
 import math
 import unittest
+from unittest.mock import patch
 
 import pandas as pd
 
@@ -414,6 +415,104 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         )
 
         self.assertEqual(start_index, 1)
+
+    def test_detect_structure_uses_peak_focus_context_for_prediction_and_explainability(self) -> None:
+        recent = pd.DataFrame(
+            [
+                {
+                    "date": pd.Timestamp("2024-03-01"),
+                    "close": 11.0,
+                    "high": 11.3,
+                    "low": 10.7,
+                    "open": 10.9,
+                }
+            ]
+        )
+        full_strokes = [
+            {"from_date": "2024-01-01", "to_date": "2024-01-02", "from_price": 10.0, "to_price": 12.0, "direction": "上涨", "length": 1, "from_type": "bottom", "to_type": "top"},
+            {"from_date": "2024-01-02", "to_date": "2024-01-03", "from_price": 12.0, "to_price": 11.0, "direction": "下跌", "length": 1, "from_type": "top", "to_type": "bottom"},
+            {"from_date": "2024-01-03", "to_date": "2024-01-04", "from_price": 11.0, "to_price": 14.0, "direction": "上涨", "length": 1, "from_type": "bottom", "to_type": "top"},
+            {"from_date": "2024-01-04", "to_date": "2024-01-05", "from_price": 14.0, "to_price": 12.0, "direction": "下跌", "length": 1, "from_type": "top", "to_type": "bottom"},
+            {"from_date": "2024-01-05", "to_date": "2024-01-06", "from_price": 12.0, "to_price": 13.0, "direction": "上涨", "length": 1, "from_type": "bottom", "to_type": "top"},
+            {"from_date": "2024-01-06", "to_date": "2024-01-07", "from_price": 13.0, "to_price": 11.0, "direction": "下跌", "length": 1, "from_type": "top", "to_type": "bottom"},
+        ]
+        valid_fractals = [
+            {"index": 0, "type": "bottom", "high": 10.4, "low": 9.8, "date": "2024-01-01"},
+            {"index": 1, "type": "top", "high": 12.0, "low": 11.1, "date": "2024-01-02"},
+            {"index": 2, "type": "bottom", "high": 11.2, "low": 10.8, "date": "2024-01-03"},
+            {"index": 3, "type": "top", "high": 14.0, "low": 13.1, "date": "2024-01-04"},
+            {"index": 4, "type": "bottom", "high": 12.2, "low": 11.7, "date": "2024-01-05"},
+            {"index": 5, "type": "top", "high": 13.0, "low": 12.4, "date": "2024-01-06"},
+            {"index": 6, "type": "bottom", "high": 11.3, "low": 10.9, "date": "2024-01-07"},
+        ]
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes_count: int) -> None:
+                self.component_type = component_type
+                self.strokes_count = strokes_count
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": [{} for _ in range(self.strokes_count)],
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "上涨",
+            "valid_range_info": None,
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": full_strokes,
+        }
+        macro_components = [
+            StubMacroComponent("上涨结构", 3),
+            StubMacroComponent("单平台", 3),
+        ]
+        peak_analysis = {
+            "is_peak_structure": True,
+            "peak_type": "mountain_peak",
+            "peak_price": 14.0,
+            "peak_index": 2,
+            "left_structure": "上涨结构",
+            "right_structure": "C单平台式",
+            "left_components": [{"type": "上涨结构", "strokes": [{}, {}, {}]}],
+            "right_components": [{"type": "单平台", "strokes": [{}, {}, {}]}],
+        }
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("A五段式", "a1-a6拐点区间", "左侧原始结构", ["mocked classification"]),
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
+
+        self.assertEqual(result["structure_type"], "C单平台式")
+        self.assertEqual(result["inflection_points"], 4)
+        self.assertEqual(result["segment_count"], 3)
+        self.assertEqual(result["structure_details"]["prediction"]["current_stage"], "c4拐点")
+        self.assertEqual(result["structure_details"]["prediction"]["next_stage"], "c5拐点")
+        self.assertEqual(
+            result["structure_details"]["explainability"]["structure_start_point_id"],
+            "c1",
+        )
+        self.assertEqual(
+            result["structure_details"]["explainability"]["current_point_id"],
+            "c4",
+        )
+        self.assertEqual(
+            result["structure_details"]["explainability"]["next_segment_preview"]["label"],
+            "c4→c5",
+        )
 
 
 if __name__ == "__main__":

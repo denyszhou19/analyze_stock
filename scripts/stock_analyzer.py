@@ -2914,6 +2914,44 @@ class TrinityStockAnalyzer:
 
         return to_point
 
+    def _build_structure_focus_context(
+        self,
+        line_geometry: Dict[str, Any],
+        peak_analysis: Optional[Dict[str, Any]],
+        strokes: List[Dict[str, Any]],
+        valid_fractals: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """统一导出当前聚焦结构上下文，峰值切片时聚焦到右侧结构。"""
+        structure_start_point_index = self._resolve_peak_structure_start_point_index(
+            line_geometry,
+            peak_analysis
+        )
+        focused_strokes = list(strokes or [])
+        focused_valid_fractals = list(valid_fractals or [])
+
+        if (
+            isinstance(structure_start_point_index, int)
+            and structure_start_point_index > 0
+        ):
+            focused_strokes = (
+                focused_strokes[structure_start_point_index:]
+                if structure_start_point_index < len(focused_strokes)
+                else []
+            )
+            focused_valid_fractals = (
+                focused_valid_fractals[structure_start_point_index:]
+                if structure_start_point_index < len(focused_valid_fractals)
+                else []
+            )
+
+        return {
+            'structure_start_point_index': structure_start_point_index,
+            'strokes': focused_strokes,
+            'valid_fractals': focused_valid_fractals,
+            'stroke_count': len(focused_strokes),
+            'inflection_count': len(focused_valid_fractals),
+        }
+
     def _build_structure_pipeline_metadata(
         self,
         lookback: int,
@@ -3167,10 +3205,10 @@ class TrinityStockAnalyzer:
         line_geometry = self._build_line_geometry(stroke_list)
         result['structure_details']['line_geometry'] = line_geometry
 
-        stroke_count = len(strokes)
-        inflection_count = len(valid_fractals)
-        result['segment_count'] = stroke_count
-        result['inflection_points'] = inflection_count
+        full_stroke_count = len(strokes)
+        full_inflection_count = len(valid_fractals)
+        result['segment_count'] = full_stroke_count
+        result['inflection_points'] = full_inflection_count
         result['structure_details']['pipeline'] = self._build_structure_pipeline_metadata(
             lookback=lookback,
             actual_lookback=actual_lookback,
@@ -3187,7 +3225,7 @@ class TrinityStockAnalyzer:
 
         judgment_criteria = [
             f"识别到 {len(top_fractals)} 个顶分型，{len(bottom_fractals)} 个底分型",
-            f"过滤后得到 {stroke_count} 笔，{inflection_count} 个拐点"
+            f"过滤后得到 {full_stroke_count} 笔，{full_inflection_count} 个拐点"
         ]
 
         if valid_range_info:
@@ -3196,7 +3234,7 @@ class TrinityStockAnalyzer:
 
         macro_components = self._consolidate_boxes(stroke_list, threshold=0.55)
         result['structure_details']['macro_components'] = [mc.to_dict() for mc in macro_components]
-        judgment_criteria.append(f"聚类算法: 将 {stroke_count} 笔聚类为 {len(macro_components)} 个宏观组件")
+        judgment_criteria.append(f"聚类算法: 将 {full_stroke_count} 笔聚类为 {len(macro_components)} 个宏观组件")
 
         if macro_components:
             structure_type, structure_stage, description, extra_criteria = (
@@ -3213,10 +3251,24 @@ class TrinityStockAnalyzer:
         if peak_analysis['is_peak_structure']:
             self._apply_peak_structure_override(result, peak_analysis, judgment_criteria)
 
+        focus_context = self._build_structure_focus_context(
+            line_geometry=line_geometry,
+            peak_analysis=peak_analysis,
+            strokes=stroke_list,
+            valid_fractals=valid_fractals
+        )
+        stroke_count = focus_context['stroke_count']
+        inflection_count = focus_context['inflection_count']
+        focused_strokes = focus_context['strokes']
+        focused_valid_fractals = focus_context['valid_fractals']
+        structure_start_point_index = focus_context['structure_start_point_index']
+        result['segment_count'] = stroke_count
+        result['inflection_points'] = inflection_count
+
         self._apply_structure_fallback(
             result=result,
-            stroke_count=stroke_count,
-            inflection_count=inflection_count,
+            stroke_count=full_stroke_count,
+            inflection_count=full_inflection_count,
             macro_components=macro_components,
             judgment_criteria=judgment_criteria
         )
@@ -3227,21 +3279,15 @@ class TrinityStockAnalyzer:
             result['structure_type'],
             stroke_count,
             inflection_count,
-            stroke_list,
-            valid_fractals,
+            focused_strokes,
+            focused_valid_fractals,
             result['trend_direction'],
             recent,
             macd_status
         )
         result['structure_details']['prediction'] = prediction
 
-        structure_start_point_index = None
         peak_analysis = result['structure_details'].get('peak_analysis')
-        if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
-            structure_start_point_index = self._resolve_peak_structure_start_point_index(
-                line_geometry,
-                peak_analysis
-            )
 
         labeled_geometry, explainability = self._build_structure_explainability(
             result['structure_type'],
