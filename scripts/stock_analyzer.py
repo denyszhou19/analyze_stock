@@ -3215,45 +3215,45 @@ class TrinityStockAnalyzer:
     ) -> Dict[str, Any]:
         """Build a compact structure archetype summary for downstream execution rules."""
         component_types = [
-            component.get('type')
-            for component in (macro_components or [])
-            if component.get('type')
+            component.get('type', 'Unknown')
+            for component in (macro_components or [])[:3]
         ]
-        component_path = ' -> '.join(component_types) if component_types else '未识别组件'
-        structure_family = structure_type[:1] if structure_type else '未知'
-
+        component_path = ' -> '.join(component_types) if component_types else 'Unknown'
         maturity = 'early'
         if inflection_count >= 5 or segment_count >= 4:
             maturity = 'late'
         elif inflection_count >= 3 or segment_count >= 2:
             maturity = 'mid'
 
-        confidence = 'low'
-        if len(component_types) >= 2:
-            confidence = 'medium'
+        confidence = 'low' if structure_type in ('复杂结构', '结构未完成') else 'medium'
         if peak_analysis and peak_analysis.get('is_peak_structure'):
-            confidence = 'high'
+            confidence = 'low'
 
         alternatives = []
-        if structure_family != 'A':
-            alternatives.append('A五段式')
-        if structure_family != 'C' and any(component_type == 'Platform' for component_type in component_types):
-            alternatives.append('C单平台式')
-        if structure_family != 'D' and inflection_count <= 4:
-            alternatives.append('D三段式')
-
-        reason_parts = [component_path]
-        if structure_stage:
-            reason_parts.append(structure_stage)
-        if trend_direction:
-            reason_parts.append(f'{trend_direction}趋势')
+        if structure_type == 'A五段式':
+            alternatives.append({
+                'type': 'C单平台式',
+                'confidence': 0.35,
+                'reason': '平台段占比仍高',
+            })
+        elif structure_type == 'C单平台式':
+            alternatives.append({
+                'type': 'A五段式',
+                'confidence': 0.3,
+                'reason': '突破后可升级为趋势原型',
+            })
+        elif structure_type == 'B双平台式':
+            alternatives.append({
+                'type': 'C单平台式',
+                'confidence': 0.25,
+                'reason': '若平台段收缩，可能退化为单平台',
+            })
 
         return {
-            'family': structure_family,
-            'primary': structure_type or '未知结构',
+            'primary': structure_type or '结构未完成',
             'maturity': maturity,
             'confidence': confidence,
-            'reason': ' | '.join(reason_parts),
+            'reason': component_path,
             'alternatives': alternatives,
         }
 
@@ -3270,53 +3270,96 @@ class TrinityStockAnalyzer:
         """Translate structure, MA, and breakthrough context into a trade execution phase."""
         support_pressure = ma_physics.get('support_pressure', {}) if isinstance(ma_physics, dict) else {}
         traction = ma_physics.get('traction', {}) if isinstance(ma_physics, dict) else {}
+        resonance = ma_physics.get('resonance', {}) if isinstance(ma_physics, dict) else {}
         stage = prediction.get('current_stage', '') if isinstance(prediction, dict) else ''
+        pattern_type = breakthrough.get('pattern_type') if isinstance(breakthrough, dict) else None
+        direction = breakthrough.get('direction') if isinstance(breakthrough, dict) else None
+        breakthrough_valid = breakthrough.get('is_valid') is True if isinstance(breakthrough, dict) else False
 
-        is_bullish = trend_direction == '上涨'
-        has_pullback_breakthrough = breakthrough.get('pattern_type') == '回抽突破'
-        has_valid_breakthrough = breakthrough.get('is_valid') is True and breakthrough.get('direction') == 'up'
-        has_support = '支撑有效' in str(support_pressure.get('status', ''))
-        pullback_expected = traction.get('pullback_expected') is True
+        if divergence_note or traction.get('traction_force') == '强':
+            return {
+                'code': 'exhaustion_risk',
+                'label': '衰竭风险',
+                'bias': 'neutral',
+                'tradable': False,
+                'maturity': 'late',
+                'reason': divergence_note or '偏离均线过大',
+            }
 
         if (
-            is_bullish
-            and has_pullback_breakthrough
-            and has_valid_breakthrough
-            and has_support
-            and pullback_expected
-            and '顶背离' not in (divergence_note or '')
+            pattern_type in ('回抽突破', '回抽跌破')
+            and support_pressure.get('status')
         ):
             return {
                 'code': 'pullback_confirm',
                 'label': '回抽确认',
-                'bias': 'bullish',
+                'bias': 'bullish' if direction == 'up' else 'bearish',
                 'tradable': True,
-                'maturity': 'mid' if 'a4' in stage or 'c4' in stage else 'early',
-                'reason': '回抽后支撑有效，突破方向与均线支撑一致',
+                'maturity': 'mid',
+                'reason': support_pressure.get('status'),
+            }
+
+        if pattern_type in (
+            '有效突破',
+            '有效跌破',
+            '慢速突破',
+            '慢速跌破',
+            '反向突破',
+            '反向跌破',
+            '普通突破',
+            '普通跌破',
+        ):
+            return {
+                'code': 'breakout_attempt',
+                'label': '突破尝试',
+                'bias': 'bullish' if direction == 'up' else 'bearish',
+                'tradable': pattern_type in ('有效突破', '有效跌破', '反向突破', '反向跌破'),
+                'maturity': 'mid',
+                'reason': pattern_type,
+            }
+
+        if trend_direction == '震荡':
+            return {
+                'code': 'platform_building',
+                'label': '平台整理',
+                'bias': 'neutral',
+                'tradable': False,
+                'maturity': 'mid',
+                'reason': '当前仍在平台边界内',
+            }
+
+        correction_stages = ('a4', 'b3', 'b5', 'b7', 'c3', 'c4', 'd3')
+        if any(marker in stage for marker in correction_stages):
+            return {
+                'code': 'correction_in_progress',
+                'label': '修正进行中',
+                'bias': 'bullish' if trend_direction == '上涨' else 'bearish',
+                'tradable': False,
+                'maturity': 'mid',
+                'reason': stage or '当前处于逆向修正段',
             }
 
         price_vs_ma55 = moving_averages.get('price_vs_ma55') if isinstance(moving_averages, dict) else None
         ma_status = moving_averages.get('ma_status') if isinstance(moving_averages, dict) else None
-        bullish_context = is_bullish and price_vs_ma55 == 'above' and ma_status == '多头排列'
-        bullish_macd = macd_status in {'中偏强', '强', '极强'}
-
-        if bullish_context and bullish_macd:
+        aligned_up = trend_direction == '上涨' and price_vs_ma55 == 'above' and ma_status == '多头排列'
+        aligned_down = trend_direction == '下跌' and price_vs_ma55 == 'below' and ma_status == '空头排列'
+        if breakthrough_valid and (aligned_up or aligned_down):
             return {
-                'code': 'trend_follow',
-                'label': '顺势跟随',
-                'bias': 'bullish',
+                'code': 'trend_continuation',
+                'label': '趋势延续',
+                'bias': 'bullish' if aligned_up else 'bearish',
                 'tradable': True,
-                'maturity': 'mid',
-                'reason': '趋势、均线与MACD方向一致',
+                'maturity': 'mid' if resonance.get('convergence_strength') in ('中', '强') else 'early',
+                'reason': pattern_type or macd_status or '突破确认后顺趋势运行',
             }
 
         return {
-            'code': 'observe',
-            'label': '等待确认',
-            'bias': 'neutral',
+            'code': 'trend_launch',
+            'label': '趋势启动',
+            'bias': 'bullish' if trend_direction == '上涨' else 'bearish' if trend_direction == '下跌' else 'neutral',
             'tradable': False,
             'maturity': 'early',
-            'reason': '尚未形成明确的同向执行条件',
+            'reason': macd_status or '趋势刚启动',
         }
 
     def _extract_latest_confirmed_levels(self, prediction: Dict[str, Any]) -> List[Dict[str, Any]]:
@@ -3355,49 +3398,100 @@ class TrinityStockAnalyzer:
     ) -> Dict[str, Any]:
         """Build per-period execution constraints for the current timeframe."""
         timeframe_cap_ratio_map = {
-            'weekly': 1.0,
-            'daily': 0.5,
-            'hour60': 1 / 3,
+            'hour15': 0.25,
             'hour30': 1 / 3,
-            'hour15': 1 / 3,
+            'hour60': 0.5,
+            'daily': 0.5,
         }
         timeframe_cap_ratio = timeframe_cap_ratio_map.get(level, 0.5)
 
+        ma_status = moving_averages.get('ma_status') if isinstance(moving_averages, dict) else None
+        t_mode = (
+            'positive_only' if ma_status == '多头排列'
+            else 'negative_only' if ma_status == '空头排列'
+            else 'disabled'
+        )
         bias = phase.get('bias', 'neutral') if isinstance(phase, dict) else 'neutral'
-        can_trade = bool(phase.get('tradable')) and bias in {'bullish', 'bearish'}
-        action = 'buy' if bias == 'bullish' and can_trade else 'sell' if bias == 'bearish' and can_trade else 'wait'
+        phase_code = phase.get('code') if isinstance(phase, dict) else None
+        can_trade = bool(phase.get('tradable'))
+        if phase_code == 'pullback_confirm' and bias == 'bullish':
+            action = 'buy'
+        elif phase_code == 'pullback_confirm' and bias == 'bearish':
+            action = 'sell'
+        elif phase_code == 'exhaustion_risk':
+            action = 'reduce'
+        elif phase_code == 'trend_continuation' and can_trade:
+            action = 'hold'
+        else:
+            action = 'wait'
 
         stop_reference = latest_confirmed_levels[0] if latest_confirmed_levels else None
         stop_price = stop_reference.get('price') if isinstance(stop_reference, dict) else None
+        direction = 'long' if bias == 'bullish' else 'short' if bias == 'bearish' else 'neutral'
+        setup_quality = 'A' if can_trade and breakthrough.get('is_valid') else 'C' if can_trade else 'avoid'
+        timing_timeframe = level if level in ('daily', 'hour60', 'hour30', 'hour15') else None
+
+        key_levels = (prediction or {}).get('key_price_levels') or latest_confirmed_levels or []
+        trigger = ['等待确认性触发']
+        if phase_code == 'pullback_confirm':
+            trigger = ['MA55支撑有效后重新转强']
+
+        invalidation = ['原建仓级别失效立即退出']
+        if stop_price is not None:
+            invalidation = [f'跌破同级别止损位 {stop_price} 立即退出']
+
+        confirmation = ['次级别结构继续共振']
+        if breakthrough.get('is_valid') is True:
+            confirmation = ['突破形态有效', '次级别结构继续共振']
+
+        take_profit_plan = {
+            'model': 'inverted_pyramid' if can_trade else 'none',
+            'triggers': ['A类末端', 'B类末端', '15/30分钟顶背离'] if can_trade else [],
+            'ladder': ['首抛 50%', '二抛 30%', '三抛 15%'] if can_trade else [],
+            'keep_runner': bool(can_trade),
+        }
 
         return {
             'can_trade': can_trade,
             'action': action,
-            'timing_timeframe': level,
-            'timeframe_cap_ratio': timeframe_cap_ratio,
-            'phase_code': phase.get('code'),
-            'phase_label': phase.get('label'),
-            'latest_price': latest_price,
-            'macd_status': macd_status,
+            'direction': direction,
+            'setup_quality': setup_quality,
+            'rationale': phase.get('reason') or archetype.get('reason') or '',
+            'timing_timeframe': timing_timeframe,
+            'timeframe_cap_ratio': timeframe_cap_ratio_map.get(level),
+            'trigger': trigger,
+            'invalidation': invalidation,
+            'confirmation': confirmation,
+            'entry_style': 'pullback_confirm' if phase_code == 'pullback_confirm' else 'trend_hold' if phase_code == 'trend_continuation' else 'wait',
+            'position_sizing': {
+                'starter': '轻仓试探',
+                'initial': '20%-30%' if can_trade else '0%',
+                'add_on': '仅在浮盈后追加',
+                'max': '遵守级别上限',
+                'pyramid_rule': {
+                    'model': 'positive_pyramid',
+                    'add_step_rules': [
+                        '第一次加仓 <= 起手仓位 100%',
+                        '第二次加仓 <= 第一次加仓 50%',
+                        '第三次加仓 <= 第二次加仓 50%',
+                    ],
+                },
+            },
             't_trade_rule': {
-                'mode': 'positive_only' if bias == 'bullish' and can_trade else 'wait',
-                'requires_valid_breakthrough': breakthrough.get('is_valid') is True,
-                'requires_ma_alignment': moving_averages.get('price_vs_ma55') == 'above',
-                'phase': phase.get('code'),
+                'mode': t_mode,
+                'max_quick_take_profit_points': 3,
             },
             'risk_rules': {
                 'stop_loss_basis': 'same_timeframe',
-                'stop_loss_price': stop_price,
-                'stop_loss_reference': stop_reference,
+                'no_timeframe_upcast_after_break': True,
                 'no_left_side_averaging_down': True,
-                'respect_timeframe_cap': True,
+                'right_side_add_only': True,
+                'right_side_add_conditions': ['V型反转', '有效突破MA55', '确认的日线底分型'],
             },
-            'context': {
-                'archetype_primary': archetype.get('primary'),
-                'archetype_confidence': archetype.get('confidence'),
-                'prediction_confidence': prediction.get('confidence'),
-                'support_status': ma_physics.get('support_pressure', {}).get('status') if isinstance(ma_physics, dict) else None,
-            },
+            'take_profit_plan': take_profit_plan,
+            'key_levels': key_levels,
+            'risk_flags': [] if can_trade else ['当前仅满足观察，不满足执行'],
+            'wait_reason': None if can_trade else '等待更明确的回抽确认或突破确认',
         }
     
     def calculate_key_levels(self, df: pd.DataFrame) -> Dict:
@@ -3711,9 +3805,9 @@ class TrinityStockAnalyzer:
             divergence_note=divergence.get('divergence_note', ''),
         )
         latest_confirmed_levels = self._extract_latest_confirmed_levels(prediction)
-        structure['structure_archetype'] = archetype
+        structure['archetype'] = archetype
         structure['execution_phase'] = execution_phase
-        structure['period_execution'] = self._build_period_execution(
+        structure['execution'] = self._build_period_execution(
             level=period_name,
             latest_price=latest_price,
             macd_status=macd_status.get('status'),
