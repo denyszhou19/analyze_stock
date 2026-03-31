@@ -113,6 +113,47 @@ interface StructureTopologySvgProps {
   className?: string;
 }
 
+type PointAnchorRole = 'start' | 'current' | null;
+
+function resolvePointAnchorRole(
+  pointId: string | undefined,
+  explainability?: StructureExplainabilityData | null,
+  pointRole?: StructureExplainabilityData['point_labels'][number]['role']
+): PointAnchorRole {
+  if (!pointId) {
+    return null;
+  }
+  if (pointId === explainability?.current_point_id || pointRole === 'current') {
+    return 'current';
+  }
+  if (pointId === explainability?.structure_start_point_id || pointRole === 'start') {
+    return 'start';
+  }
+  return null;
+}
+
+function getAnchorVisuals(role: Exclude<PointAnchorRole, null>) {
+  if (role === 'start') {
+    return {
+      label: '起点',
+      stroke: '#f59e0b',
+      fill: 'rgba(245, 158, 11, 0.18)',
+      textFill: '#fef3c7',
+      badgeFill: 'rgba(120, 53, 15, 0.9)',
+      badgeStroke: '#f59e0b',
+    };
+  }
+
+  return {
+    label: '当前',
+    stroke: '#38bdf8',
+    fill: 'rgba(56, 189, 248, 0.18)',
+    textFill: '#e0f2fe',
+    badgeFill: 'rgba(8, 47, 73, 0.92)',
+    badgeStroke: '#38bdf8',
+  };
+}
+
 export function StructureTopologySvg({
   payload,
   explainability = null,
@@ -186,18 +227,63 @@ export function StructureTopologySvg({
 
       {points.map((point) => (
         <g key={point.sequence}>
-          {point.point_id && pointLabelMap.get(point.point_id)?.label ? (
-            <text
-              x={point.x}
-              y={point.y - 12}
-              textAnchor="middle"
-              fill={point.point_id === explainability?.current_point_id ? '#f8fafc' : '#cbd5e1'}
-              fontSize="9"
-              fontWeight="700"
-            >
-              {pointLabelMap.get(point.point_id)?.label}
-            </text>
-          ) : null}
+          {(() => {
+            const pointLabel = point.point_id ? pointLabelMap.get(point.point_id) : undefined;
+            const anchorRole = resolvePointAnchorRole(point.point_id, explainability, pointLabel?.role);
+            const anchorVisuals = anchorRole ? getAnchorVisuals(anchorRole) : null;
+            const badgeWidth = anchorVisuals ? (anchorRole === 'current' ? 34 : 30) : 0;
+            const badgeHeight = 16;
+            const badgeY = Math.max(8, point.y - 34);
+
+            return (
+              <>
+                {anchorVisuals ? (
+                  <g data-point-role={anchorRole}>
+                    <circle
+                      cx={point.x}
+                      cy={point.y}
+                      r={point.marker_radius + 5}
+                      fill={anchorVisuals.fill}
+                      stroke={anchorVisuals.stroke}
+                      strokeWidth={1.5}
+                    />
+                    <rect
+                      x={point.x - badgeWidth / 2}
+                      y={badgeY}
+                      width={badgeWidth}
+                      height={badgeHeight}
+                      rx={badgeHeight / 2}
+                      fill={anchorVisuals.badgeFill}
+                      stroke={anchorVisuals.badgeStroke}
+                      strokeWidth={1}
+                    />
+                    <text
+                      x={point.x}
+                      y={badgeY + 11}
+                      textAnchor="middle"
+                      fill={anchorVisuals.textFill}
+                      fontSize="8"
+                      fontWeight="700"
+                    >
+                      {anchorVisuals.label}
+                    </text>
+                  </g>
+                ) : null}
+                {point.point_id && pointLabel?.label ? (
+                  <text
+                    x={point.x}
+                    y={point.y - 12}
+                    textAnchor="middle"
+                    fill={anchorRole === 'current' ? '#f8fafc' : '#cbd5e1'}
+                    fontSize="9"
+                    fontWeight="700"
+                  >
+                    {pointLabel.label}
+                  </text>
+                ) : null}
+              </>
+            );
+          })()}
           <rect
             x={point.label_x - point.label_box_width / 2}
             y={point.label_y - 8}
