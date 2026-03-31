@@ -4304,6 +4304,10 @@ class TrinityStockAnalyzer:
             decision['decision_type'] = '观望'
             decision['analysis'] = f"当前以持仓跟随为主。{rationale}"
             decision['action_hint'] = '维持仓位，等待更清晰的加减仓触发'
+        elif action == 'wait':
+            decision['decision_type'] = '观望'
+            decision['analysis'] = f"当前执行总线要求继续等待。{rationale}"
+            decision['action_hint'] = '等待执行总线触发信号后再行动'
         else:
             if extremely_strong and ma55_confirmed:
                 decision['decision_type'] = '加仓'

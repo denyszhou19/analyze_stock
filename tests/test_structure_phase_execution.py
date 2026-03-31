@@ -329,6 +329,51 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertEqual(decision['take_profit_plan']['model'], 'inverted_pyramid')
         self.assertIn('时空共振', ' '.join(decision['confirmation']))
 
+    def test_analyze_trading_decision_keeps_wait_action_as_stable_observe_decision(self) -> None:
+        results = {
+            'daily': {
+                'macd': {'status': '强'},
+                'moving_averages': {'price_vs_ma55': 'above'},
+                'structure': {
+                    'execution': {
+                        'can_trade': False,
+                        'action': 'wait',
+                        'direction': 'neutral',
+                        'setup_quality': 'avoid',
+                        'rationale': '等待日线级别触发条件完成',
+                        'timing_timeframe': 'daily',
+                        'timeframe_cap_ratio': 0.5,
+                        'trigger': ['等待确认性触发'],
+                        'invalidation': ['原建仓级别失效立即退出'],
+                        'confirmation': ['次级别结构继续共振'],
+                        'position_sizing': {'initial': '0%'},
+                        't_trade_rule': {'mode': 'positive_only'},
+                        'risk_rules': {'stop_loss_basis': 'same_timeframe'},
+                        'take_profit_plan': {'model': 'none'},
+                        'key_levels': [],
+                        'risk_flags': ['当前仅满足观察，不满足执行'],
+                        'wait_reason': '等待回抽确认后再执行',
+                    },
+                },
+            },
+            'weekly': {'macd': {'status': '强'}},
+            'hour60': {'moving_averages': {'price_vs_ma55': 'above'}},
+            'hour30': {'macd': {'top_divergence': False}},
+            'hour15': {'macd': {'top_divergence': False}},
+            'nesting_analysis': {},
+        }
+
+        decision = self.analyzer.analyze_trading_decision(
+            results,
+            spacetime_confirmation={'spacetime_resonance': False},
+        )
+
+        self.assertEqual(decision['action'], 'wait')
+        self.assertEqual(decision['decision_type'], '观望')
+        self.assertEqual(decision['action_hint'], '等待执行总线触发信号后再行动')
+        self.assertNotEqual(decision['decision_type'], '做T')
+        self.assertNotIn('适合正T', decision['analysis'])
+
 
 if __name__ == '__main__':
     unittest.main()
