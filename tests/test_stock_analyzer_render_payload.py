@@ -259,6 +259,50 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertTrue(all(item["role"] in allowed_point_roles for item in explainability["point_labels"]))
         self.assertTrue(all(item["role"] in allowed_segment_roles for item in explainability["segment_labels"]))
 
+    def test_build_structure_explainability_uses_live_for_unconfirmed_tail(self) -> None:
+        line_geometry = {
+            "price_range": {"min": 10.0, "max": 14.0, "range": 4.0},
+            "points": [
+                {"sequence": 0, "price": 10.0, "date": "2024-01-01", "type": "bottom", "role": "from"},
+                {"sequence": 1, "price": 13.0, "date": "2024-01-02", "type": "top", "role": "to"},
+                {"sequence": 2, "price": 11.0, "date": "2024-01-03", "type": "bottom", "role": "to"},
+                {
+                    "sequence": 3,
+                    "price": 12.4,
+                    "date": "2024-01-04",
+                    "type": "current",
+                    "role": "to",
+                    "is_current": True,
+                },
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "direction": "上涨", "length": 1},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "direction": "下跌", "length": 1},
+                {
+                    "sequence": 2,
+                    "from_point": 2,
+                    "to_point": 3,
+                    "direction": "上涨",
+                    "length": 1,
+                    "is_current": True,
+                },
+            ],
+            "point_count": 4,
+            "segment_count": 3,
+        }
+
+        labeled_geometry, explainability = self.analyzer._build_structure_explainability(
+            "D三段式",
+            line_geometry,
+            {"current_stage": "d3拐点", "next_stage": "d4拐点"},
+            peak_analysis={},
+        )
+
+        self.assertEqual(labeled_geometry["points"][-1]["point_id"], "live")
+        self.assertEqual(explainability["current_point_id"], "d3")
+        self.assertEqual(explainability["current_segment"]["label"], "d3→live")
+        self.assertEqual(explainability["next_segment_preview"]["to_point_id"], "d4")
+
     def test_build_structure_explainability_limits_visible_labels_for_complex_structure(self) -> None:
         line_geometry = {
             "price_range": {"min": 8.0, "max": 12.0, "range": 4.0},
