@@ -1975,6 +1975,7 @@ class TrinityStockAnalyzer:
             'inflection_points': 0,
             'segment_count': 0,
             'description': '',
+            'interpretation': {},
             'structure_details': {
                 'top_fractals': [],
                 'bottom_fractals': [],
@@ -2675,7 +2676,10 @@ class TrinityStockAnalyzer:
 
         labeled_points: List[Dict[str, Any]] = []
         for idx, point in enumerate(points):
-            if prefix and idx >= start_index:
+            is_live_point = bool(point.get('is_current'))
+            if is_live_point:
+                point_id = 'live'
+            elif prefix and idx >= start_index:
                 point_id = f'{prefix}{idx - start_index + 1}'
             else:
                 point_id = f'p{idx + 1}'
@@ -2706,6 +2710,12 @@ class TrinityStockAnalyzer:
         }
 
         point_ids = [point['point_id'] for point in labeled_points]
+        live_point = next((point for point in labeled_points if point['point_id'] == 'live'), None)
+        last_confirmed_point = None
+        if live_point:
+            live_index = labeled_points.index(live_point)
+            if live_index > 0:
+                last_confirmed_point = labeled_points[live_index - 1]
         prediction_data = prediction if isinstance(prediction, dict) else {}
         current_point_id = self._extract_stage_point_id(
             prediction_data.get('current_stage', ''),
@@ -2713,9 +2723,13 @@ class TrinityStockAnalyzer:
             point_ids
         )
         used_current_fallback = False
-        if current_point_id is None and point_ids:
-            current_point_id = point_ids[-1]
-            used_current_fallback = True
+        if current_point_id is None:
+            if last_confirmed_point:
+                current_point_id = last_confirmed_point['point_id']
+                used_current_fallback = True
+            elif point_ids:
+                current_point_id = point_ids[-1]
+                used_current_fallback = True
 
         next_point_id = self._extract_stage_point_id(
             prediction_data.get('next_stage', ''),
@@ -2743,7 +2757,13 @@ class TrinityStockAnalyzer:
         point_index_map = {point['point_id']: idx for idx, point in enumerate(labeled_points)}
 
         current_segment = None
-        if current_point_id and current_point_id in point_index_map:
+        if live_point and last_confirmed_point and current_point_id == last_confirmed_point['point_id']:
+            current_segment = {
+                'from_point_id': current_point_id,
+                'to_point_id': 'live',
+                'label': f'{current_point_id}→live',
+            }
+        elif current_point_id and current_point_id in point_index_map:
             current_idx = point_index_map[current_point_id]
             if current_idx > 0:
                 is_crossing_left_context = prefix and (current_idx - 1) < start_index
@@ -2782,6 +2802,8 @@ class TrinityStockAnalyzer:
             role = 'normal'
             if point['point_id'] == current_point_id:
                 role = 'current'
+            elif point['point_id'] == 'live':
+                role = 'projected'
             elif idx == start_index:
                 role = 'start'
 
@@ -2860,6 +2882,274 @@ class TrinityStockAnalyzer:
             'display_reason': display_reason
         }
         return labeled_geometry, explainability
+
+    def _build_macro_background(
+        self,
+        moving_averages: Dict[str, Any],
+        trend_direction: str,
+        points: List[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Build a large-scale context bias separate from the focused leg direction."""
+        price_vs_ma55 = moving_averages.get('price_vs_ma55')
+        price_vs_ma233 = moving_averages.get('price_vs_ma233')
+        ma_status = moving_averages.get('ma_status')
+
+        if price_vs_ma55 == 'above' and price_vs_ma233 == 'above' and ma_status == '多头排列':
+            return {
+                'direction': 'bullish',
+                'label': '偏多',
+                'confidence': 'high',
+                'basis': ['价格在 MA55 / MA233 上方', 'MA55 高于 MA233'],
+            }
+        if price_vs_ma55 == 'below' and price_vs_ma233 == 'below' and ma_status == '空头排列':
+            return {
+                'direction': 'bearish',
+                'label': '偏空',
+                'confidence': 'high',
+                'basis': ['价格在 MA55 / MA233 下方', 'MA55 低于 MA233'],
+            }
+        if trend_direction == '震荡':
+            return {
+                'direction': 'range',
+                'label': '整理',
+                'confidence': 'medium',
+                'basis': ['均线与结构方向未完全同向'],
+            }
+
+        swing_basis = '最近骨架仍偏多' if trend_direction == '上涨' else '最近骨架仍偏空'
+        return {
+            'direction': 'mixed',
+            'label': '混合',
+            'confidence': 'medium',
+            'basis': ['均线与结构方向未完全同向', swing_basis],
+        }
+
+    def _resolve_focus_structure_maturity(
+        self,
+        structure_type: str,
+        prediction: Dict[str, Any],
+        point_ids: List[str],
+        has_live_tail: bool
+    ) -> str:
+        """Resolve interpretation maturity from confirmed points and live-tail state."""
+        confirmed_point_count = len([point_id for point_id in point_ids if point_id and point_id != 'live'])
+        if has_live_tail:
+            return 'developing'
+        if structure_type == 'D三段式' and confirmed_point_count >= 4:
+            return 'confirmed'
+        if structure_type in ('A五段式', 'C单平台式') and confirmed_point_count >= 6:
+            return 'confirmed'
+        if structure_type == 'B双平台式' and confirmed_point_count >= 10:
+            return 'confirmed'
+        return 'candidate'
+
+    def _build_scenario_paths(
+        self,
+        structure_type: str,
+        labeled_points: List[Dict[str, Any]],
+        peak_analysis: Optional[Dict[str, Any]]
+    ) -> List[Dict[str, Any]]:
+        """Build compact re-judgment scenarios for UI and AI consumers."""
+        confirmed_points = [point for point in labeled_points if point.get('point_id') != 'live']
+        last_confirmed = confirmed_points[-1] if confirmed_points else None
+        start_confirmed = confirmed_points[0] if confirmed_points else None
+        upper_ref = last_confirmed.get('price') if last_confirmed else None
+        lower_ref = min(
+            (float(point.get('price')) for point in confirmed_points if point.get('price') is not None),
+            default=None,
+        )
+
+        if structure_type in ('B双平台式', 'C单平台式'):
+            upper_text = f'{upper_ref:.2f}' if isinstance(upper_ref, (int, float)) else '关键上沿'
+            lower_text = f'{lower_ref:.2f}' if isinstance(lower_ref, (int, float)) else '关键下沿'
+            return [
+                {
+                    'code': 'up_break',
+                    'label': '上破上沿',
+                    'trigger': f'有效突破 {upper_text}',
+                    'effect': '平台向上突破，可能升级为推进结构',
+                },
+                {
+                    'code': 'down_break',
+                    'label': '下破下沿',
+                    'trigger': f'有效跌破 {lower_text}',
+                    'effect': '平台破坏，转入下行延续或更弱结构',
+                },
+            ]
+
+        if structure_type == 'A五段式':
+            upper_text = f'{upper_ref:.2f}' if isinstance(upper_ref, (int, float)) else '关键高点'
+            lower_text = (
+                f'{start_confirmed.get("price"):.2f}'
+                if start_confirmed and isinstance(start_confirmed.get('price'), (int, float))
+                else '关键低点'
+            )
+            return [
+                {
+                    'code': 'trend_continue',
+                    'label': '延续推进',
+                    'trigger': f'重新站稳并突破 {upper_text}',
+                    'effect': '趋势推进继续，保持 A 原型',
+                },
+                {
+                    'code': 'trend_fail',
+                    'label': '推进失效',
+                    'trigger': f'跌破 {lower_text} 附近关键支撑',
+                    'effect': '推进原型失效，可能降级为平台或复杂结构',
+                },
+            ]
+
+        if structure_type == 'D三段式':
+            upper_text = f'{upper_ref:.2f}' if isinstance(upper_ref, (int, float)) else '关键终点'
+            return [
+                {
+                    'code': 'd_complete',
+                    'label': '完成确认',
+                    'trigger': f'确认新的 d4 / 终点并观察 {upper_text}',
+                    'effect': '最小完整结构确认，等待后续结构承接',
+                },
+                {
+                    'code': 'd_extend',
+                    'label': '继续扩展',
+                    'trigger': '终点未确认且继续扩展',
+                    'effect': 'D 原型可能升级为更大平台或推进结构',
+                },
+            ]
+
+        return [
+            {
+                'code': 'continue',
+                'label': '继续观察',
+                'trigger': '等待下一确认拐点',
+                'effect': '继续按当前原型跟踪',
+            },
+            {
+                'code': 'rejudge',
+                'label': '改判',
+                'trigger': '关键阈值被突破或跌破',
+                'effect': '原型需要重新判断',
+            },
+        ]
+
+    def _build_structure_interpretation(
+        self,
+        structure_type: str,
+        trend_direction: str,
+        explanation: Dict[str, Any],
+        prediction: Dict[str, Any],
+        moving_averages: Dict[str, Any],
+        peak_analysis: Optional[Dict[str, Any]],
+        labeled_points: List[Dict[str, Any]],
+        valid_range: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Build a stable interpretation layer above raw structure labels."""
+        point_ids = [point.get('point_id') for point in labeled_points]
+        has_live_tail = bool(point_ids and point_ids[-1] == 'live')
+        live_point = labeled_points[-1] if has_live_tail and labeled_points else None
+        last_confirmed = (
+            labeled_points[-2]
+            if has_live_tail and len(labeled_points) >= 2
+            else labeled_points[-1]
+            if labeled_points
+            else None
+        )
+
+        macro_background = self._build_macro_background(moving_averages, trend_direction, labeled_points)
+        structure_family, prefix = self._resolve_structure_family(structure_type)
+        maturity = self._resolve_focus_structure_maturity(
+            structure_type,
+            prediction if isinstance(prediction, dict) else {},
+            point_ids,
+            has_live_tail,
+        )
+
+        focus_mode = 'full_range'
+        if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
+            focus_mode = 'peak_slice_right' if peak_analysis.get('peak_type') == 'mountain_peak' else 'valley_slice_right'
+
+        archetype_label_map = {
+            'A五段式': 'A五段式原型',
+            'B双平台式': 'B双平台原型',
+            'C单平台式': 'C平台原型',
+            'D三段式': 'D三段式原型',
+        }
+        archetype_label = archetype_label_map.get(structure_type, structure_type or '结构原型')
+
+        directional_bias = 'two_way'
+        if structure_type in ('B双平台式', 'C单平台式'):
+            directional_bias = 'range'
+        elif trend_direction == '上涨':
+            directional_bias = 'up'
+        elif trend_direction == '下跌':
+            directional_bias = 'down'
+
+        current_direction = 'unknown'
+        current_leg_label = '待确认'
+        if has_live_tail and live_point and last_confirmed:
+            current_direction = (
+                'down'
+                if float(live_point.get('price', 0.0)) < float(last_confirmed.get('price', 0.0))
+                else 'up'
+            )
+            current_leg_label = f"{last_confirmed.get('point_id')}→live {'下行形成中' if current_direction == 'down' else '上行形成中'}"
+
+        next_stage_text = str((prediction or {}).get('next_stage', '')).lower()
+        target_point_id = None
+        if prefix:
+            match = re.search(rf'{re.escape(prefix)}(\d+)', next_stage_text)
+            if match:
+                target_point_id = f'{prefix}{match.group(1)}'
+        else:
+            match = re.search(r'p(\d+)', next_stage_text)
+            if match:
+                target_point_id = f'p{match.group(1)}'
+
+        start_anchor_point_id = explanation.get('structure_start_point_id')
+        start_anchor = next(
+            (point for point in labeled_points if point.get('point_id') == start_anchor_point_id),
+            None,
+        )
+
+        return {
+            'macro_background': macro_background,
+            'focus_structure': {
+                'focus_mode': focus_mode,
+                'archetype_family': structure_family,
+                'archetype_label': archetype_label,
+                'maturity': maturity,
+                'directional_bias': directional_bias,
+                'summary': (prediction or {}).get('prediction_alert') or structure_type,
+                'start_anchor': {
+                    'point_id': start_anchor_point_id,
+                    'price': start_anchor.get('price') if start_anchor else None,
+                    'date': start_anchor.get('date') if start_anchor else None,
+                    'semantic': 'focus_origin',
+                },
+                'reference_origin': {
+                    'point_id': None,
+                    'price': valid_range.get('start_price'),
+                    'date': valid_range.get('start_date'),
+                    'semantic': 'macro_origin',
+                } if valid_range else None,
+                'display_reason': explanation.get('display_reason', ''),
+            },
+            'current_leg': {
+                'last_confirmed_point_id': last_confirmed.get('point_id') if last_confirmed else None,
+                'live_point_id': 'live' if has_live_tail else None,
+                'from_point_id': last_confirmed.get('point_id') if last_confirmed else None,
+                'to_point_id': 'live' if has_live_tail else None,
+                'direction': current_direction,
+                'status': 'forming' if has_live_tail else 'absent',
+                'label': current_leg_label,
+            },
+            'next_confirmation': {
+                'type': 'pivot',
+                'label': f"等待 {(prediction or {}).get('next_stage')}",
+                'trigger': (prediction or {}).get('prediction_alert') or '等待下一确认拐点',
+                'target_point_id': target_point_id,
+            } if (prediction or {}).get('next_stage') else None,
+            'scenario_paths': self._build_scenario_paths(structure_type, labeled_points, peak_analysis),
+        }
 
     def _resolve_peak_structure_start_point_index(
         self,
@@ -3313,6 +3603,16 @@ class TrinityStockAnalyzer:
         result['structure_details']['line_geometry'] = labeled_geometry
         result['structure_details']['explainability'] = explainability
         result['structure_details']['render_payload'] = self._build_render_payload(labeled_geometry)
+        result['interpretation'] = self._build_structure_interpretation(
+            structure_type=result['structure_type'],
+            trend_direction=result['trend_direction'],
+            explanation=explainability,
+            prediction=prediction,
+            moving_averages=self.analyze_ma_position(recent.iloc[-1]) if len(recent) else {},
+            peak_analysis=peak_analysis,
+            labeled_points=labeled_geometry.get('points', []),
+            valid_range=valid_range_info,
+        )
 
         return result
     
