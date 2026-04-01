@@ -60,6 +60,20 @@ function summarizePeriod(periodData: any, level: string) {
                   trigger: periodData.structure.interpretation.next_confirmation.trigger,
                 })
               : undefined,
+            spacetime_gate: periodData.structure.interpretation.spacetime_gate
+              ? compactRecord({
+                  parent_status: periodData.structure.interpretation.spacetime_gate.parent_status,
+                  allowed_child_structures:
+                    periodData.structure.interpretation.spacetime_gate.allowed_child_structures,
+                  child_structure_match:
+                    periodData.structure.interpretation.spacetime_gate.child_structure_match,
+                  resonance_enabled:
+                    periodData.structure.interpretation.spacetime_gate.resonance_enabled,
+                  wait_reason: periodData.structure.interpretation.spacetime_gate.wait_reason,
+                  required_confirmation:
+                    periodData.structure.interpretation.spacetime_gate.required_confirmation,
+                })
+              : undefined,
             scenario_paths: periodData.structure.interpretation.scenario_paths,
           })
         : undefined,

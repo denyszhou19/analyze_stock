@@ -33,6 +33,12 @@ test('buildStructureExplainabilityViewModel exposes explainability topology and 
       next_confirmation: {
         label: '等待 a5 确认',
       },
+      spacetime_gate: {
+        child_structure_match: false,
+        resonance_enabled: false,
+        wait_reason: '日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作',
+        required_confirmation: '等待 C 结构边界确认',
+      },
       scenario_paths: [
         {
           code: 'up_break',
@@ -71,9 +77,52 @@ test('buildStructureExplainabilityViewModel exposes explainability topology and 
   assert.equal(result.interpretation.maturityLabel, '开展中');
   assert.equal(result.interpretation.currentLegLabel, 'a4→live 上行形成中');
   assert.equal(result.interpretation.nextConfirmationLabel, '等待 a5 确认');
+  assert.equal(result.interpretation.executionStateLabel, '当前级别暂不操作');
+  assert.equal(
+    result.interpretation.waitReason,
+    '日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作'
+  );
+  assert.equal(result.interpretation.requiredConfirmation, '等待 C 结构边界确认');
   assert.deepEqual(result.interpretation.scenarioPathLabels, ['上破前高：重新站上 12.80']);
   assert.equal(result.archetype.primaryLabel, 'A五段式');
   assert.deepEqual(result.archetype.alternativeLabels, ['C单平台式']);
+});
+
+test('buildStructureExplainabilityViewModel exposes live and last confirmed labels separately', () => {
+  const result = buildStructureExplainabilityViewModel({
+    interpretation: {
+      current_leg: {
+        label: '164.6→150.8 下行进行中',
+        from_point_id: 'c5',
+        to_point_id: 'live',
+      },
+      next_confirmation: {
+        label: '等待 c6 拐点',
+      },
+      focus_structure: {
+        archetype_label: 'C平台原型',
+        maturity: 'developing',
+        start_anchor: {
+          point_id: 'c1',
+          price: 181.9,
+          date: '2026-03-01',
+        },
+      },
+    },
+    structure_details: {
+      explainability: {
+        current_point_id: 'c5',
+      },
+      prediction: {
+        current_stage: 'c5拐点',
+        next_stage: 'c6拐点',
+      },
+    },
+  });
+
+  assert.equal(result.topology.lastConfirmedLabel, 'c5');
+  assert.equal(result.topology.liveLabel, 'live');
+  assert.equal(result.topology.currentSegmentLabel, '164.6→150.8 下行进行中');
 });
 
 test('buildStructureExplainabilityViewModel falls back to prediction text when explainability is absent', () => {

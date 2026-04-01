@@ -59,12 +59,25 @@ export interface StructureInterpretationScenarioPath {
   effect?: string | null;
 }
 
+export interface StructureInterpretationSpacetimeGate {
+  parent_status?: string | null;
+  allowed_child_structures?: string[] | null;
+  child_structure_family?: string | null;
+  child_structure_match?: boolean | null;
+  resonance_enabled?: boolean | null;
+  structure_readiness?: string | null;
+  wait_reason?: string | null;
+  required_confirmation?: string | null;
+  explanation?: string | null;
+}
+
 export interface StructureInterpretation {
   macro_background?: StructureInterpretationMacroBackground | null;
   focus_structure?: StructureInterpretationFocusStructure | null;
   current_leg?: StructureInterpretationCurrentLeg | null;
   next_confirmation?: StructureInterpretationNextConfirmation | null;
   scenario_paths?: StructureInterpretationScenarioPath[] | null;
+  spacetime_gate?: StructureInterpretationSpacetimeGate | null;
 }
 
 export interface StructureArchetype {

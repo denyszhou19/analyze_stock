@@ -140,7 +140,7 @@ test('buildProjectedSegmentOverlay returns null when preview segment already exi
   assert.equal(buildProjectedSegmentOverlay(payload, explainability), null);
 });
 
-test('StructureTopologySvg renders in-chart start and current anchor markers from explainability fields', async () => {
+test('StructureTopologySvg renders lightweight anchor rings without sticker text', async () => {
   const { StructureTopologySvg } = await importStructureTopologySvg();
 
   const html = renderQuietly(
@@ -281,15 +281,16 @@ test('StructureTopologySvg renders in-chart start and current anchor markers fro
         structure_family: 'A',
         structure_start_point_id: 'a1',
         current_point_id: 'a3',
+        live_point_id: 'live',
         current_segment: {
           from_point_id: 'a2',
-          to_point_id: 'a3',
-          label: 'a2→a3',
+          to_point_id: 'live',
+          label: 'a2→live',
         },
         next_segment_preview: null,
         point_labels: [
           { point_id: 'a1', label: 'a1', role: 'start' },
-          { point_id: 'a3', label: 'a3', role: 'current' },
+          { point_id: 'a3', label: 'a3', role: 'last_confirmed' },
         ],
         segment_labels: [],
         display_reason: '起点与当前点应在图中直接标出',
@@ -298,7 +299,8 @@ test('StructureTopologySvg renders in-chart start and current anchor markers fro
   );
 
   assert.match(html, /data-point-role="start"/);
-  assert.match(html, /data-point-role="current"/);
-  assert.match(html, />起点</);
-  assert.match(html, />当前</);
+  assert.match(html, /data-point-role="live"/);
+  assert.doesNotMatch(html, />起点</);
+  assert.doesNotMatch(html, />当前</);
+  assert.doesNotMatch(html, />live</);
 });

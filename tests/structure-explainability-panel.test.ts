@@ -154,6 +154,8 @@ test('StructureExplainabilityPanel renders visible topology summary blocks and s
           },
           current_leg: {
             label: 'a4→live 上行形成中',
+            from_point_id: 'a4',
+            to_point_id: 'live',
             direction: 'up',
             status: 'forming',
           },
@@ -161,6 +163,12 @@ test('StructureExplainabilityPanel renders visible topology summary blocks and s
             label: '等待 a5 确认',
             type: 'pivot',
             trigger: '等待新的确认拐点',
+          },
+          spacetime_gate: {
+            child_structure_match: false,
+            resonance_enabled: false,
+            wait_reason: '日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作',
+            required_confirmation: '等待 C 结构边界确认',
           },
           scenario_paths: [
             {
@@ -248,29 +256,32 @@ test('StructureExplainabilityPanel renders visible topology summary blocks and s
     })
   );
 
-  assert.match(html, /当前阶段/);
-  assert.match(html, /执行建议/);
-  assert.match(html, /结构原型/);
+  assert.match(html, /当前级别暂不操作/);
+  assert.match(html, /日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作/);
   assert.match(html, /背景 偏多/);
-  assert.match(html, /当前段 a4→live 上行形成中/);
-  assert.match(html, /背景/);
-  assert.match(html, /结构起点/);
-  assert.match(html, /当前段/);
+  assert.match(html, /原型 A五段式原型/);
+  assert.match(html, /成熟度 开展中/);
+  assert.match(html, /聚焦起点/);
+  assert.match(html, /最后确认点/);
+  assert.match(html, /进行中点/);
   assert.match(html, /下一确认/);
-  assert.match(html, /偏多/);
-  assert.match(html, /A五段式原型/);
-  assert.match(html, /开展中/);
-  assert.match(html, /a4→live 上行形成中/);
+  assert.match(html, /a4/);
+  assert.match(html, /进行中/);
   assert.match(html, /等待 a5 确认/);
   assert.match(html, /a1 @ 10.50/);
-  assert.match(html, /参考原点 2026-02-10 @ 9.80/);
+  assert.match(html, /2026-02-10 @ 9.80/);
   assert.match(html, /改判路径/);
   assert.match(html, /上破前高/);
   assert.match(html, /跌破回抽低点/);
-  assert.match(html, /prediction/);
-  assert.match(html, /peak_analysis/);
-  assert.match(html, /left_structure_warning/);
-  assert.match(html, /judgment_criteria/);
+  assert.match(html, /预测提示/);
+  assert.match(html, /峰值分析/);
+  assert.match(html, /左侧结构提醒/);
+  assert.match(html, /判定标准/);
+  assert.doesNotMatch(html, /scenario_paths/);
+  assert.doesNotMatch(html, /prediction/);
+  assert.doesNotMatch(html, /peak_analysis/);
+  assert.doesNotMatch(html, /left_structure_warning/);
+  assert.doesNotMatch(html, /judgment_criteria/);
   assert.match(html, /data-has-payload="true"/);
   assert.match(html, /data-has-explainability="true"/);
   assert.doesNotMatch(html, /trend-上涨/);

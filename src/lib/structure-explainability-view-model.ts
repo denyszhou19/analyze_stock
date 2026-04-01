@@ -4,6 +4,8 @@ export interface StructureExplainabilityViewModel {
     startLabel: string | null;
     startMetaLabel: string | null;
     currentLabel: string | null;
+    lastConfirmedLabel: string | null;
+    liveLabel: string | null;
     currentSegmentLabel: string | null;
     nextSegmentLabel: string | null;
     displayReason: string | null;
@@ -15,6 +17,9 @@ export interface StructureExplainabilityViewModel {
     maturityLabel: string | null;
     currentLegLabel: string | null;
     nextConfirmationLabel: string | null;
+    executionStateLabel: string | null;
+    waitReason: string | null;
+    requiredConfirmation: string | null;
     scenarioPathLabels: string[];
     displayReason: string | null;
   };
@@ -63,9 +68,17 @@ interface StructureInterpretationSummary {
   } | null;
   current_leg?: {
     label?: string | null;
+    from_point_id?: string | null;
+    to_point_id?: string | null;
   } | null;
   next_confirmation?: {
     label?: string | null;
+  } | null;
+  spacetime_gate?: {
+    child_structure_match?: boolean | null;
+    resonance_enabled?: boolean | null;
+    wait_reason?: string | null;
+    required_confirmation?: string | null;
   } | null;
   scenario_paths?: Array<{
     label?: string | null;
@@ -184,6 +197,19 @@ function formatScenarioPathLabel(path?: {
   return path.label;
 }
 
+function inferLiveLabel(currentLeg?: {
+  label?: string | null;
+  to_point_id?: string | null;
+} | null): string | null {
+  if (currentLeg?.to_point_id) {
+    return currentLeg.to_point_id;
+  }
+  if ((currentLeg?.label ?? '').includes('live')) {
+    return 'live';
+  }
+  return null;
+}
+
 export function buildStructureExplainabilityViewModel(
   structure?: StructureExplainabilityInput
 ): StructureExplainabilityViewModel {
@@ -197,6 +223,7 @@ export function buildStructureExplainabilityViewModel(
   const interpretationDisplayReason = interpretation?.focus_structure?.display_reason ?? null;
   const interpretationCurrentLegLabel = interpretation?.current_leg?.label ?? null;
   const interpretationNextConfirmationLabel = interpretation?.next_confirmation?.label ?? null;
+  const interpretationGate = interpretation?.spacetime_gate ?? null;
   const scenarioPathLabels = Array.isArray(interpretation?.scenario_paths)
     ? interpretation.scenario_paths
         .map((path) => formatScenarioPathLabel(path))
@@ -219,6 +246,9 @@ export function buildStructureExplainabilityViewModel(
       startLabel: startAnchorLabel ?? explainability?.structure_start_point_id ?? null,
       startMetaLabel: referenceOriginLabel,
       currentLabel: explainability?.current_point_id ?? null,
+      lastConfirmedLabel:
+        interpretation?.current_leg?.from_point_id ?? explainability?.current_point_id ?? null,
+      liveLabel: inferLiveLabel(interpretation?.current_leg),
       currentSegmentLabel:
         interpretationCurrentLegLabel ?? explainability?.current_segment?.label ?? null,
       nextSegmentLabel:
@@ -232,6 +262,14 @@ export function buildStructureExplainabilityViewModel(
       maturityLabel: mapMaturityToChineseLabel(interpretation?.focus_structure?.maturity),
       currentLegLabel: interpretationCurrentLegLabel,
       nextConfirmationLabel: interpretationNextConfirmationLabel,
+      executionStateLabel:
+        interpretationGate?.resonance_enabled === null || interpretationGate?.resonance_enabled === undefined
+          ? null
+          : interpretationGate.resonance_enabled
+            ? '结构共振已成立'
+            : '当前级别暂不操作',
+      waitReason: interpretationGate?.wait_reason ?? null,
+      requiredConfirmation: interpretationGate?.required_confirmation ?? null,
       scenarioPathLabels,
       displayReason: interpretationDisplayReason,
     },

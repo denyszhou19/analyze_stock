@@ -69,3 +69,59 @@ class StructureInterpretationModelTest(unittest.TestCase):
 
         self.assertEqual(interpretation['macro_background']['direction'], 'mixed')
         self.assertEqual(interpretation['focus_structure']['archetype_family'], 'A')
+
+    def test_build_structure_interpretation_marks_unmatched_minor_structure_as_wait_state(self) -> None:
+        interpretation = self.analyzer._build_structure_interpretation(
+            structure_type='A五段式',
+            trend_direction='上涨',
+            explanation={'structure_start_point_id': 'a1'},
+            prediction={'current_stage': 'a3拐点', 'next_stage': 'a4拐点'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            peak_analysis=None,
+            labeled_points=[
+                {'point_id': 'a1', 'price': 10.0, 'date': '2024-01-01 00:00'},
+                {'point_id': 'a2', 'price': 12.0, 'date': '2024-01-02 00:00'},
+                {'point_id': 'a3', 'price': 11.0, 'date': '2024-01-03 00:00'},
+                {'point_id': 'live', 'price': 11.8, 'date': '2024-01-04 00:00', 'is_current': True},
+            ],
+            valid_range=None,
+            parent_spacetime_status='中偏强',
+        )
+
+        gate = interpretation['spacetime_gate']
+        self.assertEqual(gate['parent_status'], '中偏强')
+        self.assertEqual(gate['allowed_child_structures'], ['C'])
+        self.assertFalse(gate['child_structure_match'])
+        self.assertFalse(gate['resonance_enabled'])
+        self.assertIn('暂不操作', gate['wait_reason'])
+
+    def test_build_structure_interpretation_degrades_unclear_structure_to_complex_wait_state(self) -> None:
+        interpretation = self.analyzer._build_structure_interpretation(
+            structure_type='复杂结构',
+            trend_direction='上涨',
+            explanation={'structure_start_point_id': 'p1'},
+            prediction={'current_stage': '第3个拐点', 'next_stage': '方向选择'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            peak_analysis=None,
+            labeled_points=[
+                {'point_id': 'p1', 'price': 10.0, 'date': '2024-01-01 00:00'},
+                {'point_id': 'p2', 'price': 12.0, 'date': '2024-01-02 00:00'},
+                {'point_id': 'live', 'price': 11.5, 'date': '2024-01-03 00:00', 'is_current': True},
+            ],
+            valid_range=None,
+            parent_spacetime_status='强',
+        )
+
+        gate = interpretation['spacetime_gate']
+        self.assertEqual(interpretation['focus_structure']['archetype_family'], 'complex')
+        self.assertFalse(gate['resonance_enabled'])
+        self.assertEqual(gate['structure_readiness'], 'complex')
+        self.assertIn('等待', gate['required_confirmation'])

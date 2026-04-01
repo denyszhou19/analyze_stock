@@ -29,6 +29,12 @@ interface ExecutionData {
   wait_reason?: string | null;
 }
 
+interface InterpretationData {
+  spacetime_gate?: {
+    wait_reason?: string | null;
+  } | null;
+}
+
 interface ArchetypeData {
   primary?: string | null;
   reason?: string | null;
@@ -39,6 +45,7 @@ interface ExecutionSummaryInput {
     structure_type?: string | null;
     execution_phase?: ExecutionPhaseData | null;
     execution?: ExecutionData | null;
+    interpretation?: InterpretationData | null;
     archetype?: ArchetypeData | null;
   } | null;
 }
@@ -72,6 +79,7 @@ export function buildExecutionSummary(periodData?: ExecutionSummaryInput | null)
   const structure = periodData?.structure;
   const execution = structure?.execution;
   const archetype = structure?.archetype;
+  const gateWaitReason = structure?.interpretation?.spacetime_gate?.wait_reason ?? null;
 
   return {
     phaseLabel: structure?.execution_phase?.label ?? null,
@@ -79,7 +87,7 @@ export function buildExecutionSummary(periodData?: ExecutionSummaryInput | null)
     actionLabel: execution?.action ? (ACTION_LABELS[execution.action] ?? execution.action) : null,
     setupQuality: execution?.setup_quality ?? null,
     timeframeCapLabel: formatTimeframeCap(execution?.timeframe_cap_ratio),
-    executionReason: execution?.wait_reason ?? execution?.rationale ?? null,
+    executionReason: gateWaitReason ?? execution?.wait_reason ?? execution?.rationale ?? null,
     archetypeLabel: archetype?.primary ?? structure?.structure_type ?? null,
     archetypeReason: archetype?.reason ?? null,
   };

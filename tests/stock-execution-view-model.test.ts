@@ -32,6 +32,12 @@ test('buildExecutionSummary falls back to structure_type when archetype is missi
   const result = buildExecutionSummary({
     structure: {
       structure_type: '复杂结构',
+      interpretation: {
+        spacetime_gate: {
+          resonance_enabled: false,
+          wait_reason: '等待匹配结构，不做触发',
+        },
+      },
       execution_phase: {
         label: '等待触发',
       },
@@ -44,6 +50,7 @@ test('buildExecutionSummary falls back to structure_type when archetype is missi
 
   assert.equal(result.archetypeLabel, '复杂结构');
   assert.equal(result.actionLabel, '等待');
+  assert.equal(result.executionReason, '等待匹配结构，不做触发');
 });
 
 test('formatTimeframeCap renders one-third cap as最多补仓 1/3', () => {

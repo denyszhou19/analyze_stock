@@ -47,6 +47,16 @@ const sampleAnalysisData = {
         inflection_points: 11,
         segment_count: 10,
         description: '周线整理',
+        interpretation: {
+          spacetime_gate: {
+            parent_status: null,
+            allowed_child_structures: [],
+            child_structure_match: null,
+            resonance_enabled: null,
+            wait_reason: null,
+            required_confirmation: null,
+          },
+        },
         structure_details: {
           prediction: {
             current_stage: 'c3',
@@ -150,6 +160,45 @@ const sampleAnalysisData = {
           risk_flags: [],
           wait_reason: null,
         },
+        interpretation: {
+          macro_background: {
+            label: '偏多',
+            direction: 'bullish',
+            basis: ['价格在 MA55 / MA233 上方', 'MA55 高于 MA233'],
+          },
+          focus_structure: {
+            archetype_label: 'A五段式原型',
+            maturity: 'developing',
+            directional_bias: 'up',
+            summary: '当前可能处于上涨中的修正段',
+          },
+          current_leg: {
+            label: 'a3→live 下行形成中',
+            direction: 'down',
+            status: 'forming',
+          },
+          next_confirmation: {
+            label: '等待 a4 拐点',
+            type: 'pivot',
+            trigger: '等待新的确认拐点',
+          },
+          spacetime_gate: {
+            parent_status: '中偏弱',
+            allowed_child_structures: ['C'],
+            child_structure_match: false,
+            resonance_enabled: false,
+            wait_reason: '中偏弱仅接受C结构，当前A原型暂不操作',
+            required_confirmation: '等待匹配结构完成关键确认或重新识别',
+          },
+          scenario_paths: [
+            {
+              code: 'trend_continue',
+              label: '延续推进',
+              trigger: '重新站稳并突破 171.99',
+              effect: '趋势推进继续，保持 A 原型',
+            },
+          ],
+        },
         structure_details: {
           prediction: {
             current_stage: 'a3',
@@ -199,6 +248,37 @@ const sampleAnalysisData = {
         trend_direction: '上涨',
         inflection_points: 9,
         description: '30分钟复杂震荡',
+        interpretation: {
+          macro_background: {
+            label: '偏多',
+            direction: 'bullish',
+          },
+          focus_structure: {
+            archetype_label: '复杂结构',
+            maturity: 'developing',
+            directional_bias: 'two_way',
+            summary: '接近方向选择位',
+          },
+          current_leg: {
+            label: 'p3→live 震荡进行中',
+            direction: 'down',
+            status: 'forming',
+          },
+          next_confirmation: {
+            label: '等待方向选择',
+            type: 'direction_choice',
+            trigger: '等待方向确认',
+          },
+          spacetime_gate: {
+            parent_status: '中偏弱',
+            allowed_child_structures: ['C'],
+            child_structure_match: false,
+            resonance_enabled: false,
+            wait_reason: '中偏弱背景下当前仍属复杂/未完成结构，暂不操作',
+            required_confirmation: '等待结构明确为标准 A/B/C/D 后再判断',
+          },
+          scenario_paths: [],
+        },
         structure_details: {
           prediction: {
             current_stage: '震荡末端',
@@ -278,6 +358,14 @@ test('buildAiDecisionPayload keeps strategy-critical summaries and trims heavy s
   assert.deepEqual(result.key_alerts, ['【weekly】周线提醒', '【daily】日线提醒', '【hour30】30分钟提醒']);
 
   assert.equal(result.periods?.daily?.macd?.status, '中偏弱');
+  assert.equal(
+    result.periods?.daily?.structure?.interpretation?.spacetime_gate?.parent_status,
+    '中偏弱'
+  );
+  assert.equal(
+    result.periods?.hour30?.structure?.interpretation?.spacetime_gate?.child_structure_match,
+    false
+  );
   assert.equal(result.periods?.daily?.structure?.type, 'A五段式');
   assert.deepEqual(result.periods?.daily?.structure?.archetype, {
     primary: 'A五段式',

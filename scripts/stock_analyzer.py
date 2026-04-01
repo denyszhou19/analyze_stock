@@ -2924,6 +2924,79 @@ class TrinityStockAnalyzer:
             'basis': ['均线与结构方向未完全同向', swing_basis],
         }
 
+    def _build_spacetime_gate(
+        self,
+        parent_status: Optional[str],
+        structure_type: str,
+        trend_direction: str,
+    ) -> Dict[str, Any]:
+        """Build parent-status gating so lower levels only act on allowed structures."""
+        structure_family, _ = self._resolve_structure_family(structure_type)
+
+        if not parent_status:
+            return {
+                'parent_status': None,
+                'allowed_child_structures': [],
+                'child_structure_family': structure_family,
+                'child_structure_match': None,
+                'resonance_enabled': None,
+                'structure_readiness': 'independent',
+                'wait_reason': None,
+                'required_confirmation': None,
+                'explanation': None,
+            }
+
+        advice = self.generate_operation_advice(
+            major_status=parent_status,
+            minor_structure=structure_family,
+            minor_trend=trend_direction,
+        )
+        matched_structures = advice.get('matched_structures', [])
+        if isinstance(matched_structures, dict):
+            normalized: List[str] = []
+            for key in ('上涨结构', '下跌结构'):
+                for item in matched_structures.get(key, []):
+                    if item not in normalized:
+                        normalized.append(item)
+            matched_structures = normalized
+        elif not isinstance(matched_structures, list):
+            matched_structures = []
+
+        is_complex = structure_family in ('complex', 'unfinished')
+        child_structure_label = (
+            structure_family
+            if structure_family in ('A', 'B', 'C', 'D')
+            else '复杂结构' if structure_family == 'complex' else '未完成结构'
+        )
+        child_structure_match = bool(advice.get('structure_match')) and not is_complex
+        resonance_enabled = child_structure_match
+
+        if is_complex:
+            wait_reason = f'{parent_status}背景下当前仍属复杂/未完成结构，暂不操作'
+            required_confirmation = '等待结构明确为标准 A/B/C/D 后再判断'
+            structure_readiness = 'complex'
+        elif resonance_enabled:
+            wait_reason = None
+            required_confirmation = None
+            structure_readiness = 'matched'
+        else:
+            expected = '、'.join(matched_structures) if matched_structures else '匹配结构'
+            wait_reason = f'{parent_status}仅接受{expected}结构，当前{child_structure_label}原型暂不操作'
+            required_confirmation = '等待匹配结构完成关键确认或重新识别'
+            structure_readiness = 'unmatched'
+
+        return {
+            'parent_status': parent_status,
+            'allowed_child_structures': matched_structures,
+            'child_structure_family': structure_family,
+            'child_structure_match': child_structure_match,
+            'resonance_enabled': resonance_enabled,
+            'structure_readiness': structure_readiness,
+            'wait_reason': wait_reason,
+            'required_confirmation': required_confirmation,
+            'explanation': advice.get('explanation'),
+        }
+
     def _resolve_focus_structure_maturity(
         self,
         structure_type: str,
@@ -3040,7 +3113,8 @@ class TrinityStockAnalyzer:
         moving_averages: Dict[str, Any],
         peak_analysis: Optional[Dict[str, Any]],
         labeled_points: List[Dict[str, Any]],
-        valid_range: Optional[Dict[str, Any]]
+        valid_range: Optional[Dict[str, Any]],
+        parent_spacetime_status: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build a stable interpretation layer above raw structure labels."""
         point_ids = [point.get('point_id') for point in labeled_points]
@@ -3109,6 +3183,11 @@ class TrinityStockAnalyzer:
             (point for point in labeled_points if point.get('point_id') == start_anchor_point_id),
             None,
         )
+        spacetime_gate = self._build_spacetime_gate(
+            parent_status=parent_spacetime_status,
+            structure_type=structure_type,
+            trend_direction=trend_direction,
+        )
 
         return {
             'macro_background': macro_background,
@@ -3149,6 +3228,7 @@ class TrinityStockAnalyzer:
                 'target_point_id': target_point_id,
             } if (prediction or {}).get('next_stage') else None,
             'scenario_paths': self._build_scenario_paths(structure_type, labeled_points, peak_analysis),
+            'spacetime_gate': spacetime_gate,
         }
 
     def _resolve_peak_structure_start_point_index(
@@ -4082,6 +4162,7 @@ class TrinityStockAnalyzer:
         archetype: Dict[str, Any],
         prediction: Dict[str, Any],
         latest_confirmed_levels: List[Dict[str, Any]],
+        spacetime_gate: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, Any]:
         """Build per-period execution constraints for the current timeframe."""
         timeframe_cap_ratio_map = {
@@ -4101,6 +4182,13 @@ class TrinityStockAnalyzer:
         bias = phase.get('bias', 'neutral') if isinstance(phase, dict) else 'neutral'
         phase_code = phase.get('code') if isinstance(phase, dict) else None
         can_trade = bool(phase.get('tradable'))
+        gate_blocks_execution = bool(
+            isinstance(spacetime_gate, dict)
+            and spacetime_gate.get('parent_status')
+            and spacetime_gate.get('resonance_enabled') is False
+        )
+        if gate_blocks_execution:
+            can_trade = False
         if phase_code == 'pullback_confirm' and bias == 'bullish':
             action = 'buy'
         elif phase_code == 'pullback_confirm' and bias == 'bearish':
@@ -4110,6 +4198,8 @@ class TrinityStockAnalyzer:
         elif phase_code == 'trend_continuation' and can_trade:
             action = 'hold'
         else:
+            action = 'wait'
+        if gate_blocks_execution:
             action = 'wait'
 
         stop_reference = latest_confirmed_levels[0] if latest_confirmed_levels else None
@@ -4177,9 +4267,62 @@ class TrinityStockAnalyzer:
             },
             'take_profit_plan': take_profit_plan,
             'key_levels': key_levels,
-            'risk_flags': [] if can_trade else ['当前仅满足观察，不满足执行'],
-            'wait_reason': None if can_trade else '等待更明确的回抽确认或突破确认',
+            'risk_flags': [] if can_trade else (
+                ['当前仅满足观察，不满足执行']
+                + (['时空门控未通过，当前级别暂不操作'] if gate_blocks_execution else [])
+            ),
+            'wait_reason': None if can_trade else (
+                (spacetime_gate or {}).get('wait_reason')
+                or '等待更明确的回抽确认或突破确认'
+            ),
         }
+
+    def _apply_spacetime_gate_to_results(self, results: Dict[str, Any]) -> None:
+        """Inject parent-status gating into per-period interpretation and execution buses."""
+        parent_status_map = {
+            'weekly': None,
+            'daily': ((results.get('weekly') or {}).get('macd') or {}).get('status'),
+            'hour60': ((results.get('daily') or {}).get('macd') or {}).get('status'),
+            'hour30': ((results.get('daily') or {}).get('macd') or {}).get('status'),
+            'hour15': ((results.get('hour60') or {}).get('macd') or {}).get('status'),
+        }
+
+        for level, period_result in results.items():
+            if not isinstance(period_result, dict) or period_result.get('error'):
+                continue
+
+            structure = period_result.get('structure')
+            if not isinstance(structure, dict):
+                continue
+
+            interpretation = structure.get('interpretation')
+            if not isinstance(interpretation, dict):
+                interpretation = {}
+                structure['interpretation'] = interpretation
+
+            gate = self._build_spacetime_gate(
+                parent_status=parent_status_map.get(level),
+                structure_type=structure.get('structure_type'),
+                trend_direction=structure.get('trend_direction'),
+            )
+            interpretation['spacetime_gate'] = gate
+
+            execution = structure.get('execution')
+            if isinstance(execution, dict):
+                gate_blocks_execution = bool(
+                    gate.get('parent_status') and gate.get('resonance_enabled') is False
+                )
+                if gate_blocks_execution:
+                    execution['can_trade'] = False
+                    execution['action'] = 'wait'
+                    execution['setup_quality'] = 'avoid'
+                    execution['entry_style'] = 'wait'
+                    risk_flags = list(execution.get('risk_flags') or [])
+                    if '时空门控未通过，当前级别暂不操作' not in risk_flags:
+                        risk_flags.append('时空门控未通过，当前级别暂不操作')
+                    execution['risk_flags'] = risk_flags
+                if gate.get('wait_reason'):
+                    execution['wait_reason'] = gate.get('wait_reason')
     
     def calculate_key_levels(self, df: pd.DataFrame) -> Dict:
         """
@@ -5088,6 +5231,8 @@ class TrinityStockAnalyzer:
                 
                 # 分析该周期
                 results[level] = self.analyze_single_period(df, level)
+
+            self._apply_spacetime_gate_to_results(results)
             
             # 级别嵌套分析
             nesting = self.analyze_level_nesting(results)
@@ -5251,6 +5396,8 @@ class TrinityStockAnalyzer:
                 freq = self.FREQUENCY_MAP.get(level, 'd')
                 df = self.get_stock_data(code, start_date, end_date, frequency=freq)
                 results[level] = self.analyze_single_period(df, level)
+
+            self._apply_spacetime_gate_to_results(results)
             
             # 级别嵌套分析
             nesting = self.analyze_level_nesting(results)

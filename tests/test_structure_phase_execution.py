@@ -186,6 +186,43 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertAlmostEqual(execution['timeframe_cap_ratio'], 0.25, places=3)
         self.assertIsNotNone(execution['wait_reason'])
 
+    def test_build_period_execution_uses_spacetime_gate_wait_reason_before_generic_wait(self) -> None:
+        execution = self.analyzer._build_period_execution(
+            level='hour30',
+            latest_price=163.35,
+            macd_status='中偏强',
+            moving_averages={'ma_status': '多头排列', 'price_vs_ma55': 'above'},
+            ma_physics={
+                'support_pressure': {},
+                'traction': {},
+                'resonance': {'convergence_strength': '弱'},
+            },
+            breakthrough={
+                'pattern_type': '无突破',
+                'direction': None,
+                'is_valid': False,
+                'confidence': '低',
+            },
+            phase={
+                'code': 'platform_building',
+                'label': '平台整理',
+                'bias': 'neutral',
+                'tradable': False,
+                'maturity': 'mid',
+                'reason': '等待平台确认',
+            },
+            archetype={'primary': 'A五段式', 'confidence': 'medium', 'reason': 'Directional -> Platform'},
+            prediction={'key_price_levels': []},
+            latest_confirmed_levels=[],
+            spacetime_gate={
+                'resonance_enabled': False,
+                'wait_reason': '日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作',
+            },
+        )
+
+        self.assertEqual(execution['action'], 'wait')
+        self.assertEqual(execution['wait_reason'], '日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作')
+
     def test_analyze_single_period_writes_new_structure_field_names(self) -> None:
         df = pd.DataFrame(
             [
