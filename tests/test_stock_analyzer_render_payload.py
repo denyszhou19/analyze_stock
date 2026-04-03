@@ -820,8 +820,11 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertEqual(result["interpretation"]["focus_structure"]["archetype_family"], "complex")
         self.assertIn("raw_classification", result["structure_details"])
         if "raw_classification" in result["structure_details"]:
-            self.assertEqual(result["structure_details"]["raw_classification"]["structure_type"], "A五段式")
-            self.assertEqual(result["structure_details"]["raw_classification"]["trend_direction"], "下跌")
+            raw_classification = result["structure_details"]["raw_classification"]
+            self.assertEqual(raw_classification["type"], "A五段式")
+            self.assertEqual(raw_classification["stage"], "a1-a6拐点区间")
+            self.assertEqual(raw_classification["description"], "旧的标准结构结果")
+            self.assertEqual(raw_classification["component_summary"], ["上涨结构(3笔)", "延伸下跌(13笔)"])
 
     def test_detect_structure_reports_peak_extreme_focus_origin_selection(self) -> None:
         recent, full_strokes, valid_fractals, stroke_list, peak_analysis = (
@@ -875,14 +878,19 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
 
         self.assertIn("focus_origin_analysis", result["structure_details"])
         if "focus_origin_analysis" in result["structure_details"]:
+            focus_origin_analysis = result["structure_details"]["focus_origin_analysis"]
             self.assertEqual(
-                result["structure_details"]["focus_origin_analysis"]["selected_origin_kind"],
+                focus_origin_analysis["selected_origin_kind"],
                 "peak_extreme",
             )
             self.assertEqual(
-                result["structure_details"]["focus_origin_analysis"]["selected_price"],
-                209.9,
+                focus_origin_analysis["selected_point_index"],
+                3,
             )
+        self.assertEqual(
+            result["interpretation"]["focus_structure"]["start_anchor_source"],
+            "peak_extreme",
+        )
 
 
 if __name__ == "__main__":

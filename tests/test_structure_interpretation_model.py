@@ -132,7 +132,7 @@ class StructureInterpretationModelTest(unittest.TestCase):
             trend_direction='下跌',
             explanation={
                 'structure_start_point_id': 'p1',
-                'start_anchor_source': 'peak_extreme',
+                'focus_origin_source': 'peak_extreme',
                 'explainability_status': 'downgraded',
                 'downgrade_reason': '超出标准点数上限，降级为复杂结构等待确认',
             },
