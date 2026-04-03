@@ -3284,19 +3284,114 @@ class TrinityStockAnalyzer:
 
         return to_point
 
+    def _build_focus_origin_analysis(
+        self,
+        valid_range: Optional[Dict[str, Any]],
+        line_geometry: Dict[str, Any],
+        peak_analysis: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Resolve the preferred explainable origin for the current focus structure."""
+        points = list((line_geometry or {}).get('points', []))
+        macro_origin = None
+        candidates: List[Dict[str, Any]] = []
+
+        if isinstance(valid_range, dict):
+            macro_point_index = 0 if points else None
+            macro_origin = {
+                'point_index': macro_point_index,
+                'price': valid_range.get('start_price'),
+                'date': valid_range.get('start_date'),
+                'source': 'valid_range',
+            }
+            candidates.append({
+                'kind': 'macro_origin',
+                'point_index': macro_point_index,
+                'price': valid_range.get('start_price'),
+                'date': valid_range.get('start_date'),
+                'reason': '使用 valid_range 原点作为宏观起点',
+                'selected': False,
+            })
+
+        peak_point_index = self._resolve_peak_structure_start_point_index(line_geometry, peak_analysis)
+        peak_kind = None
+        peak_reason = None
+        if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
+            peak_type = peak_analysis.get('peak_type')
+            if peak_type == 'mountain_peak':
+                peak_kind = 'peak_extreme'
+                peak_reason = '检测到主峰切片，优先从峰值极点开始解释右侧结构'
+            elif peak_type == 'valley_bottom':
+                peak_kind = 'valley_extreme'
+                peak_reason = '检测到主谷切片，优先从谷值极点开始解释右侧结构'
+
+        if peak_kind:
+            peak_point = (
+                points[peak_point_index]
+                if isinstance(peak_point_index, int) and 0 <= peak_point_index < len(points)
+                else {}
+            )
+            candidates.append({
+                'kind': peak_kind,
+                'point_index': peak_point_index,
+                'price': peak_point.get('price', peak_analysis.get('peak_price')),
+                'date': peak_point.get('date'),
+                'reason': peak_reason,
+                'selected': False,
+            })
+
+        selected_origin_kind = 'none'
+        selected_point_index = None
+        explainability_status = 'failed'
+        explainability_reason = '未找到可用的聚焦起点，回退到默认起点'
+
+        for candidate in candidates:
+            if candidate['kind'] in ('peak_extreme', 'valley_extreme') and candidate.get('point_index') is not None:
+                selected_origin_kind = candidate['kind']
+                selected_point_index = candidate['point_index']
+                explainability_status = 'passed'
+                explainability_reason = candidate['reason']
+                candidate['selected'] = True
+                break
+
+        if selected_origin_kind == 'none':
+            for candidate in candidates:
+                if candidate['kind'] == 'macro_origin' and candidate.get('point_index') is not None:
+                    selected_origin_kind = 'macro_origin'
+                    selected_point_index = candidate['point_index']
+                    explainability_status = 'passed'
+                    explainability_reason = candidate['reason']
+                    candidate['selected'] = True
+                    break
+
+        return {
+            'macro_origin': macro_origin,
+            'candidates': candidates,
+            'selected_origin_kind': selected_origin_kind,
+            'selected_point_index': selected_point_index,
+            'explainability_status': explainability_status,
+            'explainability_reason': explainability_reason,
+        }
+
     def _build_structure_focus_context(
         self,
         line_geometry: Dict[str, Any],
+        focus_origin_analysis: Optional[Dict[str, Any]],
         peak_analysis: Optional[Dict[str, Any]],
         confirmed_strokes: List[Dict[str, Any]],
         stroke_list: List[Dict[str, Any]],
         valid_fractals: List[Dict[str, Any]]
     ) -> Dict[str, Any]:
         """统一导出当前聚焦结构上下文，峰值切片时聚焦到右侧结构。"""
-        render_structure_start_point_index = self._resolve_peak_structure_start_point_index(
-            line_geometry,
-            peak_analysis
-        )
+        render_structure_start_point_index = None
+        if isinstance(focus_origin_analysis, dict):
+            selected_point_index = focus_origin_analysis.get('selected_point_index')
+            if isinstance(selected_point_index, int):
+                render_structure_start_point_index = selected_point_index
+        if render_structure_start_point_index is None:
+            render_structure_start_point_index = self._resolve_peak_structure_start_point_index(
+                line_geometry,
+                peak_analysis
+            )
         render_strokes = list(stroke_list or [])
         full_confirmed_strokes = list(confirmed_strokes or [])
         focused_valid_fractals = list(valid_fractals or [])
@@ -3627,15 +3722,31 @@ class TrinityStockAnalyzer:
             result['structure_stage'] = structure_stage
             result['description'] = description
             judgment_criteria.extend(extra_criteria)
+            result['structure_details']['raw_classification'] = {
+                'type': structure_type,
+                'stage': structure_stage,
+                'description': description,
+                'component_summary': [
+                    f"{component.get('type')}({len(component.get('strokes', []))}笔)"
+                    for component in result['structure_details']['macro_components']
+                ],
+            }
         else:
             judgment_criteria.append("⚠️ 聚类算法失败，使用原始笔数判断")
 
         peak_analysis = self._analyze_peak_structure(stroke_list, macro_components)
+        focus_origin_analysis = self._build_focus_origin_analysis(
+            valid_range=valid_range_info,
+            line_geometry=line_geometry,
+            peak_analysis=peak_analysis,
+        )
+        result['structure_details']['focus_origin_analysis'] = focus_origin_analysis
         if peak_analysis['is_peak_structure']:
             self._apply_peak_structure_override(result, peak_analysis, judgment_criteria)
 
         focus_context = self._build_structure_focus_context(
             line_geometry=line_geometry,
+            focus_origin_analysis=focus_origin_analysis,
             peak_analysis=peak_analysis,
             confirmed_strokes=strokes,
             stroke_list=stroke_list,
