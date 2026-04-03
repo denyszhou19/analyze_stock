@@ -162,11 +162,6 @@ class StructureInterpretationModelTest(unittest.TestCase):
         self.assertIn('start_anchor_source', focus_structure)
         self.assertIn('explainability_status', focus_structure)
         self.assertIn('downgrade_reason', focus_structure)
-        if (
-            'start_anchor_source' in focus_structure
-            and 'explainability_status' in focus_structure
-            and 'downgrade_reason' in focus_structure
-        ):
-            self.assertEqual(focus_structure['start_anchor_source'], 'peak_extreme')
-            self.assertEqual(focus_structure['explainability_status'], 'downgraded')
-            self.assertIn('标准点数上限', focus_structure['downgrade_reason'])
+        self.assertEqual(focus_structure['start_anchor_source'], 'peak_extreme')
+        self.assertEqual(focus_structure['explainability_status'], 'downgraded')
+        self.assertIn('标准点数上限', focus_structure['downgrade_reason'])

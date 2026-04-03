@@ -52,7 +52,7 @@ def build_focus_origin_peak_regression_fixture() -> tuple[pd.DataFrame, list[dic
     prices = [
         168.7,
         184.0,
-        196.0,
+        172.5,
         209.9,
         191.0,
         203.0,
@@ -82,6 +82,8 @@ def build_focus_origin_peak_regression_fixture() -> tuple[pd.DataFrame, list[dic
         )
 
     for index, (from_price, to_price) in enumerate(zip(prices, prices[1:])):
+        from_fractal = valid_fractals[index]
+        to_fractal = valid_fractals[index + 1]
         direction = "上涨" if to_price > from_price else "下跌"
         full_strokes.append(
             {
@@ -91,8 +93,8 @@ def build_focus_origin_peak_regression_fixture() -> tuple[pd.DataFrame, list[dic
                 "to_price": to_price,
                 "direction": direction,
                 "length": 1,
-                "from_type": "bottom" if direction == "上涨" else "top",
-                "to_type": "top" if direction == "上涨" else "bottom",
+                "from_type": from_fractal["type"],
+                "to_type": to_fractal["type"],
             }
         )
 
@@ -819,12 +821,11 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertEqual(result["structure_type"], "复杂结构")
         self.assertEqual(result["interpretation"]["focus_structure"]["archetype_family"], "complex")
         self.assertIn("raw_classification", result["structure_details"])
-        if "raw_classification" in result["structure_details"]:
-            raw_classification = result["structure_details"]["raw_classification"]
-            self.assertEqual(raw_classification["type"], "A五段式")
-            self.assertEqual(raw_classification["stage"], "a1-a6拐点区间")
-            self.assertEqual(raw_classification["description"], "旧的标准结构结果")
-            self.assertEqual(raw_classification["component_summary"], ["上涨结构(3笔)", "延伸下跌(13笔)"])
+        raw_classification = result["structure_details"]["raw_classification"]
+        self.assertEqual(raw_classification["type"], "A五段式")
+        self.assertEqual(raw_classification["stage"], "a1-a6拐点区间")
+        self.assertEqual(raw_classification["description"], "旧的标准结构结果")
+        self.assertEqual(raw_classification["component_summary"], ["上涨结构(3笔)", "延伸下跌(13笔)"])
 
     def test_detect_structure_reports_peak_extreme_focus_origin_selection(self) -> None:
         recent, full_strokes, valid_fractals, stroke_list, peak_analysis = (
@@ -877,16 +878,19 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
 
         self.assertIn("focus_origin_analysis", result["structure_details"])
-        if "focus_origin_analysis" in result["structure_details"]:
-            focus_origin_analysis = result["structure_details"]["focus_origin_analysis"]
-            self.assertEqual(
-                focus_origin_analysis["selected_origin_kind"],
-                "peak_extreme",
-            )
-            self.assertEqual(
-                focus_origin_analysis["selected_point_index"],
-                3,
-            )
+        focus_origin_analysis = result["structure_details"]["focus_origin_analysis"]
+        self.assertEqual(
+            focus_origin_analysis["selected_origin_kind"],
+            "peak_extreme",
+        )
+        self.assertEqual(
+            focus_origin_analysis["selected_point_index"],
+            3,
+        )
+        self.assertIn(
+            "start_anchor_source",
+            result["interpretation"]["focus_structure"],
+        )
         self.assertEqual(
             result["interpretation"]["focus_structure"]["start_anchor_source"],
             "peak_extreme",
