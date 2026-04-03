@@ -125,3 +125,48 @@ class StructureInterpretationModelTest(unittest.TestCase):
         self.assertFalse(gate['resonance_enabled'])
         self.assertEqual(gate['structure_readiness'], 'complex')
         self.assertIn('等待', gate['required_confirmation'])
+
+    def test_build_structure_interpretation_carries_focus_origin_explainability_metadata(self) -> None:
+        interpretation = self.analyzer._build_structure_interpretation(
+            structure_type='复杂结构',
+            trend_direction='下跌',
+            explanation={
+                'structure_start_point_id': 'p1',
+                'start_anchor_source': 'peak_extreme',
+                'explainability_status': 'downgraded',
+                'downgrade_reason': '超出标准点数上限，降级为复杂结构等待确认',
+            },
+            prediction={'current_stage': '第14个拐点', 'next_stage': '等待确认'},
+            moving_averages={
+                'price_vs_ma55': 'below',
+                'price_vs_ma233': 'below',
+                'ma_status': '空头排列',
+            },
+            peak_analysis={
+                'is_peak_structure': True,
+                'peak_type': 'mountain_peak',
+                'peak_price': 209.9,
+            },
+            labeled_points=[
+                {'point_id': 'p1', 'price': 209.9, 'date': '2024-03-04 00:00'},
+                {'point_id': 'p2', 'price': 191.0, 'date': '2024-03-05 00:00'},
+                {'point_id': 'live', 'price': 176.0, 'date': '2024-04-30 00:00', 'is_current': True},
+            ],
+            valid_range={
+                'start_date': '2024-03-01',
+                'start_price': 168.7,
+            },
+        )
+
+        focus_structure = interpretation['focus_structure']
+        self.assertIn('start_anchor_source', focus_structure)
+        self.assertIn('explainability_status', focus_structure)
+        self.assertIn('downgrade_reason', focus_structure)
+        if (
+            'start_anchor_source' in focus_structure
+            and 'explainability_status' in focus_structure
+            and 'downgrade_reason' in focus_structure
+        ):
+            self.assertEqual(focus_structure['start_anchor_source'], 'peak_extreme')
+            self.assertEqual(focus_structure['explainability_status'], 'downgraded')
+            self.assertIn('标准点数上限', focus_structure['downgrade_reason'])

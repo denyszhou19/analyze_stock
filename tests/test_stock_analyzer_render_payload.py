@@ -29,6 +29,93 @@ def build_wave_dataframe() -> pd.DataFrame:
     return pd.DataFrame(rows)
 
 
+def build_focus_origin_recent_dataframe() -> pd.DataFrame:
+    return pd.DataFrame(
+        [
+            {
+                "date": pd.Timestamp("2024-04-30"),
+                "open": 176.2,
+                "high": 177.4,
+                "low": 175.1,
+                "close": 176.0,
+                "volume": 3200,
+                "MA55": 168.5,
+                "MA233": 142.3,
+                "DIF": -0.2,
+                "DEA": -0.1,
+            }
+        ]
+    )
+
+
+def build_focus_origin_peak_regression_fixture() -> tuple[pd.DataFrame, list[dict], list[dict], list[dict], dict]:
+    prices = [
+        168.7,
+        184.0,
+        196.0,
+        209.9,
+        191.0,
+        203.0,
+        188.0,
+        200.0,
+        186.0,
+        198.0,
+        183.0,
+        195.0,
+        181.0,
+        193.0,
+        178.0,
+        190.0,
+        176.0,
+    ]
+    valid_fractals = []
+    full_strokes = []
+    for index, price in enumerate(prices):
+        valid_fractals.append(
+            {
+                "index": index,
+                "type": "bottom" if index % 2 == 0 else "top",
+                "high": round(price + 1.8, 2),
+                "low": round(price - 1.8, 2),
+                "date": f"2024-03-{index + 1:02d}",
+            }
+        )
+
+    for index, (from_price, to_price) in enumerate(zip(prices, prices[1:])):
+        direction = "上涨" if to_price > from_price else "下跌"
+        full_strokes.append(
+            {
+                "from_date": f"2024-03-{index + 1:02d}",
+                "to_date": f"2024-03-{index + 2:02d}",
+                "from_price": from_price,
+                "to_price": to_price,
+                "direction": direction,
+                "length": 1,
+                "from_type": "bottom" if direction == "上涨" else "top",
+                "to_type": "top" if direction == "上涨" else "bottom",
+            }
+        )
+
+    peak_analysis = {
+        "is_peak_structure": True,
+        "peak_type": "mountain_peak",
+        "peak_price": 209.9,
+        "peak_index": 2,
+        "left_structure": "上涨结构",
+        "right_structure": "A五段式",
+        "left_components": [{"type": "上涨结构", "strokes": [{}, {}, {}]}],
+        "right_components": [{"type": "延伸下跌", "strokes": [{} for _ in range(13)]}],
+    }
+
+    return (
+        build_focus_origin_recent_dataframe(),
+        full_strokes,
+        valid_fractals,
+        [dict(stroke) for stroke in full_strokes],
+        peak_analysis,
+    )
+
+
 class TestStockAnalyzerRenderPayload(unittest.TestCase):
     def setUp(self) -> None:
         self.analyzer = TrinityStockAnalyzer()
@@ -678,6 +765,124 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             result["structure_details"]["explainability"]["next_segment_preview"]["label"],
             "c4→c5",
         )
+
+    def test_detect_structure_downgrades_non_explainable_peak_slice_and_preserves_raw_classification(self) -> None:
+        recent, full_strokes, valid_fractals, stroke_list, peak_analysis = (
+            build_focus_origin_peak_regression_fixture()
+        )
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes_count: int) -> None:
+                self.component_type = component_type
+                self.strokes_count = strokes_count
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": [{} for _ in range(self.strokes_count)],
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "下跌",
+            "valid_range_info": {
+                "start_date": "2024-03-01",
+                "end_date": "2024-04-30",
+                "start_price": 168.7,
+                "origin_type": "high",
+            },
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": stroke_list,
+        }
+        macro_components = [
+            StubMacroComponent("上涨结构", 3),
+            StubMacroComponent("延伸下跌", 13),
+        ]
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("A五段式", "a1-a6拐点区间", "旧的标准结构结果", ["mocked classification"]),
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
+
+        self.assertEqual(result["structure_type"], "复杂结构")
+        self.assertEqual(result["interpretation"]["focus_structure"]["archetype_family"], "complex")
+        self.assertIn("raw_classification", result["structure_details"])
+        if "raw_classification" in result["structure_details"]:
+            self.assertEqual(result["structure_details"]["raw_classification"]["structure_type"], "A五段式")
+            self.assertEqual(result["structure_details"]["raw_classification"]["trend_direction"], "下跌")
+
+    def test_detect_structure_reports_peak_extreme_focus_origin_selection(self) -> None:
+        recent, full_strokes, valid_fractals, stroke_list, peak_analysis = (
+            build_focus_origin_peak_regression_fixture()
+        )
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes_count: int) -> None:
+                self.component_type = component_type
+                self.strokes_count = strokes_count
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": [{} for _ in range(self.strokes_count)],
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "下跌",
+            "valid_range_info": {
+                "start_date": "2024-03-01",
+                "end_date": "2024-04-30",
+                "start_price": 168.7,
+                "origin_type": "high",
+            },
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": stroke_list,
+        }
+        macro_components = [
+            StubMacroComponent("上涨结构", 3),
+            StubMacroComponent("延伸下跌", 13),
+        ]
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("A五段式", "a1-a6拐点区间", "旧的标准结构结果", ["mocked classification"]),
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
+
+        self.assertIn("focus_origin_analysis", result["structure_details"])
+        if "focus_origin_analysis" in result["structure_details"]:
+            self.assertEqual(
+                result["structure_details"]["focus_origin_analysis"]["selected_origin_kind"],
+                "peak_extreme",
+            )
+            self.assertEqual(
+                result["structure_details"]["focus_origin_analysis"]["selected_price"],
+                209.9,
+            )
 
 
 if __name__ == "__main__":
