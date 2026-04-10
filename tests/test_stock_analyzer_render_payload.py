@@ -262,14 +262,17 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             line_geometry,
             prediction,
             peak_analysis={},
+            focus_origin_source="macro_origin",
         )
 
         self.assertEqual(explainability["structure_family"], "complex")
-        self.assertEqual(explainability["structure_start_point_id"], "p1")
+        self.assertIsNone(explainability["structure_start_point_id"])
         self.assertEqual(explainability["current_point_id"], "p3")
         self.assertIsNone(explainability["next_segment_preview"])
         self.assertTrue(explainability["display_reason"])
         self.assertEqual(labeled_geometry["segments"][0]["segment_id"], "p1-p2")
+        point_roles = {item["point_id"]: item["role"] for item in explainability["point_labels"]}
+        self.assertNotIn("start", point_roles.values())
 
     def test_build_structure_explainability_projects_standard_next_point_not_in_geometry(self) -> None:
         line_geometry = {
@@ -420,13 +423,124 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         )
 
         point_labels = {item["point_id"]: item["label"] for item in explainability["point_labels"]}
-        self.assertEqual(point_labels["p1"], "p1")
-        self.assertEqual(point_labels["p3"], "p3")
+        self.assertEqual(point_labels["p1"], "")
+        self.assertEqual(point_labels["p3"], "")
         self.assertEqual(point_labels["p2"], "")
 
         non_empty_segment_labels = [item for item in explainability["segment_labels"] if item["label"]]
         self.assertEqual(len(non_empty_segment_labels), 1)
         self.assertEqual(non_empty_segment_labels[0]["label"], "p2→p3")
+
+    def test_validate_focus_structure_explainability_keeps_limit_check_out_of_origin_validation(self) -> None:
+        verdict = self.analyzer._validate_focus_structure_explainability(
+            "A五段式",
+            14,
+            {
+                "explainability_status": "passed",
+                "explainability_reason": "检测到主峰切片，优先从峰值极点开始解释右侧结构",
+            },
+        )
+
+        self.assertTrue(verdict["passed"])
+        self.assertEqual(verdict["status"], "passed")
+        self.assertEqual(verdict["reason"], "检测到主峰切片，优先从峰值极点开始解释右侧结构")
+
+    def test_build_structure_explainability_carries_focus_origin_metadata(self) -> None:
+        line_geometry = {
+            "price_range": {"min": 8.0, "max": 12.0, "range": 4.0},
+            "points": [
+                {"sequence": 0, "price": 12.0, "date": "2024-01-01", "type": "top", "role": "from"},
+                {"sequence": 1, "price": 9.0, "date": "2024-01-02", "type": "bottom", "role": "to"},
+                {"sequence": 2, "price": 11.0, "date": "2024-01-03", "type": "top", "role": "to"},
+            ],
+            "segments": [
+                {"sequence": 0, "from_point": 0, "to_point": 1, "direction": "下跌", "length": 1},
+                {"sequence": 1, "from_point": 1, "to_point": 2, "direction": "上涨", "length": 1},
+            ],
+            "point_count": 3,
+            "segment_count": 2,
+        }
+
+        _, explainability = self.analyzer._build_structure_explainability(
+            "复杂结构",
+            line_geometry,
+            {"current_stage": "第3个拐点", "next_stage": "等待确认"},
+            peak_analysis={"is_peak_structure": True},
+            focus_origin_source="peak_extreme",
+            explainability_status="downgraded",
+            downgrade_reason="超出标准点数上限，降级为复杂结构等待确认",
+        )
+
+        self.assertEqual(explainability["focus_origin_source"], "peak_extreme")
+        self.assertEqual(explainability["explainability_status"], "downgraded")
+        self.assertIn("标准点数上限", explainability["downgrade_reason"])
+
+    def test_build_focus_origin_analysis_does_not_map_macro_origin_to_window_first_point(self) -> None:
+        line_geometry = {
+            "points": [
+                {"sequence": 0, "price": 168.7, "date": "2025-09-29 00:00:00"},
+                {"sequence": 1, "price": 135.2, "date": "2025-10-17 00:00:00"},
+                {"sequence": 2, "price": 209.9, "date": "2025-11-14 00:00:00"},
+            ]
+        }
+
+        focus_origin_analysis = self.analyzer._build_focus_origin_analysis(
+            valid_range={
+                "start_date": "2025-07-14",
+                "start_price": 76.66,
+                "origin_type": "low",
+            },
+            line_geometry=line_geometry,
+            peak_analysis=None,
+        )
+
+        self.assertEqual(focus_origin_analysis["selected_origin_kind"], "macro_origin")
+        self.assertIsNone(focus_origin_analysis["selected_point_index"])
+        self.assertIn("当前窗口未包含该原点", focus_origin_analysis["explainability_reason"])
+
+    def test_build_focus_origin_analysis_prefers_recent_component_boundary_when_no_peak(self) -> None:
+        line_geometry = {
+            "points": [
+                {"sequence": 0, "price": 90.0, "date": "2025-09-01 00:00:00"},
+                {"sequence": 1, "price": 110.0, "date": "2025-09-10 00:00:00"},
+                {"sequence": 2, "price": 102.0, "date": "2025-09-18 00:00:00"},
+                {"sequence": 3, "price": 108.0, "date": "2025-09-25 00:00:00"},
+            ]
+        }
+
+        focus_origin_analysis = self.analyzer._build_focus_origin_analysis(
+            valid_range={
+                "start_date": "2025-07-14",
+                "start_price": 76.66,
+                "origin_type": "low",
+            },
+            line_geometry=line_geometry,
+            peak_analysis=None,
+            macro_components=[
+                {
+                    "type": "Directional",
+                    "strokes": [
+                        {"from_date": "2025-09-01 00:00:00", "from_price": 90.0},
+                    ],
+                },
+                {
+                    "type": "Platform",
+                    "strokes": [
+                        {"from_date": "2025-09-10 00:00:00", "from_price": 110.0},
+                    ],
+                },
+                {
+                    "type": "Directional",
+                    "strokes": [
+                        {"from_date": "2025-09-18 00:00:00", "from_price": 102.0},
+                    ],
+                },
+            ],
+        )
+
+        self.assertEqual(focus_origin_analysis["selected_origin_kind"], "recent_component")
+        self.assertEqual(focus_origin_analysis["selected_point_index"], 1)
+        self.assertIn("最近平台起点", focus_origin_analysis["explainability_reason"])
 
     def test_analyze_structure_prediction_uses_completion_stage_for_d_with_four_inflections(self) -> None:
         recent = pd.DataFrame(
@@ -768,7 +882,7 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             "c4→c5",
         )
 
-    def test_detect_structure_downgrades_non_explainable_peak_slice_and_preserves_raw_classification(self) -> None:
+    def test_detect_structure_marks_over_limit_peak_slice_as_extended_family_and_preserves_raw_classification(self) -> None:
         recent, full_strokes, valid_fractals, stroke_list, peak_analysis = (
             build_focus_origin_peak_regression_fixture()
         )
@@ -818,14 +932,23 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
              patch.object(self.analyzer, "_analyze_peak_structure", return_value=peak_analysis):
             result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
 
-        self.assertEqual(result["structure_type"], "复杂结构")
-        self.assertEqual(result["interpretation"]["focus_structure"]["archetype_family"], "complex")
+        self.assertEqual(result["structure_type"], "延伸A类")
+        self.assertEqual(result["interpretation"]["focus_structure"]["archetype_family"], "A")
+        self.assertEqual(
+            result["interpretation"]["focus_structure"]["standard_qualification"],
+            "extended",
+        )
+        self.assertIn(
+            "超出标准点数",
+            result["interpretation"]["focus_structure"]["qualification_reason"],
+        )
         self.assertIn("raw_classification", result["structure_details"])
         raw_classification = result["structure_details"]["raw_classification"]
         self.assertEqual(raw_classification["type"], "A五段式")
         self.assertEqual(raw_classification["stage"], "a1-a6拐点区间")
         self.assertEqual(raw_classification["description"], "旧的标准结构结果")
         self.assertEqual(raw_classification["component_summary"], ["上涨结构(3笔)", "延伸下跌(13笔)"])
+        self.assertIn("focus_classification", result["structure_details"])
 
     def test_detect_structure_reports_peak_extreme_focus_origin_selection(self) -> None:
         recent, full_strokes, valid_fractals, stroke_list, peak_analysis = (

@@ -43,10 +43,22 @@ function summarizePeriod(periodData: any, level: string) {
               focus_mode: periodData.structure.interpretation.focus_structure?.focus_mode,
               archetype_label:
                 periodData.structure.interpretation.focus_structure?.archetype_label,
+              archetype_family:
+                periodData.structure.interpretation.focus_structure?.archetype_family,
+              standard_qualification:
+                periodData.structure.interpretation.focus_structure?.standard_qualification,
               maturity: periodData.structure.interpretation.focus_structure?.maturity,
               directional_bias:
                 periodData.structure.interpretation.focus_structure?.directional_bias,
               summary: periodData.structure.interpretation.focus_structure?.summary,
+              start_anchor_source:
+                periodData.structure.interpretation.focus_structure?.start_anchor_source,
+              explainability_status:
+                periodData.structure.interpretation.focus_structure?.explainability_status,
+              downgrade_reason:
+                periodData.structure.interpretation.focus_structure?.downgrade_reason,
+              qualification_reason:
+                periodData.structure.interpretation.focus_structure?.qualification_reason,
             }),
             current_leg: compactRecord({
               label: periodData.structure.interpretation.current_leg?.label,
@@ -69,12 +81,52 @@ function summarizePeriod(periodData: any, level: string) {
                     periodData.structure.interpretation.spacetime_gate.child_structure_match,
                   resonance_enabled:
                     periodData.structure.interpretation.spacetime_gate.resonance_enabled,
+                  structure_readiness:
+                    periodData.structure.interpretation.spacetime_gate.structure_readiness,
                   wait_reason: periodData.structure.interpretation.spacetime_gate.wait_reason,
                   required_confirmation:
                     periodData.structure.interpretation.spacetime_gate.required_confirmation,
                 })
               : undefined,
             scenario_paths: periodData.structure.interpretation.scenario_paths,
+          })
+        : undefined,
+      focus_origin_analysis: periodData.structure?.structure_details?.focus_origin_analysis
+        ? compactRecord({
+            selected_origin_kind:
+              periodData.structure.structure_details.focus_origin_analysis.selected_origin_kind,
+            selected_point_index:
+              periodData.structure.structure_details.focus_origin_analysis.selected_point_index,
+            explainability_status:
+              periodData.structure.structure_details.focus_origin_analysis.explainability_status,
+            explainability_reason:
+              periodData.structure.structure_details.focus_origin_analysis.explainability_reason,
+          })
+        : undefined,
+      raw_classification: periodData.structure?.structure_details?.raw_classification
+        ? compactRecord({
+            type: periodData.structure.structure_details.raw_classification.type,
+            stage: periodData.structure.structure_details.raw_classification.stage,
+            description: periodData.structure.structure_details.raw_classification.description,
+            component_summary:
+              periodData.structure.structure_details.raw_classification.component_summary,
+          })
+        : undefined,
+      focus_classification: periodData.structure?.structure_details?.focus_classification
+        ? compactRecord({
+            type: periodData.structure.structure_details.focus_classification.type,
+            stage: periodData.structure.structure_details.focus_classification.stage,
+            description: periodData.structure.structure_details.focus_classification.description,
+            archetype_family:
+              periodData.structure.structure_details.focus_classification.archetype_family,
+            standard_qualification:
+              periodData.structure.structure_details.focus_classification.standard_qualification,
+            qualification_reason:
+              periodData.structure.structure_details.focus_classification.qualification_reason,
+            trend_direction:
+              periodData.structure.structure_details.focus_classification.trend_direction,
+            component_summary:
+              periodData.structure.structure_details.focus_classification.component_summary,
           })
         : undefined,
       archetype: periodData.structure?.archetype

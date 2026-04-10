@@ -259,11 +259,11 @@ test('StructureExplainabilityPanel renders visible topology summary blocks and s
   assert.match(html, /当前级别暂不操作/);
   assert.match(html, /日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作/);
   assert.match(html, /背景 偏多/);
-  assert.match(html, /原型 A五段式原型/);
+  assert.match(html, /当前结构 A五段式原型/);
   assert.match(html, /成熟度 开展中/);
-  assert.match(html, /聚焦起点/);
-  assert.match(html, /最后确认点/);
-  assert.match(html, /进行中点/);
+  assert.match(html, /当前结构/);
+  assert.match(html, /当前执行段/);
+  assert.match(html, /结构起点/);
   assert.match(html, /下一确认/);
   assert.match(html, /a4/);
   assert.match(html, /进行中/);
@@ -375,4 +375,191 @@ test('StructureExplainabilityPanel does not mislabel null peak_type as valley sh
 
   assert.match(html, /峰值形态待确认/);
   assert.doesNotMatch(html, /山谷形态/);
+});
+
+test('StructureExplainabilityPanel prefers downgraded semantics over standard archetype framing', async () => {
+  const { StructureExplainabilityPanel } = await importStructureExplainabilityPanel();
+
+  const html = renderQuietly(
+    React.createElement(StructureExplainabilityPanel, {
+      structure: {
+        structure_type: '复杂结构',
+        trend_direction: '下跌',
+        inflection_points: 14,
+        description: '当前聚焦区间无法诚实解释为标准结构，已降级',
+        interpretation: {
+          focus_structure: {
+            archetype_label: '复杂结构',
+            start_anchor_source: 'peak_extreme',
+            explainability_status: 'downgraded',
+            downgrade_reason: '标准点数上限超出，已降级为复杂结构等待确认',
+          },
+          current_leg: {
+            label: 'p14→live 下行形成中',
+            from_point_id: 'p14',
+            to_point_id: 'live',
+            direction: 'down',
+            status: 'forming',
+          },
+          next_confirmation: {
+            label: '等待方向选择',
+            type: 'pivot',
+            trigger: '等待下一确认拐点',
+          },
+          spacetime_gate: {
+            child_structure_match: false,
+            resonance_enabled: false,
+            wait_reason: '当前仍属复杂结构，暂不操作',
+            required_confirmation: '等待结构明确为标准 A/B/C/D 后再判断',
+          },
+        },
+        archetype: {
+          primary: 'A五段式',
+          reason: '原始聚类命中了 A 原型',
+          alternatives: [{ type: 'C单平台式' }],
+        },
+        structure_details: {
+          explainability: {
+            structure_start_point_id: 'p4',
+            current_point_id: 'p14',
+            current_segment: {
+              label: 'p14→live',
+            },
+            display_reason: '峰值切片后聚焦右侧结构',
+            focus_origin_source: 'peak_extreme',
+            explainability_status: 'downgraded',
+            downgrade_reason: '标准点数上限超出，已降级为复杂结构等待确认',
+          },
+          focus_origin_analysis: {
+            selected_origin_kind: 'peak_extreme',
+            explainability_status: 'downgraded',
+            explainability_reason: '标准点数上限超出，已降级为复杂结构等待确认',
+          },
+          raw_classification: {
+            type: 'A五段式',
+            stage: '趋势启动阶段',
+            description: 'A五段式，趋势启动 + 平台整理',
+            component_summary: ['Directional(1笔)', 'Platform(14笔)'],
+          },
+          prediction: {
+            current_stage: '第14个拐点',
+            next_stage: '等待方向选择',
+            prediction_alert: '等待结构重新确认',
+            key_price_levels: [],
+            confidence: 'medium',
+            action_hint: '暂不操作',
+          },
+          judgment_criteria: '⚠️ 解释性降级：标准点数上限超出',
+        },
+      },
+      executionSummary: {
+        phaseLabel: '等待确认',
+        phaseReason: '复杂结构阶段',
+        actionLabel: '等待',
+        setupQuality: null,
+        executionReason: '等待结构重新明确',
+        timeframeCapLabel: null,
+        archetypeLabel: 'A五段式',
+        archetypeReason: '原始聚类命中了 A 原型',
+      },
+      setupQualityLabel: null,
+      structureColors: {
+        A五段式: 'archetype-a',
+      },
+    })
+  );
+
+  assert.match(html, /当前结构 复杂结构/);
+  assert.match(html, /标准点数上限超出，已降级为复杂结构等待确认/);
+  assert.doesNotMatch(html, /备选 C单平台式/);
+});
+
+test('StructureExplainabilityPanel uses desktop-safe stacked topology layout inside half-width analysis cards', async () => {
+  const { StructureExplainabilityPanel } = await importStructureExplainabilityPanel();
+
+  const html = renderQuietly(
+    React.createElement(StructureExplainabilityPanel, {
+      structure: {
+        structure_type: 'B双平台式',
+        trend_direction: '下跌',
+        inflection_points: 16,
+        description: '复杂结构需要先保证拓扑可读性',
+        interpretation: {
+          macro_background: {
+            label: '偏空',
+            direction: 'bearish',
+          },
+          focus_structure: {
+            archetype_label: '复杂结构',
+            maturity: 'developing',
+            display_reason: '复杂/未完成结构使用通用锚点，仅突出起点与当前段',
+          },
+          current_leg: {
+            label: 'p16→live 下行形成中',
+            from_point_id: 'p16',
+            to_point_id: 'live',
+            direction: 'down',
+            status: 'forming',
+          },
+          next_confirmation: {
+            label: '等待方向选择',
+            type: 'pivot',
+            trigger: '等待下一确认拐点',
+          },
+          spacetime_gate: {
+            child_structure_match: false,
+            resonance_enabled: false,
+            wait_reason: '标准点数上限超出，当前级别暂不操作',
+            required_confirmation: '等待结构明确为标准 A/B/C/D 后再判断',
+          },
+        },
+        archetype: {
+          primary: 'B双平台式',
+          reason: '当前仅保留复杂结构语义',
+          alternatives: [],
+        },
+        structure_details: {
+          render_payload: {
+            point_count: 16,
+          },
+          explainability: {
+            structure_start_point_id: 'p1',
+            current_point_id: 'p16',
+            current_segment: {
+              label: 'p16→live',
+            },
+            display_reason: '复杂/未完成结构使用通用锚点，仅突出起点与当前段',
+          },
+          prediction: {
+            current_stage: '第16个拐点',
+            next_stage: '等待方向选择',
+            prediction_alert: '当前结构尚未收敛',
+            key_price_levels: [],
+            confidence: 'medium',
+            action_hint: '暂不操作',
+          },
+          judgment_criteria: '标准点数上限超出：B双平台式 允许 10 个确认拐点，当前为 16',
+        },
+      },
+      executionSummary: {
+        phaseLabel: '等待',
+        phaseReason: '复杂结构阶段',
+        actionLabel: '规避',
+        setupQuality: 'avoid',
+        executionReason: '等待结构重新明确',
+        timeframeCapLabel: '最多补仓 1/3',
+        archetypeLabel: '复杂结构',
+        archetypeReason: '标准点数上限超出，当前仅保留复杂结构语义',
+      },
+      setupQualityLabel: '规避',
+      structureColors: {
+        复杂结构: 'archetype-complex',
+      },
+    })
+  );
+
+  assert.match(html, /sm:grid-cols-2/);
+  assert.match(html, /xl:grid-cols-2/);
+  assert.doesNotMatch(html, /xl:grid-cols-\[minmax\(0,1\.5fr\)_minmax\(280px,0\.95fr\)\]/);
+  assert.doesNotMatch(html, /md:grid-cols-4/);
 });

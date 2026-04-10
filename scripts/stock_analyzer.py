@@ -2611,19 +2611,159 @@ class TrinityStockAnalyzer:
         payload['segment_count'] = len(render_segments)
         return payload
 
+    def _resolve_structure_profile(self, structure_type: str) -> Tuple[str, Optional[str], str]:
+        """Resolve structure family, visible numbering prefix, and standard qualification."""
+        mapping = {
+            'A五段式': ('A', 'a', 'standard'),
+            '延伸A类': ('A', None, 'extended'),
+            'B双平台式': ('B', 'b', 'standard'),
+            '延伸B类': ('B', None, 'extended'),
+            'C单平台式': ('C', 'c', 'standard'),
+            '延伸C类': ('C', None, 'extended'),
+            'D三段式': ('D', 'd', 'standard'),
+            '延伸D类': ('D', None, 'extended'),
+            '结构未完成': ('unfinished', None, 'unfinished'),
+            '延伸结构': ('complex', None, 'extended'),
+        }
+        return mapping.get(structure_type, ('complex', None, 'complex'))
+
     def _resolve_structure_family(self, structure_type: str) -> Tuple[str, Optional[str]]:
         """Map structure type to explainability family and point id prefix."""
+        family, prefix, _ = self._resolve_structure_profile(structure_type)
+        return family, prefix
+
+    def _build_extended_structure_type(self, family: str) -> str:
         mapping = {
-            'A五段式': ('A', 'a'),
-            'B双平台式': ('B', 'b'),
-            'C单平台式': ('C', 'c'),
-            'D三段式': ('D', 'd'),
+            'A': '延伸A类',
+            'B': '延伸B类',
+            'C': '延伸C类',
+            'D': '延伸D类',
         }
-        if structure_type in mapping:
-            return mapping[structure_type]
-        if structure_type == '结构未完成':
-            return ('unfinished', None)
-        return ('complex', None)
+        return mapping.get(family, '复杂结构')
+
+    def _get_standard_structure_limit(self, structure_type: str) -> Optional[int]:
+        limits = {
+            'A五段式': 6,
+            'B双平台式': 10,
+            'C单平台式': 6,
+            'D三段式': 4,
+        }
+        return limits.get(structure_type)
+
+    def _summarize_macro_components(self, macro_components: List[Any]) -> List[str]:
+        summary: List[str] = []
+        for component in macro_components or []:
+            if hasattr(component, 'to_dict'):
+                data = component.to_dict()
+            elif isinstance(component, dict):
+                data = component
+            else:
+                continue
+            summary.append(f"{data.get('type')}({len(data.get('strokes', []))}笔)")
+        return summary
+
+    def _classify_structure_by_counts(
+        self,
+        stroke_count: int,
+        inflection_count: int
+    ) -> Tuple[str, str, str, List[str]]:
+        """Fallback classification when macro component clustering is unavailable."""
+        criteria: List[str] = []
+        if stroke_count == 3:
+            criteria.append("✅ D类结构（兜底）：笔数=3")
+            return ('D三段式', 'd1-d4拐点区间', f"D三段式结构，{stroke_count}笔{inflection_count}拐点", criteria)
+        if stroke_count == 5:
+            criteria.append("✅ C类结构（兜底）：笔数=5")
+            return ('C单平台式', 'c1-c6拐点区间', f"单平台结构，{stroke_count}笔{inflection_count}拐点", criteria)
+        if stroke_count == 9:
+            criteria.append("✅ B类结构（兜底）：笔数=9")
+            return ('B双平台式', 'b1-b10拐点区间', f"B双平台式结构，{stroke_count}笔{inflection_count}拐点", criteria)
+        if stroke_count < 3:
+            criteria.append(f"⚠️ 笔数={stroke_count} < 3，结构未完成")
+            return ('结构未完成', f'{inflection_count}个拐点', f"结构未完成，{stroke_count}笔", criteria)
+        if stroke_count in [4, 6, 7, 8]:
+            criteria.append(f"⚠️ 笔数={stroke_count}，非标准结构，建议升维分析")
+            return ('延伸结构', f'{inflection_count}个拐点', f"延伸结构，{stroke_count}笔，建议升维分析", criteria)
+        criteria.append(f"⚠️ 笔数={stroke_count}，结构复杂")
+        return ('复杂结构', f'{inflection_count}个拐点', f"复杂结构，{stroke_count}笔，需人工确认", criteria)
+
+    def _determine_stroke_trend(self, strokes: List[Dict[str, Any]]) -> str:
+        """Infer the focused structure trend from the focused stroke slice."""
+        if not strokes:
+            return '震荡'
+
+        first_price = strokes[0].get('from_price')
+        last_price = strokes[-1].get('to_price')
+        if not isinstance(first_price, (int, float)) or not isinstance(last_price, (int, float)):
+            return '震荡'
+        if first_price == 0:
+            return '震荡'
+
+        change_pct = (float(last_price) - float(first_price)) / float(first_price) * 100
+        if change_pct > 5:
+            return '上涨'
+        if change_pct < -5:
+            return '下跌'
+        return '震荡'
+
+    def _build_focus_structure_classification(
+        self,
+        focused_strokes: List[Dict[str, Any]],
+        inflection_count: int,
+        trend_direction: str,
+        preferred_structure_type: Optional[str] = None,
+        preferred_structure_stage: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        """Classify the currently focused structure slice and qualify standard vs extended."""
+        focused_macro_components = self._consolidate_boxes(focused_strokes, threshold=0.55)
+        if preferred_structure_type:
+            structure_type = preferred_structure_type
+            structure_stage = preferred_structure_stage or f'{preferred_structure_type}聚焦区间'
+            description = f'峰值切片后聚焦{preferred_structure_type}'
+            criteria = [f'✅ 峰值切片优先采用右侧结构：{preferred_structure_type}']
+        elif focused_macro_components:
+            structure_type, structure_stage, description, criteria = self._classify_structure_by_macro_components(
+                focused_macro_components,
+                trend_direction,
+            )
+        else:
+            structure_type, structure_stage, description, criteria = self._classify_structure_by_counts(
+                len(focused_strokes),
+                inflection_count,
+            )
+
+        family, _, qualification = self._resolve_structure_profile(structure_type)
+        qualification_reason = None
+        public_structure_type = structure_type
+        public_structure_stage = structure_stage
+        public_description = description
+
+        limit = self._get_standard_structure_limit(structure_type)
+        if qualification == 'standard' and isinstance(limit, int) and inflection_count > limit:
+            public_structure_type = self._build_extended_structure_type(family)
+            public_structure_stage = f'超出标准点数，按{public_structure_type}跟踪'
+            public_description = f'当前聚焦区间仍属{family}类原型，但已超出标准点数'
+            qualification = 'extended'
+            qualification_reason = f'超出标准点数，按{public_structure_type}跟踪'
+            criteria = list(criteria) + [f'⚠️ 当前聚焦区间超出{structure_type}标准点数，停止标准编号']
+        elif qualification == 'extended':
+            qualification_reason = f'当前聚焦区间为{structure_type}，停止标准编号'
+        elif family == 'complex':
+            qualification_reason = '当前聚焦区间暂无法归入标准或延伸原型'
+        elif family == 'unfinished':
+            qualification_reason = '当前聚焦区间仍未形成可执行结构'
+
+        return {
+            'type': public_structure_type,
+            'stage': public_structure_stage,
+            'description': public_description,
+            'archetype_family': family,
+            'standard_qualification': qualification,
+            'qualification_reason': qualification_reason,
+            'trend_direction': trend_direction,
+            'component_summary': self._summarize_macro_components(focused_macro_components),
+            'criteria': list(criteria),
+        }
 
     def _extract_stage_point_id(
         self,
@@ -2661,18 +2801,25 @@ class TrinityStockAnalyzer:
         line_geometry: Dict[str, Any],
         prediction: Dict[str, Any],
         peak_analysis: Optional[Dict[str, Any]],
-        structure_start_point_index: Optional[int] = None
+        structure_start_point_index: Optional[int] = None,
+        focus_origin_source: Optional[str] = None,
+        explainability_status: Optional[str] = None,
+        downgrade_reason: Optional[str] = None,
     ) -> Tuple[Dict[str, Any], Dict[str, Any]]:
         """Attach stable point/segment ids and build explainability metadata."""
-        structure_family, prefix = self._resolve_structure_family(structure_type)
+        structure_family, prefix, standard_qualification = self._resolve_structure_profile(structure_type)
         points = list((line_geometry or {}).get('points', []))
         segments = list((line_geometry or {}).get('segments', []))
         start_index = 0
+        has_visible_structure_start = False
         if (
             isinstance(structure_start_point_index, int)
             and 0 <= structure_start_point_index < len(points)
         ):
             start_index = structure_start_point_index
+            has_visible_structure_start = True
+        elif prefix and points:
+            has_visible_structure_start = True
 
         labeled_points: List[Dict[str, Any]] = []
         for idx, point in enumerate(points):
@@ -2796,26 +2943,36 @@ class TrinityStockAnalyzer:
         next_segment_id = None
         if next_segment_preview:
             next_segment_id = f"{next_segment_preview['from_point_id']}-{next_segment_preview['to_point_id']}"
+        structure_start_point_id = (
+            labeled_points[start_index]['point_id']
+            if labeled_points and has_visible_structure_start
+            else None
+        )
 
         point_labels = []
+        should_hide_internal_ids = standard_qualification != 'standard'
         for idx, point in enumerate(labeled_points):
             role = 'normal'
             if point['point_id'] == current_point_id:
                 role = 'current'
             elif point['point_id'] == 'live':
                 role = 'projected'
-            elif idx == start_index:
+            elif structure_start_point_id and point['point_id'] == structure_start_point_id:
                 role = 'start'
 
             show_label = True
-            if structure_family in ('complex', 'unfinished'):
+            if structure_family in ('complex', 'unfinished') or should_hide_internal_ids:
                 show_label = role in ('start', 'current')
             elif prefix and idx < start_index:
                 show_label = False
 
+            visible_label = point['point_id'] if show_label else ''
+            if should_hide_internal_ids and re.match(r'^p\d+$', point['point_id'], re.IGNORECASE):
+                visible_label = ''
+
             point_labels.append({
                 'point_id': point['point_id'],
-                'label': point['point_id'] if show_label else '',
+                'label': visible_label,
                 'role': role
             })
 
@@ -2843,7 +3000,7 @@ class TrinityStockAnalyzer:
                 role = 'projected'
 
             show_label = True
-            if structure_family in ('complex', 'unfinished'):
+            if structure_family in ('complex', 'unfinished') or should_hide_internal_ids:
                 show_label = role in ('current', 'projected')
             elif prefix and (from_index < start_index or to_index < start_index):
                 show_label = False
@@ -2859,6 +3016,8 @@ class TrinityStockAnalyzer:
         reason_parts = []
         if prefix:
             reason_parts.append('标准结构编号从当前结构起点重新计数')
+        elif standard_qualification == 'extended':
+            reason_parts.append('延伸结构停止标准编号，仅突出起点与当前段')
         else:
             reason_parts.append('复杂/未完成结构使用通用锚点，仅突出起点与当前段')
         if used_current_fallback:
@@ -2867,19 +3026,30 @@ class TrinityStockAnalyzer:
             reason_parts.append('next_stage 为完成/方向选择态，已抑制下一段预览')
         if not prefix:
             reason_parts.append('避免伪造标准编号')
+        if (
+            structure_family in ('complex', 'unfinished')
+            and not structure_start_point_id
+            and focus_origin_source == 'macro_origin'
+        ):
+            reason_parts.append('真实原点位于当前窗口外，避免将窗口首点误标为起点')
         if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
             reason_parts.append('峰值切片后聚焦右侧结构')
         display_reason = '；'.join(reason_parts)
 
         explainability = {
             'structure_family': structure_family,
-            'structure_start_point_id': labeled_points[start_index]['point_id'] if labeled_points else None,
+            'standard_qualification': standard_qualification,
+            'structure_start_point_id': structure_start_point_id,
             'current_point_id': current_point_id,
             'current_segment': current_segment,
             'next_segment_preview': next_segment_preview,
             'point_labels': point_labels,
             'segment_labels': segment_labels,
-            'display_reason': display_reason
+            'display_reason': display_reason,
+            'focus_origin_source': focus_origin_source,
+            'explainability_status': explainability_status,
+            'downgrade_reason': downgrade_reason,
+            'qualification_reason': downgrade_reason,
         }
         return labeled_geometry, explainability
 
@@ -2931,13 +3101,14 @@ class TrinityStockAnalyzer:
         trend_direction: str,
     ) -> Dict[str, Any]:
         """Build parent-status gating so lower levels only act on allowed structures."""
-        structure_family, _ = self._resolve_structure_family(structure_type)
+        structure_family, _, standard_qualification = self._resolve_structure_profile(structure_type)
 
         if not parent_status:
             return {
                 'parent_status': None,
                 'allowed_child_structures': [],
                 'child_structure_family': structure_family,
+                'standard_qualification': standard_qualification,
                 'child_structure_match': None,
                 'resonance_enabled': None,
                 'structure_readiness': 'independent',
@@ -2963,18 +3134,23 @@ class TrinityStockAnalyzer:
             matched_structures = []
 
         is_complex = structure_family in ('complex', 'unfinished')
+        is_extended = standard_qualification == 'extended'
         child_structure_label = (
             structure_family
             if structure_family in ('A', 'B', 'C', 'D')
             else '复杂结构' if structure_family == 'complex' else '未完成结构'
         )
         child_structure_match = bool(advice.get('structure_match')) and not is_complex
-        resonance_enabled = child_structure_match
+        resonance_enabled = child_structure_match and not is_extended
 
         if is_complex:
             wait_reason = f'{parent_status}背景下当前仍属复杂/未完成结构，暂不操作'
             required_confirmation = '等待结构明确为标准 A/B/C/D 后再判断'
             structure_readiness = 'complex'
+        elif is_extended and child_structure_match:
+            wait_reason = f'{parent_status}允许{child_structure_label}类原型，但当前为延伸结构，先看当前执行段'
+            required_confirmation = '等待当前执行段与关键边界确认'
+            structure_readiness = 'extended'
         elif resonance_enabled:
             wait_reason = None
             required_confirmation = None
@@ -2989,6 +3165,7 @@ class TrinityStockAnalyzer:
             'parent_status': parent_status,
             'allowed_child_structures': matched_structures,
             'child_structure_family': structure_family,
+            'standard_qualification': standard_qualification,
             'child_structure_match': child_structure_match,
             'resonance_enabled': resonance_enabled,
             'structure_readiness': structure_readiness,
@@ -3005,15 +3182,20 @@ class TrinityStockAnalyzer:
         has_live_tail: bool
     ) -> str:
         """Resolve interpretation maturity from confirmed points and live-tail state."""
+        structure_family, _, standard_qualification = self._resolve_structure_profile(structure_type)
         confirmed_point_count = len([point_id for point_id in point_ids if point_id and point_id != 'live'])
         if has_live_tail:
             return 'developing'
+        if standard_qualification == 'extended':
+            return 'confirmed'
         if structure_type == 'D三段式' and confirmed_point_count >= 4:
             return 'confirmed'
         if structure_type in ('A五段式', 'C单平台式') and confirmed_point_count >= 6:
             return 'confirmed'
         if structure_type == 'B双平台式' and confirmed_point_count >= 10:
             return 'confirmed'
+        if structure_family in ('complex', 'unfinished'):
+            return 'candidate'
         return 'candidate'
 
     def _build_scenario_paths(
@@ -3023,6 +3205,7 @@ class TrinityStockAnalyzer:
         peak_analysis: Optional[Dict[str, Any]]
     ) -> List[Dict[str, Any]]:
         """Build compact re-judgment scenarios for UI and AI consumers."""
+        structure_family, _, standard_qualification = self._resolve_structure_profile(structure_type)
         confirmed_points = [point for point in labeled_points if point.get('point_id') != 'live']
         last_confirmed = confirmed_points[-1] if confirmed_points else None
         start_confirmed = confirmed_points[0] if confirmed_points else None
@@ -3032,7 +3215,7 @@ class TrinityStockAnalyzer:
             default=None,
         )
 
-        if structure_type in ('B双平台式', 'C单平台式'):
+        if structure_family in ('B', 'C'):
             upper_text = f'{upper_ref:.2f}' if isinstance(upper_ref, (int, float)) else '关键上沿'
             lower_text = f'{lower_ref:.2f}' if isinstance(lower_ref, (int, float)) else '关键下沿'
             return [
@@ -3050,7 +3233,7 @@ class TrinityStockAnalyzer:
                 },
             ]
 
-        if structure_type == 'A五段式':
+        if structure_family == 'A':
             upper_text = f'{upper_ref:.2f}' if isinstance(upper_ref, (int, float)) else '关键高点'
             lower_text = (
                 f'{start_confirmed.get("price"):.2f}'
@@ -3068,11 +3251,11 @@ class TrinityStockAnalyzer:
                     'code': 'trend_fail',
                     'label': '推进失效',
                     'trigger': f'跌破 {lower_text} 附近关键支撑',
-                    'effect': '推进原型失效，可能降级为平台或复杂结构',
+                    'effect': '推进原型失效，可能降级为延伸平台或复杂结构',
                 },
             ]
 
-        if structure_type == 'D三段式':
+        if structure_family == 'D':
             upper_text = f'{upper_ref:.2f}' if isinstance(upper_ref, (int, float)) else '关键终点'
             return [
                 {
@@ -3086,6 +3269,22 @@ class TrinityStockAnalyzer:
                     'label': '继续扩展',
                     'trigger': '终点未确认且继续扩展',
                     'effect': 'D 原型可能升级为更大平台或推进结构',
+                },
+            ]
+
+        if standard_qualification == 'extended':
+            return [
+                {
+                    'code': 'current_leg_confirm',
+                    'label': '确认当前执行段',
+                    'trigger': '等待当前执行段完成并守住关键边界',
+                    'effect': f'{structure_type}继续按原型跟踪',
+                },
+                {
+                    'code': 'focus_rejudge',
+                    'label': '重新切片',
+                    'trigger': '关键边界被破坏或出现新的主峰/主谷',
+                    'effect': '当前延伸结构需要重新切分',
                 },
             ]
 
@@ -3114,6 +3313,7 @@ class TrinityStockAnalyzer:
         peak_analysis: Optional[Dict[str, Any]],
         labeled_points: List[Dict[str, Any]],
         valid_range: Optional[Dict[str, Any]],
+        focus_trend_direction: Optional[str] = None,
         parent_spacetime_status: Optional[str] = None,
     ) -> Dict[str, Any]:
         """Build a stable interpretation layer above raw structure labels."""
@@ -3129,7 +3329,8 @@ class TrinityStockAnalyzer:
         )
 
         macro_background = self._build_macro_background(moving_averages, trend_direction, labeled_points)
-        structure_family, prefix = self._resolve_structure_family(structure_type)
+        structure_family, prefix, standard_qualification = self._resolve_structure_profile(structure_type)
+        effective_trend_direction = focus_trend_direction or trend_direction
         maturity = self._resolve_focus_structure_maturity(
             structure_type,
             prediction if isinstance(prediction, dict) else {},
@@ -3143,18 +3344,22 @@ class TrinityStockAnalyzer:
 
         archetype_label_map = {
             'A五段式': 'A五段式原型',
+            '延伸A类': '延伸A类原型',
             'B双平台式': 'B双平台原型',
+            '延伸B类': '延伸B类原型',
             'C单平台式': 'C平台原型',
+            '延伸C类': '延伸C类原型',
             'D三段式': 'D三段式原型',
+            '延伸D类': '延伸D类原型',
         }
         archetype_label = archetype_label_map.get(structure_type, structure_type or '结构原型')
 
         directional_bias = 'two_way'
-        if structure_type in ('B双平台式', 'C单平台式'):
+        if structure_family in ('B', 'C'):
             directional_bias = 'range'
-        elif trend_direction == '上涨':
+        elif effective_trend_direction == '上涨':
             directional_bias = 'up'
-        elif trend_direction == '下跌':
+        elif effective_trend_direction == '下跌':
             directional_bias = 'down'
 
         current_direction = 'unknown'
@@ -3186,8 +3391,10 @@ class TrinityStockAnalyzer:
         spacetime_gate = self._build_spacetime_gate(
             parent_status=parent_spacetime_status,
             structure_type=structure_type,
-            trend_direction=trend_direction,
+            trend_direction=effective_trend_direction,
         )
+        explainability_status = explanation.get('explainability_status', 'passed')
+        qualification_reason = explanation.get('qualification_reason') or explanation.get('downgrade_reason')
 
         return {
             'macro_background': macro_background,
@@ -3195,6 +3402,7 @@ class TrinityStockAnalyzer:
                 'focus_mode': focus_mode,
                 'archetype_family': structure_family,
                 'archetype_label': archetype_label,
+                'standard_qualification': standard_qualification,
                 'maturity': maturity,
                 'directional_bias': directional_bias,
                 'summary': (prediction or {}).get('prediction_alert') or structure_type,
@@ -3210,6 +3418,10 @@ class TrinityStockAnalyzer:
                     'date': valid_range.get('start_date'),
                     'semantic': 'macro_origin',
                 } if valid_range else None,
+                'start_anchor_source': explanation.get('focus_origin_source', 'none'),
+                'explainability_status': explainability_status,
+                'downgrade_reason': explanation.get('downgrade_reason'),
+                'qualification_reason': qualification_reason,
                 'display_reason': explanation.get('display_reason', ''),
             },
             'current_leg': {
@@ -3288,15 +3500,34 @@ class TrinityStockAnalyzer:
         self,
         valid_range: Optional[Dict[str, Any]],
         line_geometry: Dict[str, Any],
-        peak_analysis: Optional[Dict[str, Any]]
+        peak_analysis: Optional[Dict[str, Any]],
+        macro_components: Optional[List[Any]] = None,
     ) -> Dict[str, Any]:
         """Resolve the preferred explainable origin for the current focus structure."""
         points = list((line_geometry or {}).get('points', []))
         macro_origin = None
         candidates: List[Dict[str, Any]] = []
 
+        def find_point_index(target_date: Optional[str], target_price: Optional[float]) -> Optional[int]:
+            normalized_target_date = str(target_date or '').split(' ')[0]
+            for idx, point in enumerate(points):
+                point_date = str(point.get('date') or '').split(' ')[0]
+                point_price = point.get('price')
+                if normalized_target_date and point_date != normalized_target_date:
+                    continue
+                if (
+                    isinstance(target_price, (int, float))
+                    and isinstance(point_price, (int, float))
+                    and abs(float(point_price) - float(target_price)) <= 0.01
+                ):
+                    return idx
+            return None
+
         if isinstance(valid_range, dict):
-            macro_point_index = 0 if points else None
+            macro_point_index = find_point_index(
+                valid_range.get('start_date'),
+                valid_range.get('start_price'),
+            )
             macro_origin = {
                 'point_index': macro_point_index,
                 'price': valid_range.get('start_price'),
@@ -3311,6 +3542,43 @@ class TrinityStockAnalyzer:
                 'reason': '使用 valid_range 原点作为宏观起点',
                 'selected': False,
             })
+
+        normalized_components: List[Dict[str, Any]] = []
+        for component in macro_components or []:
+            if hasattr(component, 'to_dict'):
+                normalized_components.append(component.to_dict())
+            elif isinstance(component, dict):
+                normalized_components.append(component)
+        if len(normalized_components) >= 2:
+            recent_component = normalized_components[-1]
+            previous_component = normalized_components[-2]
+            selected_component = recent_component
+            component_reason = '检测到最近组件边界，优先从最近推进起点开始解释当前结构'
+            if (
+                recent_component.get('type') == 'Directional'
+                and previous_component.get('type') == 'Platform'
+            ):
+                selected_component = previous_component
+                component_reason = '检测到平台后接推进，优先从最近平台起点开始解释当前结构'
+            elif recent_component.get('type') == 'Platform':
+                component_reason = '检测到最近平台，优先从最近平台起点开始解释当前结构'
+
+            component_strokes = selected_component.get('strokes') or []
+            component_start = component_strokes[0] if component_strokes else {}
+            component_point_index = find_point_index(
+                component_start.get('from_date'),
+                component_start.get('from_price'),
+            )
+            if component_point_index is not None:
+                component_point = points[component_point_index]
+                candidates.append({
+                    'kind': 'recent_component',
+                    'point_index': component_point_index,
+                    'price': component_point.get('price'),
+                    'date': component_point.get('date'),
+                    'reason': component_reason,
+                    'selected': False,
+                })
 
         peak_point_index = self._resolve_peak_structure_start_point_index(line_geometry, peak_analysis)
         peak_kind = None
@@ -3355,11 +3623,25 @@ class TrinityStockAnalyzer:
 
         if selected_origin_kind == 'none':
             for candidate in candidates:
-                if candidate['kind'] == 'macro_origin' and candidate.get('point_index') is not None:
-                    selected_origin_kind = 'macro_origin'
+                if candidate['kind'] == 'recent_component' and candidate.get('point_index') is not None:
+                    selected_origin_kind = 'recent_component'
                     selected_point_index = candidate['point_index']
                     explainability_status = 'passed'
                     explainability_reason = candidate['reason']
+                    candidate['selected'] = True
+                    break
+
+        if selected_origin_kind == 'none':
+            for candidate in candidates:
+                if candidate['kind'] == 'macro_origin':
+                    selected_origin_kind = 'macro_origin'
+                    selected_point_index = candidate['point_index']
+                    explainability_status = 'passed'
+                    explainability_reason = (
+                        candidate['reason']
+                        if candidate.get('point_index') is not None
+                        else f"{candidate['reason']}；当前窗口未包含该原点"
+                    )
                     candidate['selected'] = True
                     break
 
@@ -3370,6 +3652,26 @@ class TrinityStockAnalyzer:
             'selected_point_index': selected_point_index,
             'explainability_status': explainability_status,
             'explainability_reason': explainability_reason,
+        }
+
+    def _validate_focus_structure_explainability(
+        self,
+        structure_type: str,
+        inflection_count: int,
+        focus_origin_analysis: Optional[Dict[str, Any]]
+    ) -> Dict[str, Any]:
+        """Decide whether the public structure label is still explainable."""
+        analysis = focus_origin_analysis if isinstance(focus_origin_analysis, dict) else {}
+        if analysis.get('selected_origin_kind') == 'none':
+            return {
+                'passed': False,
+                'status': 'downgraded',
+                'reason': analysis.get('explainability_reason') or '未找到可解释的当前结构起点',
+            }
+        return {
+            'passed': True,
+            'status': analysis.get('explainability_status', 'passed'),
+            'reason': analysis.get('explainability_reason', ''),
         }
 
     def _build_structure_focus_context(
@@ -3580,36 +3882,14 @@ class TrinityStockAnalyzer:
         if result['structure_type'] != 'unknown' and macro_components:
             return
 
-        if stroke_count == 3:
-            result['structure_type'] = 'D三段式'
-            result['structure_stage'] = 'd1-d4拐点区间'
-            result['description'] = f"D三段式结构，{stroke_count}笔{inflection_count}拐点"
-            judgment_criteria.append("✅ D类结构（兜底）：笔数=3")
-        elif stroke_count == 5:
-            result['structure_type'] = 'C单平台式'
-            result['structure_stage'] = 'c1-c6拐点区间'
-            result['description'] = f"单平台结构，{stroke_count}笔{inflection_count}拐点"
-            judgment_criteria.append("✅ C类结构（兜底）：笔数=5")
-        elif stroke_count == 9:
-            result['structure_type'] = 'B双平台式'
-            result['structure_stage'] = 'b1-b10拐点区间'
-            result['description'] = f"B双平台式结构，{stroke_count}笔{inflection_count}拐点"
-            judgment_criteria.append("✅ B类结构（兜底）：笔数=9")
-        elif stroke_count < 3:
-            result['structure_type'] = '结构未完成'
-            result['structure_stage'] = f'{inflection_count}个拐点'
-            result['description'] = f"结构未完成，{stroke_count}笔"
-            judgment_criteria.append(f"⚠️ 笔数={stroke_count} < 3，结构未完成")
-        elif stroke_count in [4, 6, 7, 8]:
-            result['structure_type'] = '延伸结构'
-            result['structure_stage'] = f'{inflection_count}个拐点'
-            result['description'] = f"延伸结构，{stroke_count}笔，建议升维分析"
-            judgment_criteria.append(f"⚠️ 笔数={stroke_count}，非标准结构，建议升维分析")
-        else:
-            result['structure_type'] = '复杂结构'
-            result['structure_stage'] = f'{inflection_count}个拐点'
-            result['description'] = f"复杂结构，{stroke_count}笔，需人工确认"
-            judgment_criteria.append(f"⚠️ 笔数={stroke_count}，结构复杂")
+        structure_type, structure_stage, description, criteria = self._classify_structure_by_counts(
+            stroke_count,
+            inflection_count,
+        )
+        result['structure_type'] = structure_type
+        result['structure_stage'] = structure_stage
+        result['description'] = description
+        judgment_criteria.extend(criteria)
     
     def detect_structure(self, df: pd.DataFrame, lookback: int = 200, macd_status: str = None) -> Dict:
         """
@@ -3715,30 +3995,35 @@ class TrinityStockAnalyzer:
         judgment_criteria.append(f"聚类算法: 将 {full_stroke_count} 笔聚类为 {len(macro_components)} 个宏观组件")
 
         if macro_components:
-            structure_type, structure_stage, description, extra_criteria = (
+            raw_structure_type, raw_structure_stage, raw_description, extra_criteria = (
                 self._classify_structure_by_macro_components(macro_components, result['trend_direction'])
             )
-            result['structure_type'] = structure_type
-            result['structure_stage'] = structure_stage
-            result['description'] = description
             judgment_criteria.extend(extra_criteria)
-            result['structure_details']['raw_classification'] = {
-                'type': structure_type,
-                'stage': structure_stage,
-                'description': description,
-                'component_summary': [
-                    f"{component.get('type')}({len(component.get('strokes', []))}笔)"
-                    for component in result['structure_details']['macro_components']
-                ],
-            }
         else:
             judgment_criteria.append("⚠️ 聚类算法失败，使用原始笔数判断")
+            raw_structure_type, raw_structure_stage, raw_description, extra_criteria = (
+                self._classify_structure_by_counts(full_stroke_count, full_inflection_count)
+            )
+            judgment_criteria.extend(extra_criteria)
+
+        result['structure_type'] = raw_structure_type
+        result['structure_stage'] = raw_structure_stage
+        result['description'] = raw_description
+        result['structure_details']['raw_classification'] = {
+            'type': raw_structure_type,
+            'stage': raw_structure_stage,
+            'description': raw_description,
+            'component_summary': self._summarize_macro_components(
+                result['structure_details']['macro_components']
+            ),
+        }
 
         peak_analysis = self._analyze_peak_structure(stroke_list, macro_components)
         focus_origin_analysis = self._build_focus_origin_analysis(
             valid_range=valid_range_info,
             line_geometry=line_geometry,
             peak_analysis=peak_analysis,
+            macro_components=macro_components,
         )
         result['structure_details']['focus_origin_analysis'] = focus_origin_analysis
         if peak_analysis['is_peak_structure']:
@@ -3759,16 +4044,67 @@ class TrinityStockAnalyzer:
         structure_start_point_index = focus_context['render_structure_start_point_index']
         result['segment_count'] = stroke_count
         result['inflection_points'] = inflection_count
-
-        self._apply_structure_fallback(
-            result=result,
-            stroke_count=full_stroke_count,
-            inflection_count=full_inflection_count,
-            macro_components=macro_components,
-            judgment_criteria=judgment_criteria
+        focus_trend_direction = self._determine_stroke_trend(focused_strokes)
+        preferred_focus_structure_type = None
+        preferred_focus_structure_stage = None
+        if isinstance(peak_analysis, dict) and peak_analysis.get('is_peak_structure'):
+            preferred_focus_structure_type = peak_analysis.get('right_structure')
+            peak_price = peak_analysis.get('peak_price')
+            if preferred_focus_structure_type and isinstance(peak_price, (int, float)):
+                preferred_focus_structure_stage = (
+                    f'峰值{float(peak_price):.2f}后{preferred_focus_structure_type}'
+                )
+        focus_classification = self._build_focus_structure_classification(
+            focused_strokes=focused_strokes,
+            inflection_count=inflection_count,
+            trend_direction=focus_trend_direction,
+            preferred_structure_type=preferred_focus_structure_type,
+            preferred_structure_stage=preferred_focus_structure_stage,
         )
+        result['structure_details']['focus_classification'] = {
+            'type': focus_classification['type'],
+            'stage': focus_classification['stage'],
+            'description': focus_classification['description'],
+            'archetype_family': focus_classification['archetype_family'],
+            'standard_qualification': focus_classification['standard_qualification'],
+            'qualification_reason': focus_classification['qualification_reason'],
+            'trend_direction': focus_classification['trend_direction'],
+            'component_summary': focus_classification['component_summary'],
+        }
+        result['structure_type'] = focus_classification['type']
+        result['structure_stage'] = focus_classification['stage']
+        result['description'] = focus_classification['description']
+        judgment_criteria.extend(focus_classification['criteria'])
 
-        result['description'] = f"识别为{result['structure_type']}，{result['trend_direction']}趋势"
+        explainability_verdict = self._validate_focus_structure_explainability(
+            result['structure_type'],
+            inflection_count,
+            focus_origin_analysis,
+        )
+        explainability_status = explainability_verdict['status']
+        explainability_reason = explainability_verdict['reason']
+        if focus_classification['standard_qualification'] == 'extended':
+            explainability_status = 'extended'
+            explainability_reason = (
+                focus_classification['qualification_reason'] or explainability_reason
+            )
+        result['structure_details']['focus_origin_analysis']['explainability_status'] = (
+            explainability_status
+        )
+        result['structure_details']['focus_origin_analysis']['explainability_reason'] = (
+            explainability_reason
+        )
+        if not explainability_verdict['passed']:
+            result['structure_type'] = '复杂结构'
+            result['structure_stage'] = '等待确认'
+            result['description'] = '当前聚焦区间无法诚实解释为标准结构，已降级'
+            judgment_criteria.append(f"⚠️ 解释性降级: {explainability_verdict['reason']}")
+
+        if result['description'] not in (
+            '当前聚焦区间无法诚实解释为标准结构，已降级',
+            focus_classification['description'],
+        ):
+            result['description'] = f"识别为{result['structure_type']}，{result['trend_direction']}趋势"
         result['structure_details']['judgment_criteria'] = '\n'.join(judgment_criteria)
         prediction = self._analyze_structure_prediction(
             result['structure_type'],
@@ -3776,7 +4112,7 @@ class TrinityStockAnalyzer:
             inflection_count,
             focused_strokes,
             focused_valid_fractals,
-            result['trend_direction'],
+            focus_trend_direction,
             recent,
             macd_status
         )
@@ -3789,7 +4125,10 @@ class TrinityStockAnalyzer:
             line_geometry,
             prediction,
             peak_analysis,
-            structure_start_point_index=structure_start_point_index
+            structure_start_point_index=structure_start_point_index,
+            focus_origin_source=result['structure_details']['focus_origin_analysis'].get('selected_origin_kind'),
+            explainability_status=result['structure_details']['focus_origin_analysis'].get('explainability_status'),
+            downgrade_reason=result['structure_details']['focus_origin_analysis'].get('explainability_reason'),
         )
         result['structure_details']['line_geometry'] = labeled_geometry
         result['structure_details']['explainability'] = explainability
@@ -3803,6 +4142,7 @@ class TrinityStockAnalyzer:
             peak_analysis=peak_analysis,
             labeled_points=labeled_geometry.get('points', []),
             valid_range=valid_range_info,
+            focus_trend_direction=focus_trend_direction,
         )
 
         return result
@@ -3862,6 +4202,33 @@ class TrinityStockAnalyzer:
             last_stroke = strokes[-1]
             if last_stroke.get('is_current') or last_stroke.get('to_type') == 'current':
                 is_in_current_stroke = True
+
+        structure_family, _, standard_qualification = self._resolve_structure_profile(structure_type)
+        if standard_qualification == 'extended':
+            direction_text = '上行' if trend_direction == '上涨' else '下行' if trend_direction == '下跌' else '双向'
+            prediction['current_stage'] = f'{structure_type}进行中'
+            if structure_family in ('B', 'C'):
+                prediction['next_stage'] = '等待平台边界确认'
+                prediction['prediction_alert'] = f'📍 {structure_type}仍在展开，优先观察平台边界与当前执行段。'
+                prediction['action_hint'] = '先看当前执行段是否完成，再判断边界突破或跌破'
+                prediction['key_price_levels'] = [
+                    {'price': float(current_high), 'type': '上沿参考', 'note': '延伸平台上沿'},
+                    {'price': float(current_low), 'type': '下沿参考', 'note': '延伸平台下沿'},
+                ]
+            elif structure_family == 'A':
+                prediction['next_stage'] = '等待推进段确认'
+                prediction['prediction_alert'] = f'📍 {structure_type}{direction_text}推进中，暂不使用标准 a1-a6 编号。'
+                prediction['action_hint'] = '跟踪当前推进段是否延续，失守关键起涨/起跌点则重判'
+            elif structure_family == 'D':
+                prediction['next_stage'] = '等待修正段完成'
+                prediction['prediction_alert'] = f'📍 {structure_type}{direction_text}修正中，先等当前执行段完成。'
+                prediction['action_hint'] = '等当前修正段完成后再看是否形成新的终点确认'
+            else:
+                prediction['next_stage'] = '等待结构再次明朗'
+                prediction['prediction_alert'] = f'📍 {structure_type}仍在展开，先跟踪当前执行段。'
+                prediction['action_hint'] = '等待新的确认拐点'
+            prediction['confidence'] = 'medium'
+            return prediction
         
         # 根据结构类型生成预测
         if structure_type == 'D三段式':
@@ -4092,6 +4459,7 @@ class TrinityStockAnalyzer:
         peak_analysis: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
         """Build a compact structure archetype summary for downstream execution rules."""
+        structure_family, _, standard_qualification = self._resolve_structure_profile(structure_type)
         component_types = [
             component.get('type', 'Unknown')
             for component in (macro_components or [])[:3]
@@ -4104,23 +4472,25 @@ class TrinityStockAnalyzer:
             maturity = 'mid'
 
         confidence = 'low' if structure_type in ('复杂结构', '结构未完成') else 'medium'
+        if standard_qualification == 'extended':
+            confidence = 'low'
         if peak_analysis and peak_analysis.get('is_peak_structure'):
             confidence = 'low'
 
         alternatives = []
-        if structure_type == 'A五段式':
+        if structure_family == 'A':
             alternatives.append({
                 'type': 'C单平台式',
                 'confidence': 0.35,
                 'reason': '平台段占比仍高',
             })
-        elif structure_type == 'C单平台式':
+        elif structure_family == 'C':
             alternatives.append({
                 'type': 'A五段式',
                 'confidence': 0.3,
                 'reason': '突破后可升级为趋势原型',
             })
-        elif structure_type == 'B双平台式':
+        elif structure_family == 'B':
             alternatives.append({
                 'type': 'C单平台式',
                 'confidence': 0.25,
@@ -4724,10 +5094,12 @@ class TrinityStockAnalyzer:
 
         structure_details = structure.get('structure_details', {})
         prediction = structure_details.get('prediction', {})
+        focus_classification = structure_details.get('focus_classification', {})
+        execution_trend_direction = focus_classification.get('trend_direction') or structure.get('trend_direction')
         archetype = self._build_structure_archetype(
             structure_type=structure.get('structure_type'),
             structure_stage=structure.get('structure_stage'),
-            trend_direction=structure.get('trend_direction'),
+            trend_direction=execution_trend_direction,
             macro_components=structure_details.get('macro_components', []),
             inflection_count=structure.get('inflection_points', 0),
             segment_count=structure.get('segment_count', 0),
@@ -4735,7 +5107,7 @@ class TrinityStockAnalyzer:
         )
         execution_phase = self._detect_execution_phase(
             macd_status=macd_status.get('status'),
-            trend_direction=structure.get('trend_direction'),
+            trend_direction=execution_trend_direction,
             moving_averages={
                 'price_vs_ma55': ma_analysis['price_vs_ma55'],
                 'ma_status': ma_analysis['ma_status'],

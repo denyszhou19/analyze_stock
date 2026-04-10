@@ -14,6 +14,7 @@ export interface StructureExplainabilityViewModel {
   interpretation: {
     backgroundLabel: string | null;
     archetypeLabel: string | null;
+    standardQualification: string | null;
     maturityLabel: string | null;
     currentLegLabel: string | null;
     nextConfirmationLabel: string | null;
@@ -22,6 +23,9 @@ export interface StructureExplainabilityViewModel {
     requiredConfirmation: string | null;
     scenarioPathLabels: string[];
     displayReason: string | null;
+    startAnchorSource: string | null;
+    explainabilityStatus: string | null;
+    downgradeReason: string | null;
   };
   archetype: {
     primaryLabel: string | null;
@@ -53,7 +57,13 @@ interface StructureInterpretationSummary {
   } | null;
   focus_structure?: {
     archetype_label?: string | null;
+    archetype_family?: string | null;
+    standard_qualification?: string | null;
     maturity?: string | null;
+    start_anchor_source?: string | null;
+    explainability_status?: string | null;
+    downgrade_reason?: string | null;
+    qualification_reason?: string | null;
     start_anchor?: {
       point_id?: string | null;
       price?: number | null;
@@ -77,6 +87,7 @@ interface StructureInterpretationSummary {
   spacetime_gate?: {
     child_structure_match?: boolean | null;
     resonance_enabled?: boolean | null;
+    structure_readiness?: string | null;
     wait_reason?: string | null;
     required_confirmation?: string | null;
   } | null;
@@ -100,6 +111,25 @@ interface StructureExplainabilityInput {
   structure_details?: {
     explainability?: ExplainabilitySummary | null;
     prediction?: PredictionSummary | null;
+    focus_origin_analysis?: {
+      selected_origin_kind?: string | null;
+      explainability_status?: string | null;
+      explainability_reason?: string | null;
+    } | null;
+    raw_classification?: {
+      type?: string | null;
+      stage?: string | null;
+      description?: string | null;
+      component_summary?: string[] | null;
+    } | null;
+    focus_classification?: {
+      type?: string | null;
+      stage?: string | null;
+      description?: string | null;
+      archetype_family?: string | null;
+      standard_qualification?: string | null;
+      qualification_reason?: string | null;
+    } | null;
   } | null;
 }
 
@@ -151,19 +181,26 @@ function formatPrice(price?: number | null): string | null {
   return price.toFixed(2);
 }
 
+function isInternalPointId(pointId?: string | null): boolean {
+  return Boolean(pointId && /^p\d+$/i.test(pointId));
+}
+
 function formatAnchorLabel(anchor?: {
   point_id?: string | null;
   price?: number | null;
   date?: string | null;
-} | null): string | null {
+} | null, options?: {
+  hideInternalPointId?: boolean;
+}): string | null {
   if (!anchor) {
     return null;
   }
   const priceLabel = formatPrice(anchor.price);
-  if (anchor.point_id && priceLabel) {
+  const hideInternalPointId = Boolean(options?.hideInternalPointId);
+  if (anchor.point_id && priceLabel && !(hideInternalPointId && isInternalPointId(anchor.point_id))) {
     return `${anchor.point_id} @ ${priceLabel}`;
   }
-  if (anchor.point_id) {
+  if (anchor.point_id && !(hideInternalPointId && isInternalPointId(anchor.point_id))) {
     return anchor.point_id;
   }
   if (anchor.date && priceLabel) {
@@ -216,14 +253,38 @@ export function buildStructureExplainabilityViewModel(
   const explainability = structure?.structure_details?.explainability;
   const prediction = structure?.structure_details?.prediction;
   const interpretation = structure?.interpretation;
-  const startAnchorLabel = formatAnchorLabel(interpretation?.focus_structure?.start_anchor);
-  const referenceOriginLabel = formatReferenceOriginLabel(
-    interpretation?.focus_structure?.reference_origin
-  );
+  const standardQualification = interpretation?.focus_structure?.standard_qualification ?? null;
+  const hideInternalStartPointId = standardQualification !== 'standard';
+  const startAnchorLabel = formatAnchorLabel(interpretation?.focus_structure?.start_anchor, {
+    hideInternalPointId: hideInternalStartPointId,
+  });
+  const referenceOriginAnchor = interpretation?.focus_structure?.reference_origin;
+  const referenceOriginAnchorLabel = formatAnchorLabel(referenceOriginAnchor);
+  const referenceOriginLabel = formatReferenceOriginLabel(referenceOriginAnchor);
   const interpretationDisplayReason = interpretation?.focus_structure?.display_reason ?? null;
   const interpretationCurrentLegLabel = interpretation?.current_leg?.label ?? null;
   const interpretationNextConfirmationLabel = interpretation?.next_confirmation?.label ?? null;
   const interpretationGate = interpretation?.spacetime_gate ?? null;
+  const focusOriginAnalysis = structure?.structure_details?.focus_origin_analysis ?? null;
+  const explainabilityStatus =
+    interpretation?.focus_structure?.explainability_status ??
+    focusOriginAnalysis?.explainability_status ??
+    null;
+  const startAnchorSource =
+    interpretation?.focus_structure?.start_anchor_source ??
+    focusOriginAnalysis?.selected_origin_kind ??
+    null;
+  const macroOriginOutsideWindow =
+    startAnchorSource === 'macro_origin' &&
+    !startAnchorLabel &&
+    !explainability?.structure_start_point_id &&
+    Boolean(referenceOriginAnchorLabel);
+
+  const downgradeReason =
+    interpretation?.focus_structure?.downgrade_reason ??
+    interpretation?.focus_structure?.qualification_reason ??
+    focusOriginAnalysis?.explainability_reason ??
+    null;
   const scenarioPathLabels = Array.isArray(interpretation?.scenario_paths)
     ? interpretation.scenario_paths
         .map((path) => formatScenarioPathLabel(path))
@@ -243,8 +304,12 @@ export function buildStructureExplainabilityViewModel(
   return {
     topology: {
       hasExplainability: Boolean(explainability),
-      startLabel: startAnchorLabel ?? explainability?.structure_start_point_id ?? null,
-      startMetaLabel: referenceOriginLabel,
+      startLabel:
+        startAnchorLabel ??
+        (macroOriginOutsideWindow ? referenceOriginAnchorLabel : null) ??
+        explainability?.structure_start_point_id ??
+        null,
+      startMetaLabel: macroOriginOutsideWindow ? '当前窗口未包含该原点' : referenceOriginLabel,
       currentLabel: explainability?.current_point_id ?? null,
       lastConfirmedLabel:
         interpretation?.current_leg?.from_point_id ?? explainability?.current_point_id ?? null,
@@ -259,6 +324,7 @@ export function buildStructureExplainabilityViewModel(
     interpretation: {
       backgroundLabel: interpretation?.macro_background?.label ?? null,
       archetypeLabel: interpretation?.focus_structure?.archetype_label ?? null,
+      standardQualification,
       maturityLabel: mapMaturityToChineseLabel(interpretation?.focus_structure?.maturity),
       currentLegLabel: interpretationCurrentLegLabel,
       nextConfirmationLabel: interpretationNextConfirmationLabel,
@@ -267,11 +333,16 @@ export function buildStructureExplainabilityViewModel(
           ? null
           : interpretationGate.resonance_enabled
             ? '结构共振已成立'
+            : interpretationGate?.structure_readiness === 'extended'
+              ? '原型匹配但仍需确认'
             : '当前级别暂不操作',
       waitReason: interpretationGate?.wait_reason ?? null,
       requiredConfirmation: interpretationGate?.required_confirmation ?? null,
       scenarioPathLabels,
       displayReason: interpretationDisplayReason,
+      startAnchorSource,
+      explainabilityStatus,
+      downgradeReason,
     },
     archetype: {
       primaryLabel,

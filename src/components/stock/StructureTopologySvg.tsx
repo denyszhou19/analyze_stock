@@ -65,6 +65,7 @@ export interface StructureRenderSegment {
 
 export interface StructureExplainabilityData {
   structure_family: 'A' | 'B' | 'C' | 'D' | 'complex' | 'unfinished';
+  standard_qualification?: 'standard' | 'extended' | 'complex' | 'unfinished' | string;
   structure_start_point_id: string | null;
   current_point_id: string | null;
   live_point_id?: string | null;
@@ -168,6 +169,7 @@ function getAnchorVisuals(role: Exclude<EnhancedPointAnchorRole, null>) {
 function shouldRenderPointLabel(
   label: string | null | undefined,
   structureFamily: StructureExplainabilityData['structure_family'] | undefined,
+  standardQualification: StructureExplainabilityData['standard_qualification'] | undefined,
   anchorRole: EnhancedPointAnchorRole
 ) {
   if (!label || anchorRole === 'live') {
@@ -176,7 +178,7 @@ function shouldRenderPointLabel(
   if (label.toLowerCase() === 'live') {
     return false;
   }
-  if (structureFamily === 'complex' && /^p\d+$/i.test(label)) {
+  if ((structureFamily === 'complex' || standardQualification !== 'standard') && /^p\d+$/i.test(label)) {
     return false;
   }
   return true;
@@ -285,6 +287,7 @@ export function StructureTopologySvg({
                 shouldRenderPointLabel(
                   pointLabelText,
                   explainability?.structure_family,
+                  explainability?.standard_qualification,
                   anchorRole
                 ) ? (
                   <text

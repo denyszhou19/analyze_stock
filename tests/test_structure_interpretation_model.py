@@ -165,3 +165,37 @@ class StructureInterpretationModelTest(unittest.TestCase):
         self.assertEqual(focus_structure['start_anchor_source'], 'peak_extreme')
         self.assertEqual(focus_structure['explainability_status'], 'downgraded')
         self.assertIn('标准点数上限', focus_structure['downgrade_reason'])
+
+    def test_build_structure_interpretation_exposes_extended_focus_structure(self) -> None:
+        interpretation = self.analyzer._build_structure_interpretation(
+            structure_type='延伸C类',
+            trend_direction='下跌',
+            explanation={
+                'structure_start_point_id': 'p1',
+                'focus_origin_source': 'peak_extreme',
+                'explainability_status': 'extended',
+                'qualification_reason': '超出标准点数，按延伸C类跟踪',
+            },
+            prediction={'current_stage': '进行中', 'next_stage': '等待平台边界确认'},
+            moving_averages={
+                'price_vs_ma55': 'below',
+                'price_vs_ma233': 'below',
+                'ma_status': '空头排列',
+            },
+            peak_analysis=None,
+            labeled_points=[
+                {'point_id': 'p1', 'price': 209.9, 'date': '2024-03-04 00:00'},
+                {'point_id': 'p2', 'price': 191.0, 'date': '2024-03-05 00:00'},
+                {'point_id': 'live', 'price': 176.0, 'date': '2024-04-30 00:00', 'is_current': True},
+            ],
+            valid_range={
+                'start_date': '2024-03-01',
+                'start_price': 168.7,
+            },
+        )
+
+        focus_structure = interpretation['focus_structure']
+        self.assertEqual(focus_structure['archetype_family'], 'C')
+        self.assertEqual(focus_structure['standard_qualification'], 'extended')
+        self.assertEqual(focus_structure['archetype_label'], '延伸C类原型')
+        self.assertEqual(focus_structure['qualification_reason'], '超出标准点数，按延伸C类跟踪')

@@ -143,6 +143,105 @@ test('buildStructureExplainabilityViewModel falls back to prediction text when e
   assert.match(result.topology.fallbackText ?? '', /prediction/);
 });
 
+test('buildStructureExplainabilityViewModel exposes downgraded focus-origin metadata', () => {
+  const result = buildStructureExplainabilityViewModel({
+    structure_type: '复杂结构',
+    interpretation: {
+      focus_structure: {
+        archetype_label: '复杂结构',
+        start_anchor_source: 'peak_extreme',
+        explainability_status: 'downgraded',
+        downgrade_reason: '标准点数上限超出',
+      },
+    },
+    structure_details: {
+      explainability: {
+        structure_start_point_id: 'p1',
+        display_reason: '峰值切片后聚焦右侧结构',
+      },
+      focus_origin_analysis: {
+        selected_origin_kind: 'peak_extreme',
+        explainability_status: 'downgraded',
+        explainability_reason: '标准点数上限超出',
+      },
+      raw_classification: {
+        type: 'A五段式',
+        stage: '趋势启动阶段',
+        description: 'A五段式，趋势启动 + 平台整理',
+        component_summary: ['Directional(1笔)', 'Platform(14笔)'],
+      },
+    },
+  } as any);
+
+  assert.equal(result.interpretation.explainabilityStatus, 'downgraded');
+  assert.equal(result.interpretation.startAnchorSource, 'peak_extreme');
+  assert.match(result.interpretation.downgradeReason ?? '', /标准点数上限/);
+});
+
+test('buildStructureExplainabilityViewModel shows reference origin as start label when macro origin is outside render window', () => {
+  const result = buildStructureExplainabilityViewModel({
+    structure_type: '复杂结构',
+    interpretation: {
+      focus_structure: {
+        archetype_label: '复杂结构',
+        start_anchor_source: 'macro_origin',
+        reference_origin: {
+          price: 76.66,
+          date: '2025-07-14 00:00:00',
+        },
+      },
+    },
+    structure_details: {
+      explainability: {
+        structure_start_point_id: null,
+        current_point_id: 'p16',
+        display_reason: '复杂/未完成结构使用通用锚点，仅突出当前段',
+      },
+    },
+  } as any);
+
+  assert.equal(result.topology.startLabel, '2025-07-14 @ 76.66');
+  assert.match(result.topology.startMetaLabel ?? '', /当前窗口未包含该原点/);
+});
+
+test('buildStructureExplainabilityViewModel hides internal point ids for extended structures', () => {
+  const result = buildStructureExplainabilityViewModel({
+    structure_type: '延伸C类',
+    interpretation: {
+      focus_structure: {
+        archetype_label: '延伸C类原型',
+        archetype_family: 'C',
+        standard_qualification: 'extended',
+        start_anchor: {
+          point_id: 'p1',
+          price: 181.9,
+          date: '2026-03-01 00:00:00',
+        },
+        reference_origin: {
+          price: 76.66,
+          date: '2025-07-14 00:00:00',
+        },
+      },
+      current_leg: {
+        label: 'p5→live 下行进行中',
+        from_point_id: 'p5',
+        to_point_id: 'live',
+      },
+    },
+    structure_details: {
+      explainability: {
+        structure_start_point_id: 'p1',
+        current_point_id: 'p5',
+        display_reason: '当前结构已超出标准点数，停止标准编号',
+      },
+    },
+  } as any);
+
+  assert.equal(result.topology.startLabel, '2026-03-01 @ 181.90');
+  assert.equal(result.interpretation.archetypeLabel, '延伸C类原型');
+  assert.equal(result.interpretation.standardQualification, 'extended');
+});
+
 test('buildStructureExplainabilityViewModel falls back archetype reason to structure description', () => {
   const result = buildStructureExplainabilityViewModel({
     structure_type: '复杂结构',

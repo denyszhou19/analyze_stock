@@ -49,10 +49,10 @@ interface SummaryBlockProps {
 
 function SummaryBlock({ label, value, note }: SummaryBlockProps) {
   return (
-    <div className="rounded-lg border border-border/60 bg-muted/20 p-3">
+    <div className="min-w-0 rounded-lg border border-border/60 bg-muted/20 p-3">
       <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">{label}</div>
-      <div className="mt-2 text-sm font-medium text-foreground">{value}</div>
-      {note && <div className="mt-1 text-xs text-muted-foreground">{note}</div>}
+      <div className="mt-2 break-words text-sm font-medium leading-6 text-foreground">{value}</div>
+      {note && <div className="mt-1 break-words text-xs leading-5 text-muted-foreground">{note}</div>}
     </div>
   );
 }
@@ -106,30 +106,6 @@ function normalizeLiveText(value?: string | null): string | null {
   return value.replaceAll('→live', '→进行中').replaceAll(' live ', ' 进行中 ');
 }
 
-function isInternalPointId(pointId?: string | null) {
-  return Boolean(pointId && /^p\d+$/i.test(pointId));
-}
-
-function formatVisibleTopologyPoint(
-  point:
-    | {
-        point_id?: string;
-        price_label?: string;
-      }
-    | undefined,
-  mode: 'labeled' | 'price_only'
-) {
-  if (!point) {
-    return null;
-  }
-
-  if (mode === 'labeled' && point.point_id && !isInternalPointId(point.point_id) && point.price_label) {
-    return `${point.point_id} @ ${point.price_label}`;
-  }
-
-  return point.price_label ?? point.point_id ?? null;
-}
-
 export function StructureExplainabilityPanel({
   structure,
   executionSummary,
@@ -143,11 +119,6 @@ export function StructureExplainabilityPanel({
   const warning = details?.left_structure_warning ?? null;
   const payload = details?.render_payload;
   const explainability = details?.explainability ?? null;
-  const payloadPoints = payload?.points ?? [];
-  const lastConfirmedPointId =
-    structure.interpretation?.current_leg?.from_point_id ?? explainability?.current_point_id ?? null;
-  const lastConfirmedPoint = payloadPoints.find((point) => point.point_id === lastConfirmedPointId);
-  const livePoint = payloadPoints.find((point) => point.is_current);
   const visibleStart = viewModel.topology.startLabel ?? '待确认';
   const visibleStartMeta = viewModel.topology.startMetaLabel;
   const visibleBackground = viewModel.interpretation.backgroundLabel ?? '待确认';
@@ -162,18 +133,16 @@ export function StructureExplainabilityPanel({
     viewModel.interpretation.nextConfirmationLabel ??
     prediction?.next_stage ??
     '待确认';
-  const visibleLastConfirmed =
-    formatVisibleTopologyPoint(lastConfirmedPoint, 'labeled') ??
-    viewModel.topology.lastConfirmedLabel ??
-    viewModel.topology.currentLabel ??
-    '待确认';
-  const visibleLivePoint =
-    formatVisibleTopologyPoint(livePoint, 'price_only') ??
-    (viewModel.topology.liveLabel === 'live'
-      ? '进行中'
-      : viewModel.topology.liveLabel ?? '待确认');
   const visibleStateTitle =
     viewModel.interpretation.executionStateLabel ?? executionSummary.phaseLabel ?? '等待确认';
+  const isDowngraded = viewModel.interpretation.explainabilityStatus === 'downgraded';
+  const standardQualification = viewModel.interpretation.standardQualification;
+  const qualificationLabelMap: Record<string, string> = {
+    standard: '标准',
+    extended: '延伸',
+    complex: '复杂',
+    unfinished: '未完成',
+  };
   const topologyReason =
     viewModel.interpretation.displayReason ??
     viewModel.topology.displayReason ??
@@ -181,6 +150,7 @@ export function StructureExplainabilityPanel({
     prediction?.prediction_alert ??
     structure.description;
   const visibleStateReason =
+    (isDowngraded ? viewModel.interpretation.downgradeReason : null) ??
     viewModel.interpretation.waitReason ??
     executionSummary.executionReason ??
     topologyReason;
@@ -189,9 +159,15 @@ export function StructureExplainabilityPanel({
     executionSummary.phaseReason ??
     '等待新的结构确认';
   const archetypeContext =
-    executionSummary.archetypeReason ?? viewModel.archetype.reason ?? structure.description;
-  const visibleArchetypeLabel =
-    viewModel.interpretation.archetypeLabel ?? executionSummary.archetypeLabel ?? viewModel.archetype.primaryLabel;
+    (isDowngraded ? viewModel.interpretation.downgradeReason : null) ??
+    executionSummary.archetypeReason ??
+    viewModel.archetype.reason ??
+    structure.description;
+  const visibleArchetypeLabel = isDowngraded
+    ? '复杂结构'
+    : viewModel.interpretation.archetypeLabel ??
+      executionSummary.archetypeLabel ??
+      viewModel.archetype.primaryLabel;
   const visibleMaturity = viewModel.interpretation.maturityLabel;
   const scenarioPaths = structure.interpretation?.scenario_paths ?? [];
   const peakAnalysisDisplay = peakAnalysis ? getPeakAnalysisDisplay(peakAnalysis) : null;
@@ -204,10 +180,10 @@ export function StructureExplainabilityPanel({
 
   return (
     <div className="space-y-3">
-      <div className="grid gap-3 xl:grid-cols-[minmax(0,1.5fr)_minmax(280px,0.95fr)]">
+      <div className="space-y-3">
         <Card className="border-border/60 shadow-none">
           <CardContent className="p-4 space-y-4">
-            <div className="flex flex-wrap items-center justify-between gap-3">
+            <div className="flex flex-wrap items-start justify-between gap-3">
               <div className="flex items-center gap-2">
                 <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
                   结构拓扑
@@ -254,19 +230,24 @@ export function StructureExplainabilityPanel({
               </div>
 
               <div className="flex flex-wrap gap-2">
-                <Badge className="border border-sky-200 bg-sky-100 text-sky-700">
-                  背景 {visibleBackground}
-                </Badge>
                 <Badge
                   className={
                     structureColors[visibleArchetypeLabel || ''] ||
                     'border border-border bg-muted text-muted-foreground'
                   }
                 >
-                  原型 {visibleArchetypeLabel || structure.structure_type}
+                  当前结构 {visibleArchetypeLabel || structure.structure_type}
                 </Badge>
+                {standardQualification && (
+                  <Badge variant="outline">
+                    资格 {qualificationLabelMap[standardQualification] ?? standardQualification}
+                  </Badge>
+                )}
                 {visibleMaturity && <Badge variant="outline">成熟度 {visibleMaturity}</Badge>}
-                <Badge variant="outline">当前段 {visibleCurrent}</Badge>
+                <Badge variant="outline">当前执行段 {visibleCurrent}</Badge>
+                <Badge className="border border-sky-200 bg-sky-100 text-sky-700">
+                  背景 {visibleBackground}
+                </Badge>
                 {structure.inflection_points > 0 && (
                   <Badge variant="outline">{structure.inflection_points}个拐点</Badge>
                 )}
@@ -280,7 +261,7 @@ export function StructureExplainabilityPanel({
                 <StructureTopologySvg
                   payload={payload}
                   explainability={explainability}
-                  className="h-48 w-full"
+                  className="h-56 w-full"
                 />
               </div>
             ) : (
@@ -289,16 +270,20 @@ export function StructureExplainabilityPanel({
               </div>
             )}
 
-            <div className="grid gap-3 md:grid-cols-4">
-              <SummaryBlock label="聚焦起点" value={visibleStart} note={visibleStartMeta} />
-              <SummaryBlock label="最后确认点" value={visibleLastConfirmed} />
-              <SummaryBlock label="进行中点" value={visibleLivePoint} note="进行中" />
+            <div className="grid gap-3 sm:grid-cols-2">
+              <SummaryBlock
+                label="当前结构"
+                value={visibleArchetypeLabel || structure.structure_type}
+                note={topologyReason}
+              />
+              <SummaryBlock label="当前执行段" value={visibleCurrent} note={visibleStateTitle} />
               <SummaryBlock label="下一确认" value={visibleNext} note={visibleRequiredConfirmation} />
+              <SummaryBlock label="结构起点" value={visibleStart} note={visibleStartMeta} />
             </div>
           </CardContent>
         </Card>
 
-        <div className="space-y-3">
+        <div className="grid gap-3 xl:grid-cols-2">
           <Card className="border-border/60 shadow-none">
             <CardContent className="p-4 space-y-3">
               <div className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">
@@ -328,7 +313,12 @@ export function StructureExplainabilityPanel({
               <p className="text-sm text-muted-foreground">
                 {executionSummary.phaseReason || archetypeContext}
               </p>
-              {viewModel.archetype.alternativeLabels.length > 0 && (
+              {isDowngraded && viewModel.interpretation.downgradeReason ? (
+                <div className="rounded-lg border border-border/60 bg-muted/20 p-3 text-sm text-muted-foreground">
+                  {viewModel.interpretation.downgradeReason}
+                </div>
+              ) : null}
+              {!isDowngraded && viewModel.archetype.alternativeLabels.length > 0 && (
                 <div className="flex flex-wrap gap-2">
                   {viewModel.archetype.alternativeLabels.map((label) => (
                     <Badge key={label} variant="outline">

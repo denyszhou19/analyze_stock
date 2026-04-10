@@ -27,11 +27,16 @@ export interface StructureInterpretationFocusStructure {
   focus_mode?: string | null;
   archetype_family?: string | null;
   archetype_label?: string | null;
+  standard_qualification?: string | null;
   maturity?: string | null;
   directional_bias?: string | null;
   summary?: string | null;
   start_anchor?: StructureInterpretationAnchor | null;
   reference_origin?: StructureInterpretationAnchor | null;
+  start_anchor_source?: string | null;
+  explainability_status?: string | null;
+  downgrade_reason?: string | null;
+  qualification_reason?: string | null;
   display_reason?: string | null;
 }
 
@@ -63,6 +68,7 @@ export interface StructureInterpretationSpacetimeGate {
   parent_status?: string | null;
   allowed_child_structures?: string[] | null;
   child_structure_family?: string | null;
+  standard_qualification?: string | null;
   child_structure_match?: boolean | null;
   resonance_enabled?: boolean | null;
   structure_readiness?: string | null;
@@ -181,12 +187,54 @@ export interface StructureLeftStructureWarning {
   action_hint: string;
 }
 
+export interface StructureFocusOriginAnalysis {
+  macro_origin?: {
+    point_index?: number | null;
+    price?: number | null;
+    date?: string | null;
+    source?: string | null;
+  } | null;
+  candidates?: Array<{
+    kind?: string | null;
+    point_index?: number | null;
+    price?: number | null;
+    date?: string | null;
+    reason?: string | null;
+    selected?: boolean | null;
+  }> | null;
+  selected_origin_kind?: string | null;
+  selected_point_index?: number | null;
+  explainability_status?: string | null;
+  explainability_reason?: string | null;
+}
+
+export interface StructureRawClassification {
+  type?: string | null;
+  stage?: string | null;
+  description?: string | null;
+  component_summary?: string[] | null;
+}
+
+export interface StructureFocusClassification {
+  type?: string | null;
+  stage?: string | null;
+  description?: string | null;
+  archetype_family?: string | null;
+  standard_qualification?: string | null;
+  qualification_reason?: string | null;
+  trend_direction?: string | null;
+  component_summary?: string[] | null;
+}
+
 export interface StructureDetails {
   top_fractals: StructureFractalPoint[];
   bottom_fractals: StructureFractalPoint[];
   strokes: StructureStroke[];
   render_payload?: StructureRenderPayload;
   explainability?: StructureExplainabilityData | null;
+  focus_origin_analysis?: StructureFocusOriginAnalysis | null;
+  raw_classification?: StructureRawClassification | null;
+  focus_classification?: StructureFocusClassification | null;
   judgment_criteria: string;
   prediction?: StructurePrediction | null;
   peak_analysis?: StructurePeakAnalysis | null;
