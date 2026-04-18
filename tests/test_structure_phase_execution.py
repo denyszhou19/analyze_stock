@@ -264,6 +264,77 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         )
         self.assertFalse(extended['can_trade_by_structure_nodes'])
 
+    def test_standard_c_empty_node_map_does_not_enable_structure_node_trade(self) -> None:
+        line_geometry = {
+            'points': [
+                {'price': 10.0, 'date': '2024-01-01 00:00'},
+                {'price': 12.0, 'date': '2024-01-02 00:00'},
+                {'price': 11.0, 'date': '2024-01-03 00:00'},
+            ],
+            'segments': [
+                {'from_point': 0, 'to_point': 1},
+                {'from_point': 1, 'to_point': 2},
+            ],
+        }
+        _, explainability = self.analyzer._build_structure_explainability(
+            structure_type='C单平台式',
+            line_geometry=line_geometry,
+            prediction={'current_stage': 'c3拐点', 'next_stage': 'c4拐点'},
+            peak_analysis=None,
+            structure_start_point_index=0,
+            focus_origin_source='recent_component',
+            explainability_status='passed',
+            downgrade_reason=None,
+        )
+
+        decision = self.analyzer._build_trinity_structure_decision(
+            {
+                'structure_type': 'C单平台式',
+                'trend_direction': '震荡',
+                'description': '标准 C 结构',
+                'interpretation': {'focus_structure': {}},
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'C单平台式',
+                        'standard_qualification': 'standard',
+                    },
+                    'explainability': explainability,
+                },
+            }
+        )
+
+        self.assertEqual(
+            decision['node_map'],
+            {'a4': None, 'b8': None, 'd3': None, 'd4': None, 'last_confirmed': None},
+        )
+        self.assertFalse(decision['can_trade_by_structure_nodes'])
+
+    def test_over_limit_structures_stop_standard_numbering_explainability(self) -> None:
+        for structure_type in ('上升通道', '大平台震荡'):
+            with self.subTest(structure_type=structure_type):
+                decision = self.analyzer._build_trinity_structure_decision(
+                    {
+                        'structure_type': structure_type,
+                        'trend_direction': '上涨',
+                        'description': f'{structure_type} 测试',
+                        'interpretation': {'focus_structure': {}},
+                        'structure_details': {
+                            'focus_classification': {
+                                'type': structure_type,
+                                'standard_qualification': 'over_limit',
+                            },
+                            'explainability': {
+                                'display_reason': '标准结构从聚焦起点重新编号',
+                            },
+                        },
+                    }
+                )
+
+                self.assertEqual(decision['qualification'], 'over_limit')
+                self.assertEqual(decision['explainability']['status'], 'downgraded')
+                self.assertNotIn('标准结构从聚焦起点重新编号', decision['explainability']['reason'])
+                self.assertIn('停止标准', decision['explainability']['reason'])
+
     def test_detect_structure_syncs_focus_classification_after_explainability_downgrade(self) -> None:
         df = pd.DataFrame([{'date': pd.Timestamp('2024-01-01'), 'open': 1, 'high': 1, 'low': 1, 'close': 1}])
         recent = pd.DataFrame([{'date': pd.Timestamp('2024-01-01'), 'open': 1, 'high': 1, 'low': 1, 'close': 1}])
@@ -330,7 +401,11 @@ class StructurePhaseExecutionTest(unittest.TestCase):
             'current_stage': '第4个拐点',
             'next_stage': '等待确认',
             'prediction_alert': '等待确认',
-            'key_price_levels': [],
+            'key_price_levels': [
+                {'price': 12.0, 'type': '近期压力', 'note': '平台上沿参考'},
+                {'price': 10.0, 'type': '近期支撑', 'note': '平台下沿参考'},
+                {'price': 9.5, 'type': 'stop', 'note': '止损参考'},
+            ],
         }
         self.analyzer._build_render_payload = lambda _geometry: {}
         self.analyzer._build_structure_interpretation = lambda **kwargs: {'focus_structure': {'archetype_family': 'complex'}}
@@ -344,6 +419,17 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertEqual(result['structure_details']['focus_classification']['stage'], '等待确认')
         self.assertEqual(result['structure_details']['focus_classification']['standard_qualification'], 'failed')
         self.assertIn('无法诚实解释标准起点', result['structure_details']['focus_classification']['qualification_reason'])
+        self.assertEqual(
+            result['structure_details']['boundary_levels'],
+            {
+                'upper': 12.0,
+                'lower': 10.0,
+                'mid': 11.0,
+                'breakout_trigger': 12.0,
+                'breakdown_trigger': 10.0,
+                'stop_loss': 9.5,
+            },
+        )
 
     def test_build_trinity_structure_decision_reads_boundary_levels_from_structure_details(self) -> None:
         structure = self.analyzer._build_trinity_structure_decision(

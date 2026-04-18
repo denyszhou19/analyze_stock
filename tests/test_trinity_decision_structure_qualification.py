@@ -97,3 +97,55 @@ def test_structure_qualification_uses_public_structure_type_after_downgrade() ->
         'last_confirmed': None,
     }
     assert decision['can_trade_by_structure_nodes'] is False
+
+
+def test_extended_structure_family_is_consistent_between_interpretation_and_trinity_decision() -> None:
+    analyzer = TrinityStockAnalyzer()
+
+    interpretation = analyzer._build_structure_interpretation(
+        structure_type='延伸结构',
+        trend_direction='上涨',
+        explanation={
+            'structure_start_point_id': 'p1',
+            'focus_origin_source': 'recent_component',
+            'explainability_status': 'extended',
+            'qualification_reason': '笔数超出标准原型，停止标准编号',
+        },
+        prediction={
+            'current_stage': '延伸结构进行中',
+            'next_stage': '等待结构再次明朗',
+        },
+        moving_averages={
+            'price_vs_ma55': 'above',
+            'price_vs_ma233': 'above',
+            'ma_status': '多头排列',
+        },
+        peak_analysis=None,
+        labeled_points=[
+            {'point_id': 'p1', 'price': 10.0, 'date': '2024-01-01 00:00'},
+            {'point_id': 'p2', 'price': 12.0, 'date': '2024-01-02 00:00'},
+            {'point_id': 'live', 'price': 11.5, 'date': '2024-01-03 00:00', 'is_current': True},
+        ],
+        valid_range=None,
+    )
+    decision = analyzer._build_trinity_structure_decision(
+        {
+            'structure_type': '延伸结构',
+            'trend_direction': '上涨',
+            'description': '延伸结构测试',
+            'interpretation': interpretation,
+            'structure_details': {
+                'focus_classification': {
+                    'type': '延伸结构',
+                    'standard_qualification': 'extended',
+                    'qualification_reason': '笔数超出标准原型，停止标准编号',
+                }
+            },
+        }
+    )
+
+    assert interpretation['focus_structure']['archetype_family'] == 'extended'
+    assert interpretation['focus_structure']['standard_qualification'] == 'extended'
+    assert decision['family'] == interpretation['focus_structure']['archetype_family']
+    assert decision['qualification'] == interpretation['focus_structure']['standard_qualification']
+    assert decision['standard_candidate'] is None

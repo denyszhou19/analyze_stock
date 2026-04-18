@@ -2651,7 +2651,7 @@ class TrinityStockAnalyzer:
             '延伸D类': ('D', None, 'extended'),
             '结构未完成': ('unfinished', None, 'unfinished'),
             '未完成结构': ('unfinished', None, 'unfinished'),
-            '延伸结构': ('complex', None, 'extended'),
+            '延伸结构': ('extended', None, 'extended'),
             '复杂结构': ('complex', None, 'failed'),
             '上升通道': ('channel', None, 'over_limit'),
             '下降通道': ('channel', None, 'over_limit'),
@@ -3189,11 +3189,18 @@ class TrinityStockAnalyzer:
         qualification: Optional[str] = None,
     ) -> Dict[str, Any]:
         qualification = qualification or focus_classification.get('standard_qualification') or 'failed'
-        if qualification in {'extended', 'unfinished', 'failed'}:
+        if qualification in {'extended', 'unfinished', 'failed', 'over_limit'}:
+            display_reason = explainability.get('display_reason') or ''
+            uses_standard_numbering_reason = (
+                '标准结构从聚焦起点重新编号' in display_reason
+                or '标准结构编号从当前结构起点重新计数' in display_reason
+            )
             return {
                 'status': 'downgraded',
                 'reason': (
-                    explainability.get('display_reason')
+                    display_reason
+                    if display_reason and not uses_standard_numbering_reason
+                    else None
                     or '非标准结构停止标准编号，仅保留解释锚点'
                 ),
                 'evidence': ['停止标准 A/B/C/D 编号'],
@@ -3377,10 +3384,25 @@ class TrinityStockAnalyzer:
 
         trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
         boundaries = self._build_trinity_boundaries(structure_payload)
+        node_map = self._build_trinity_node_map(explainability, qualification)
+        has_standard_trade_node = any(
+            node_map.get(node_key) is not None
+            for node_key in ('a4', 'b8', 'd3', 'd4')
+        )
         has_valid_boundary_range = (
             boundaries.get('upper') is not None
             and boundaries.get('lower') is not None
             and boundaries['upper'] > boundaries['lower']
+        )
+        display_reason = explainability.get('display_reason') or ''
+        uses_standard_numbering_reason = (
+            '标准结构从聚焦起点重新编号' in display_reason
+            or '标准结构编号从当前结构起点重新计数' in display_reason
+        )
+        display_reason_candidate = (
+            display_reason
+            if display_reason and (qualification == 'standard' or not uses_standard_numbering_reason)
+            else None
         )
         return {
             'background_origin': background_origin,
@@ -3396,13 +3418,17 @@ class TrinityStockAnalyzer:
                 '震荡': 'neutral',
             }.get(trend_direction, 'neutral'),
             'boundaries': boundaries,
-            'node_map': self._build_trinity_node_map(explainability, qualification),
-            'can_trade_by_structure_nodes': qualification == 'standard' and family == 'standard',
+            'node_map': node_map,
+            'can_trade_by_structure_nodes': (
+                qualification == 'standard'
+                and family == 'standard'
+                and has_standard_trade_node
+            ),
             'can_trade_by_boundaries': has_valid_boundary_range,
             'explainability': {
                 'status': numbering_explainability.get('status') or 'passed',
                 'reason': (
-                    explainability.get('display_reason')
+                    display_reason_candidate
                     or focus_origin_analysis.get('explainability_reason')
                     or numbering_explainability.get('reason')
                     or focus_structure.get('qualification_reason')
@@ -4819,6 +4845,9 @@ class TrinityStockAnalyzer:
             macd_status
         )
         result['structure_details']['prediction'] = prediction
+        result['structure_details']['boundary_levels'] = self._extract_trinity_boundaries(
+            {'structure_details': {'prediction': prediction}}
+        )
 
         peak_analysis = result['structure_details'].get('peak_analysis')
 
