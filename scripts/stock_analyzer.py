@@ -3117,6 +3117,11 @@ class TrinityStockAnalyzer:
             label = f'{level_type} {note}'
 
             is_stop = level_type == 'stop' or '止损' in label
+            if is_stop:
+                if boundaries['stop_loss'] is None:
+                    boundaries['stop_loss'] = price
+                continue
+
             is_lower = any(keyword in label for keyword in ('底分型', '支撑', '下沿', '下轨'))
             is_upper = any(keyword in label for keyword in ('压力', '阻力', '上沿', '上轨'))
             if '突破' in label and '跌破' not in label:
@@ -3133,10 +3138,6 @@ class TrinityStockAnalyzer:
                     boundaries['lower'] = price
                 if boundaries['breakdown_trigger'] is None:
                     boundaries['breakdown_trigger'] = price
-
-            if is_stop:
-                if boundaries['stop_loss'] is None:
-                    boundaries['stop_loss'] = price
 
         if boundaries['stop_loss'] is None and boundaries['lower'] is not None:
             boundaries['stop_loss'] = boundaries['lower']
