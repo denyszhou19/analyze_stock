@@ -609,7 +609,7 @@ test('buildAiDecisionPayload includes focus classification and extended qualific
       qualification: 'standard',
       direction: 'up',
       boundaries: {},
-      node_map: {},
+      node_map: { a4: 10.8, last_confirmed: 10.8 },
       can_trade_by_structure_nodes: true,
       can_trade_by_boundaries: true,
       explainability: { status: 'passed', reason: 'A原型成立', evidence: ['A五段式'] },

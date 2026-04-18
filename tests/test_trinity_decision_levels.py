@@ -189,6 +189,7 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
                     },
                     'explainability': {
                         'current_point_id': 'd3',
+                        'd3_price': 15.8,
                     },
                 },
             },
@@ -661,6 +662,9 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
                         'type': 'A五段式',
                         'standard_qualification': 'standard',
                     },
+                    'explainability': {
+                        'a4_price': 21.6,
+                    },
                 },
             },
             macd_payload={'status': '中偏强'},
@@ -703,6 +707,9 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
                     'focus_classification': {
                         'type': 'D三段式',
                         'standard_qualification': 'standard',
+                    },
+                    'explainability': {
+                        'd3_price': 15.8,
                     },
                 },
             },
