@@ -1,6 +1,10 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
-import type { AnalysisResultData, TrinityDecision } from '../src/lib/stock-structure-types.ts';
+import type {
+  AiSummaryCard,
+  AnalysisResultData,
+  TrinityDecision,
+} from '../src/lib/stock-structure-types.ts';
 import type { DataIntegritySnapshot } from '../src/lib/stock-data-integrity.ts';
 
 const { buildAnalysisPageViewModel } = await import(
@@ -89,7 +93,44 @@ function createDecision(overrides: Partial<TrinityDecision> = {}): TrinityDecisi
       position_sizing: { max_ratio: null, reason: '等待 C 结构边界确认' },
       risk_flags: ['不追高'],
     },
-    judgment_criteria: [],
+    judgment_criteria: [
+      {
+        category: 'structure',
+        label: '结构资格',
+        status: 'passed',
+        detail: 'A 原型成立',
+      },
+      {
+        category: 'spacetime',
+        label: 'MACD 时空',
+        status: 'warning',
+        detail: '等待时空共振补齐',
+      },
+      {
+        category: 'moving_average',
+        label: '55 / 233 线关系',
+        status: 'passed',
+        detail: 'MA55 支撑，MA233 同向',
+      },
+      {
+        category: 'volume',
+        label: '量能确认',
+        status: 'info',
+        detail: '量能尚未形成强确认',
+      },
+      {
+        category: 'level_nesting',
+        label: '级别权限',
+        status: 'warning',
+        detail: '父级偏多但子级等待确认',
+      },
+      {
+        category: 'execution',
+        label: '执行计划',
+        status: 'info',
+        detail: '等待回踩 MA55 后再执行',
+      },
+    ],
     ai_summary_facts: ['A五段式原型'],
   };
 
@@ -186,6 +227,9 @@ test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chai
   assert.equal(vm.statusBar.aiStatus.label, '未生成');
   assert.equal(vm.summary.mode, 'idle');
   assert.equal(vm.summary.headline, '等待');
+  assert.equal(vm.summary.primaryActionLabel, '等待');
+  assert.deepEqual(vm.summary.triggerLabels, ['重新站上平台上沿']);
+  assert.equal(vm.summary.guardrail, '等待 C 结构边界确认');
   assert.equal(vm.summary.hardGates[0].label, '后端最终动作');
   assert.equal(vm.summary.hardGates[0].value, '等待');
   assert.equal(vm.bus.dimensions.length, 3);
@@ -197,6 +241,10 @@ test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chai
   assert.deepEqual(
     vm.ruleChain.items.map((item) => item.title),
     ['结构资格', 'MACD 时空', '55 / 233 线关系', '量能确认', '级别权限', '执行计划']
+  );
+  assert.deepEqual(
+    vm.ruleChain.items.map((item) => item.status),
+    ['passed', 'warning', 'passed', 'info', 'warning', 'info']
   );
 });
 
@@ -220,21 +268,76 @@ test('status bar renders data ranges by configured level order and daily valid r
   assert.match(dailyRange.coverageLabel, /2026-04-18/);
 });
 
-test('AI ready summary overrides headline and triggers', () => {
+test('AI ready summary accepts AiSummaryCard shape directly', () => {
+  const aiSummary: AiSummaryCard = {
+    headline: 'AI 判断：等待缩量回踩后的二次确认',
+    action: 'wait',
+    bias: 'neutral',
+    primary_reason: '回踩确认前不追价',
+    triggers: ['缩量回踩 MA55 并重新放量上攻'],
+    risks: ['跌破平台下沿'],
+    guardrail: '仅接受缩量回踩后的二次确认',
+  };
+
   const vm = buildAnalysisPageViewModel({
     result: createResult(),
     integrity: createIntegrity(),
     aiState: {
       status: 'ready',
-      summary: {
-        headline: 'AI 判断：等待缩量回踩后的二次确认',
-        triggers: ['缩量回踩 MA55 并重新放量上攻'],
-        risks: ['跌破平台下沿'],
-      },
+      summary: aiSummary,
     },
   });
 
   assert.equal(vm.summary.mode, 'ready');
   assert.equal(vm.summary.headline, 'AI 判断：等待缩量回踩后的二次确认');
-  assert.deepEqual(vm.summary.triggers, ['缩量回踩 MA55 并重新放量上攻']);
+  assert.equal(vm.summary.primaryActionLabel, '等待');
+  assert.equal(vm.summary.primaryReason, '回踩确认前不追价');
+  assert.deepEqual(vm.summary.triggerLabels, ['缩量回踩 MA55 并重新放量上攻']);
+  assert.deepEqual(vm.summary.riskLabels, ['跌破平台下沿']);
+  assert.equal(vm.summary.guardrail, '仅接受缩量回踩后的二次确认');
+});
+
+test('rule chain preserves failed status from judgment criteria', () => {
+  const result = createResult();
+  if (!result.periods.daily.trinity_decision) {
+    throw new Error('missing daily decision');
+  }
+
+  result.periods.daily.trinity_decision.judgment_criteria = result.periods.daily.trinity_decision.judgment_criteria.map(
+    (criterion) =>
+      criterion.category === 'volume'
+        ? {
+            ...criterion,
+            status: 'failed',
+            detail: '放量失衡，不满足确认条件',
+          }
+        : criterion
+  );
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const volumeRule = vm.ruleChain.items.find((item) => item.title === '量能确认');
+  assert.ok(volumeRule);
+  assert.equal(volumeRule.status, 'failed');
+  assert.equal(volumeRule.detail, '放量失衡，不满足确认条件');
+});
+
+test('loading and error states use unified Chinese labels', () => {
+  const loadingVm = buildAnalysisPageViewModel({
+    result: createResult(),
+    integrity: createIntegrity(),
+    aiState: { status: 'loading', label: 'streaming' },
+  });
+  const errorVm = buildAnalysisPageViewModel({
+    result: createResult(),
+    integrity: createIntegrity(),
+    aiState: { status: 'error', message: 'generation_failed' },
+  });
+
+  assert.equal(loadingVm.statusBar.aiStatus.label, '生成中');
+  assert.equal(errorVm.statusBar.aiStatus.label, '生成失败');
 });

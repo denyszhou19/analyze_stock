@@ -1,7 +1,9 @@
 import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
 import type {
+  AiSummaryCard,
   AnalysisResultData,
   PeriodAnalysisData,
+  TrinityJudgmentCriterion,
   TrinityDecision,
 } from '@/lib/stock-structure-types';
 
@@ -13,12 +15,7 @@ export type AnalysisPageAiState =
   | { status: 'error'; message?: string | null }
   | {
       status: 'ready';
-      summary: {
-        headline?: string | null;
-        primaryReason?: string | null;
-        triggers?: string[] | null;
-        risks?: string[] | null;
-      };
+      summary: AiSummaryCard;
     };
 
 export interface AnalysisPageDataRangeViewModel {
@@ -50,11 +47,11 @@ export interface AnalysisPageSummaryGate {
 export interface AnalysisPageSummaryViewModel {
   mode: AnalysisPageAiState['status'];
   headline: string;
-  actionLabel: string;
-  action: TrinityDecision['conclusion']['action'];
+  primaryActionLabel: string;
   primaryReason: string;
-  triggers: string[];
-  risks: string[];
+  triggerLabels: string[];
+  riskLabels: string[];
+  guardrail: string;
   hardGates: AnalysisPageSummaryGate[];
 }
 
@@ -68,6 +65,7 @@ export interface AnalysisPageRuleChainItem {
   title: string;
   status: 'passed' | 'failed' | 'warning' | 'info';
   detail: string;
+  reason: string;
 }
 
 export interface AnalysisPageViewModel {
@@ -261,10 +259,10 @@ function formatAiStatus(aiState: AnalysisPageAiState): AnalysisPageStatusBarView
     return { label: '已生成', tone: 'success' };
   }
   if (aiState.status === 'loading') {
-    return { label: aiState.label ?? '生成中', tone: 'loading' };
+    return { label: '生成中', tone: 'loading' };
   }
   if (aiState.status === 'error') {
-    return { label: aiState.message ?? '生成失败', tone: 'danger' };
+    return { label: '生成失败', tone: 'danger' };
   }
   return { label: '未生成', tone: 'muted' };
 }
@@ -311,15 +309,15 @@ function buildSummary(decision: TrinityDecision, aiState: AnalysisPageAiState): 
   return {
     mode: aiState.status,
     headline: readySummary?.headline || decision.conclusion.action_label,
-    actionLabel: decision.conclusion.action_label,
-    action: decision.conclusion.action,
+    primaryActionLabel: readySummary ? decision.conclusion.action_label : decision.conclusion.action_label,
     primaryReason:
-      readySummary?.primaryReason ||
+      readySummary?.primary_reason ||
       decision.conclusion.wait_reason ||
       decision.trade_qualification.reason[0] ||
       decision.execution.position_sizing.reason,
-    triggers: readySummary?.triggers?.filter(Boolean) ?? decision.execution.triggers,
-    risks: readySummary?.risks?.filter(Boolean) ?? decision.execution.risk_flags,
+    triggerLabels: readySummary?.triggers?.filter(Boolean) ?? decision.execution.triggers,
+    riskLabels: readySummary?.risks?.filter(Boolean) ?? decision.execution.risk_flags,
+    guardrail: readySummary?.guardrail || decision.execution.position_sizing.reason,
     hardGates: buildHardGates(decision),
   };
 }
@@ -360,44 +358,93 @@ function buildBus(result: AnalysisResultData): AnalysisPageViewModel['bus'] {
   };
 }
 
+const RULE_CHAIN_CATEGORY_ORDER: Array<{
+  title: string;
+  category: TrinityJudgmentCriterion['category'];
+}> = [
+  { title: '结构资格', category: 'structure' },
+  { title: 'MACD 时空', category: 'spacetime' },
+  { title: '55 / 233 线关系', category: 'moving_average' },
+  { title: '量能确认', category: 'volume' },
+  { title: '级别权限', category: 'level_nesting' },
+  { title: '执行计划', category: 'execution' },
+];
+
+function findCriterion(
+  decision: TrinityDecision,
+  category: TrinityJudgmentCriterion['category']
+): TrinityJudgmentCriterion | null {
+  return decision.judgment_criteria.find((criterion) => criterion.category === category) ?? null;
+}
+
 function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleChain'] {
   const nesting = decision.level_nesting;
 
   return {
-    items: [
-      {
-        title: '结构资格',
-        status: decision.structure.explainability.status === 'passed' ? 'passed' : 'warning',
-        detail: `${STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification]}｜${decision.structure.explainability.reason}`,
-      },
-      {
-        title: 'MACD 时空',
-        status: decision.spacetime.structure_match ? 'passed' : 'warning',
-        detail: `${decision.spacetime.status}｜${BIAS_LABELS[decision.spacetime.direction_bias]}｜${decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason}`,
-      },
-      {
-        title: '55 / 233 线关系',
-        status: decision.moving_average.ma_gate.allow_long || decision.moving_average.ma_gate.allow_short ? 'passed' : 'warning',
-        detail: `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`,
-      },
-      {
-        title: '量能确认',
-        status: decision.volume_confirmation.volume_gate.confidence_adjustment === 'downgrade' ? 'warning' : 'info',
-        detail: `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`,
-      },
-      {
-        title: '级别权限',
-        status: nesting?.resonance === 'aligned' ? 'passed' : 'warning',
-        detail: nesting
-          ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}`
-          : '暂无父子级别权限约束',
-      },
-      {
-        title: '执行计划',
+    items: RULE_CHAIN_CATEGORY_ORDER.map(({ title, category }) => {
+      const criterion = findCriterion(decision, category);
+      if (criterion) {
+        return {
+          title,
+          status: criterion.status,
+          detail: criterion.detail,
+          reason: criterion.label,
+        };
+      }
+
+      if (category === 'structure') {
+        return {
+          title,
+          status: decision.structure.explainability.status === 'failed' ? 'failed' : decision.structure.explainability.status === 'passed' ? 'passed' : 'warning',
+          detail: `${STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification]}｜${decision.structure.explainability.reason}`,
+          reason: decision.structure.explainability.reason,
+        };
+      }
+      if (category === 'spacetime') {
+        return {
+          title,
+          status: decision.spacetime.structure_match ? 'passed' : 'warning',
+          detail: `${decision.spacetime.status}｜${BIAS_LABELS[decision.spacetime.direction_bias]}｜${decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason}`,
+          reason: decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason,
+        };
+      }
+      if (category === 'moving_average') {
+        return {
+          title,
+          status:
+            decision.moving_average.ma_gate.allow_long || decision.moving_average.ma_gate.allow_short
+              ? 'passed'
+              : 'warning',
+          detail: `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`,
+          reason: decision.moving_average.ma_gate.reason,
+        };
+      }
+      if (category === 'volume') {
+        return {
+          title,
+          status: decision.volume_confirmation.volume_gate.confidence_adjustment === 'downgrade' ? 'warning' : 'info',
+          detail: `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`,
+          reason: decision.volume_confirmation.volume_gate.reason,
+        };
+      }
+      if (category === 'level_nesting') {
+        return {
+          title,
+          status: nesting?.resonance === 'aligned' ? 'passed' : 'warning',
+          detail: nesting
+            ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}`
+            : '暂无父子级别权限约束',
+          reason: nesting?.permission.reason ?? '暂无父子级别权限约束',
+        };
+      }
+
+      return {
+        title,
         status: decision.conclusion.can_trade ? 'passed' : 'info',
         detail: `${ENTRY_STYLE_LABELS[decision.execution.entry_style]}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`,
-      },
-    ],
+        reason: decision.execution.position_sizing.reason,
+      };
+    }),
   };
 }
 
