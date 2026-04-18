@@ -1,20 +1,9 @@
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-
-interface DecisionDimension {
-  title: string;
-  primary: string;
-  detail: string;
-}
+import type { AnalysisPageBusDimension } from '@/lib/trinity-analysis-page-view-model';
 
 interface LevelDecisionBusProps {
-  dimensions: DecisionDimension[];
+  dimensions: AnalysisPageBusDimension[];
 }
-
-const DIMENSION_LABELS = [
-  '维度一｜周线 → 日线',
-  '维度二｜日线 → 30分钟',
-  '维度三｜60分钟 → 15分钟',
-] as const;
 
 export function LevelDecisionBus({ dimensions }: LevelDecisionBusProps) {
   if (!dimensions.length) {
@@ -29,10 +18,9 @@ export function LevelDecisionBus({ dimensions }: LevelDecisionBusProps) {
       </div>
 
       <div className="grid gap-3 xl:grid-cols-3">
-        {dimensions.slice(0, 3).map((dimension, index) => (
-          <Card key={DIMENSION_LABELS[index]} className="gap-4 bg-muted/20 py-4 shadow-none">
+        {dimensions.map((dimension) => (
+          <Card key={dimension.title} className="gap-4 bg-muted/20 py-4 shadow-none">
             <CardHeader className="space-y-1 px-4">
-              <div className="text-xs font-medium text-muted-foreground">{DIMENSION_LABELS[index]}</div>
               <CardTitle className="text-sm">{dimension.title}</CardTitle>
             </CardHeader>
             <CardContent className="space-y-3 px-4 text-sm">

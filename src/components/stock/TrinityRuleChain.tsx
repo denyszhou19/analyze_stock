@@ -1,21 +1,14 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { cn } from '@/lib/utils';
-
-type RuleStatus = 'passed' | 'failed' | 'warning' | 'info';
-
-interface RuleChainItem {
-  title: string;
-  status: RuleStatus;
-  detail: string;
-}
+import type { AnalysisPageRuleChainItem } from '@/lib/trinity-analysis-page-view-model';
 
 interface TrinityRuleChainProps {
-  items: RuleChainItem[];
+  items: AnalysisPageRuleChainItem[];
 }
 
 const STATUS_META: Record<
-  RuleStatus,
+  AnalysisPageRuleChainItem['status'],
   {
     label: string;
     badgeClassName: string;
@@ -71,8 +64,9 @@ export function TrinityRuleChain({ items }: TrinityRuleChainProps) {
                   {meta.label}
                 </Badge>
               </CardHeader>
-              <CardContent className="px-4 text-sm leading-6 text-muted-foreground">
-                {item.detail}
+              <CardContent className="space-y-2 px-4 text-sm leading-6 text-muted-foreground">
+                <p>{item.detail}</p>
+                <p className="text-xs text-foreground/75">判定依据：{item.reason}</p>
               </CardContent>
             </Card>
           );
