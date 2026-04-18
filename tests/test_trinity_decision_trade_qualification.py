@@ -44,6 +44,65 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(decision['trade_mode'], 'standard_node_trade')
         self.assertEqual(decision['position_permission'], 'half_position')
 
+    def test_child_countertrend_level_nesting_downgrades_standard_long_node(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'A五段式',
+                'structure_stage': '反弹结构',
+                'trend_direction': '上涨',
+                'description': '父级偏空下的子级别多头节点',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                    },
+                    'spacetime_gate': {'child_structure_match': True, 'resonance_enabled': True},
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'standard_qualification': 'standard',
+                    },
+                    'explainability': {'a4_price': 21.6},
+                },
+            },
+            macd_payload={'status': '中偏强'},
+            moving_averages={'price_vs_ma55': 'above', 'price_vs_ma233': 'above', 'ma_status': '多头排列'},
+            breakthrough_payload={'direction': 'up', 'is_valid': True, 'pattern_type': 'breakout'},
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'pullback_confirm',
+                'trigger': ['子级别 a4 买点'],
+                'invalidation': ['跌破 a4'],
+                'confirmation': ['放量突破'],
+                'position_sizing': {'initial': '20%-30%'},
+                'risk_flags': [],
+                'rationale': '子级别节点成立，但父级偏空',
+            },
+            level_nesting_payload={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bearish',
+                'child_signal': 'long',
+                'resonance': 'child_countertrend',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '子级别逆父级别，只允许轻仓试探或做T',
+                },
+            },
+            period_payload={'volume_ratio_5': 1.4, 'volume_ratio_20': 1.3, 'amount_ratio_20': 1.25},
+        )
+
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+        self.assertFalse(decision['conclusion']['can_trade'])
+        self.assertEqual(decision['conclusion']['action'], 'wait')
+
     def test_standard_node_trade_requires_volume_gate_support(self) -> None:
         decision = self.analyzer._build_trinity_trade_qualification(
             structure_decision={
