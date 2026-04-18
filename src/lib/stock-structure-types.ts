@@ -308,6 +308,22 @@ export interface BreakthroughData {
   [key: string]: unknown;
 }
 
+export interface StructureValidRange {
+  start_date?: string | null;
+  end_date?: string | null;
+  start_price?: number | null;
+  end_price?: number | null;
+  origin_type?: string | null;
+  break_type?: string | null;
+}
+
+export interface StructurePipelineDebug {
+  analysis_kline_count?: number | null;
+  processed_kline_count?: number | null;
+  valid_range_applied?: boolean | null;
+  render_window_size?: number | null;
+}
+
 export interface PeriodStructureDetailsData {
   prediction?: StructurePrediction | null;
   top_fractals?: Array<Partial<StructureFractalPoint>> | null;
@@ -318,6 +334,8 @@ export interface PeriodStructureDetailsData {
   focus_origin_analysis?: StructureFocusOriginAnalysis | null;
   raw_classification?: StructureRawClassification | null;
   focus_classification?: StructureFocusClassification | null;
+  valid_range?: StructureValidRange | null;
+  pipeline_debug?: StructurePipelineDebug | null;
   [key: string]: unknown;
 }
 
