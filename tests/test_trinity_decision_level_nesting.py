@@ -81,5 +81,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
             raw_level_nesting={'summary': '日线偏弱，30分钟反弹'},
         )
 
-        self.assertIn(decision['resonance'], {'conflict', 'child_countertrend'})
+        self.assertEqual(decision['resonance'], 'child_countertrend')
         self.assertFalse(decision['permission']['allow_position_increase'])
+        self.assertTrue(decision['permission']['allow_only_light_probe'])
+        self.assertTrue(decision['permission']['allow_t_trade'])

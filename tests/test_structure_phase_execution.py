@@ -205,6 +205,60 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertTrue(decision['volume_gate']['supports_breakout'])
         self.assertEqual(decision['volume_gate']['confidence_adjustment'], 'upgrade')
 
+    def test_build_trinity_volume_confirmation_uses_amount_ratio_for_breakout_gate(self) -> None:
+        decision = self.analyzer._build_trinity_volume_confirmation_decision(
+            period_payload={
+                'volume_ratio_5': 1.05,
+                'volume_ratio_20': 1.08,
+                'amount_ratio_20': 1.24,
+            },
+            breakthrough_payload={
+                'direction': 'up',
+                'is_valid': True,
+                'pattern_type': 'breakout',
+            },
+        )
+
+        self.assertTrue(decision['volume_gate']['supports_breakout'])
+        self.assertEqual(decision['breakout_volume'], 'confirmed')
+        self.assertEqual(decision['volume_gate']['confidence_adjustment'], 'upgrade')
+
+    def test_build_trinity_volume_confirmation_marks_breakdown_gate_with_expanding_volume(self) -> None:
+        decision = self.analyzer._build_trinity_volume_confirmation_decision(
+            period_payload={
+                'volume_ratio_5': 1.26,
+                'volume_ratio_20': 1.05,
+                'amount_ratio_20': 1.22,
+            },
+            breakthrough_payload={
+                'direction': 'down',
+                'is_valid': True,
+                'pattern_type': 'breakdown',
+            },
+        )
+
+        self.assertTrue(decision['volume_gate']['supports_breakdown'])
+        self.assertEqual(decision['breakdown_volume'], 'confirmed')
+        self.assertEqual(decision['volume_gate']['confidence_adjustment'], 'upgrade')
+
+    def test_build_trinity_volume_confirmation_marks_pullback_gate_with_shrinking_volume(self) -> None:
+        decision = self.analyzer._build_trinity_volume_confirmation_decision(
+            period_payload={
+                'volume_ratio_5': 0.82,
+                'volume_ratio_20': 0.9,
+                'amount_ratio_20': 0.84,
+            },
+            breakthrough_payload={
+                'direction': 'up',
+                'is_valid': False,
+                'pattern_type': 'pullback',
+            },
+        )
+
+        self.assertTrue(decision['volume_gate']['supports_pullback_confirmation'])
+        self.assertEqual(decision['pullback_volume'], 'healthy_shrink')
+        self.assertEqual(decision['volume_gate']['confidence_adjustment'], 'upgrade')
+
     def test_build_trinity_structure_decision_uses_standard_node_map_only_for_standard_family(self) -> None:
         line_geometry = {
             'points': [

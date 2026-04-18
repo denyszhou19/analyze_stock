@@ -7,6 +7,91 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
     def setUp(self) -> None:
         self.analyzer = TrinityStockAnalyzer()
 
+    def test_unfinished_structure_only_waits_for_confirmation(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'unfinished',
+                'direction': 'neutral',
+                'can_trade_by_structure_nodes': False,
+                'can_trade_by_boundaries': False,
+                'explainability': {'reason': '未完成结构'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '均线中性'}},
+            volume_decision={'volume_gate': {'reason': '量能中性'}},
+            execution_payload={'action': 'buy', 'direction': 'long'},
+        )
+
+        self.assertEqual(decision['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['position_permission'], 'no_position')
+
+    def test_standard_structure_with_valid_long_node_uses_standard_node_trade(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': False,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': '标准多头节点已确认'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': 'MA55 之上'}},
+            volume_decision={'volume_gate': {'reason': '量能支持'}},
+            execution_payload={'action': 'buy', 'direction': 'long'},
+        )
+
+        self.assertEqual(decision['trade_mode'], 'standard_node_trade')
+        self.assertEqual(decision['position_permission'], 'half_position')
+
+    def test_trade_qualification_uses_real_sell_reduce_avoid_routing(self) -> None:
+        sell_decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'direction': 'down',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': False,
+                'node_map': {'a4': None, 'b8': None, 'd3': 15.8, 'd4': None},
+                'explainability': {'reason': '标准空头 d3 已确认'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': False, 'allow_short': True, 'reason': '空头门控通过'}},
+            volume_decision={'volume_gate': {'reason': '量能支持'}},
+            execution_payload={'action': 'sell', 'direction': 'short'},
+        )
+        reduce_decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': False,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': '标准多头 a4 已确认'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '多头门控通过'}},
+            volume_decision={'volume_gate': {'reason': '量能中性'}},
+            execution_payload={'action': 'reduce', 'direction': 'long'},
+        )
+        avoid_decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': False,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': '有节点但当前选择规避'},
+            },
+            spacetime_decision={'mismatch_reason': '时空冲突'},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '多头门控通过'}},
+            volume_decision={'volume_gate': {'reason': '量能未确认'}},
+            execution_payload={'action': 'avoid', 'direction': 'long'},
+        )
+
+        self.assertEqual(sell_decision['trade_mode'], 'standard_node_trade')
+        self.assertEqual(reduce_decision['trade_mode'], 'standard_node_trade')
+        self.assertEqual(avoid_decision['trade_mode'], 'risk_control')
+
     def test_extended_c_with_breakout_and_ma55_support_becomes_conditional_boundary_trade(self) -> None:
         decision = self.analyzer._build_trinity_decision(
             level='daily',
@@ -19,6 +104,13 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
                     'focus_classification': {
                         'type': '延伸C',
                         'standard_qualification': 'extended',
+                    },
+                    'prediction': {
+                        'key_price_levels': [
+                            {'price': 18.8, 'type': '上沿参考', 'note': '延伸平台上沿'},
+                            {'price': 16.2, 'type': '下沿参考', 'note': '延伸平台下沿'},
+                            {'price': 15.9, 'type': 'stop', 'note': '止损位'},
+                        ],
                     },
                 },
             },

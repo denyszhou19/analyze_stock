@@ -3369,13 +3369,11 @@ class TrinityStockAnalyzer:
             focus_classification,
             structure_type,
         )
-        qualification = default_qualification
-        if not structure_type:
-            qualification = (
-                focus_classification.get('standard_qualification')
-                or focus_structure.get('standard_qualification')
-                or default_qualification
-            )
+        qualification = (
+            focus_classification.get('standard_qualification')
+            or focus_structure.get('standard_qualification')
+            or default_qualification
+        )
         numbering_explainability = self._build_numbering_explainability(
             focus_classification,
             explainability,
@@ -3530,8 +3528,13 @@ class TrinityStockAnalyzer:
         breakout_confirmed = bool(
             (ratio_5 is not None and ratio_5 >= 1.2)
             or (ratio_20 is not None and ratio_20 >= 1.15)
+            or (amount_ratio is not None and amount_ratio >= 1.15)
         )
-        pullback_healthy = bool(ratio_5 is not None and ratio_5 <= 0.85)
+        pullback_healthy = bool(
+            (ratio_5 is not None and ratio_5 <= 0.85)
+            or (ratio_20 is not None and ratio_20 <= 0.9)
+            or (amount_ratio is not None and amount_ratio <= 0.9)
+        )
         return {
             'volume_ratio_5': ratio_5,
             'volume_ratio_20': ratio_20,
@@ -3578,38 +3581,100 @@ class TrinityStockAnalyzer:
     ) -> Dict[str, Any]:
         execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
         volume_decision = volume_decision if isinstance(volume_decision, dict) else {}
+        ma_gate = moving_average_decision.get('ma_gate') or {}
+        action = execution_payload.get('action') or 'wait'
+        direction = execution_payload.get('direction')
+        structure_family = structure_decision.get('family')
+        qualification = structure_decision.get('qualification')
+        structure_direction = structure_decision.get('direction')
+        can_trade_by_nodes = bool(structure_decision.get('can_trade_by_structure_nodes'))
+        can_trade_by_boundaries = bool(structure_decision.get('can_trade_by_boundaries'))
+        is_long_intent = direction == 'long'
+        is_short_intent = direction == 'short'
+        allow_long = bool(ma_gate.get('allow_long'))
+        allow_short = bool(ma_gate.get('allow_short'))
+        direction_matches_structure = (
+            (is_long_intent and structure_direction == 'up')
+            or (is_short_intent and structure_direction == 'down')
+        )
+        direction_gate_passed = (
+            (is_long_intent and allow_long and structure_direction != 'down')
+            or (is_short_intent and allow_short and structure_direction != 'up')
+        )
         reasons = [
             structure_decision.get('explainability', {}).get('reason') or '沿用结构解释',
             spacetime_decision.get('mismatch_reason') or '时空未额外否决',
             moving_average_decision.get('ma_gate', {}).get('reason') or '沿用均线门控',
             volume_decision.get('volume_gate', {}).get('reason') or '沿用量能门控',
         ]
-        if structure_decision.get('family') == 'unfinished':
+        if action == 'wait':
+            if structure_family in {'extended', 'channel', 'range'} and can_trade_by_boundaries:
+                return {
+                    'trade_mode': 'conditional_boundary_trade',
+                    'position_permission': 'light_probe',
+                    'confidence': 'medium',
+                    'reason': ['边界有效，但当前仍需等待触发', *reasons],
+                }
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': 'low',
+                'reason': ['等待触发或确认信号', *reasons],
+            }
+        if structure_family == 'unfinished' or qualification == 'unfinished':
             return {
                 'trade_mode': 'wait_confirmation',
                 'position_permission': 'no_position',
                 'confidence': 'low',
                 'reason': ['未完成结构仅等待', *reasons],
             }
-        if structure_decision.get('family') in {'extended', 'channel', 'range'}:
+        if structure_family in {'extended', 'channel', 'range'} or qualification in {'extended', 'over_limit'}:
+            if can_trade_by_boundaries:
+                return {
+                    'trade_mode': 'conditional_boundary_trade',
+                    'position_permission': 'light_probe',
+                    'confidence': 'medium',
+                    'reason': ['非标准结构只允许边界条件交易', *reasons],
+                }
             return {
-                'trade_mode': 'conditional_boundary_trade',
-                'position_permission': 'light_probe',
-                'confidence': 'medium',
-                'reason': ['非标准结构只允许边界条件交易', *reasons],
+                'trade_mode': 'no_trade',
+                'position_permission': 'no_position',
+                'confidence': 'low',
+                'reason': ['非标准结构边界无效，禁止交易', *reasons],
             }
-        if execution_payload.get('action') in {'reduce', 'sell', 'avoid'}:
+        if action == 'avoid':
             return {
                 'trade_mode': 'risk_control',
                 'position_permission': 'reduce_only',
                 'confidence': 'high',
-                'reason': ['跌破边界或均线，进入风险控制', *reasons],
+                'reason': ['当前信号要求规避或仅做风险控制', *reasons],
+            }
+        if can_trade_by_nodes and direction_matches_structure and direction_gate_passed:
+            return {
+                'trade_mode': 'standard_node_trade',
+                'position_permission': 'half_position',
+                'confidence': 'medium',
+                'reason': ['标准结构节点可交易', *reasons],
+            }
+        if action in {'sell', 'reduce'}:
+            return {
+                'trade_mode': 'no_trade',
+                'position_permission': 'no_position',
+                'confidence': 'medium',
+                'reason': ['方向或门控冲突，不放行节点交易', *reasons],
+            }
+        if not can_trade_by_nodes:
+            return {
+                'trade_mode': 'no_trade',
+                'position_permission': 'no_position',
+                'confidence': 'low',
+                'reason': ['标准结构缺少真实可交易节点', *reasons],
             }
         return {
-            'trade_mode': 'standard_node_trade',
-            'position_permission': 'half_position',
+            'trade_mode': 'no_trade',
+            'position_permission': 'no_position',
             'confidence': 'medium',
-            'reason': ['标准结构节点可交易', *reasons],
+            'reason': ['方向或门控未满足，暂不交易', *reasons],
         }
 
     def _build_trinity_execution_decision(
