@@ -33,6 +33,16 @@ test('ai-analysis route prompt enforces deterministic_decision hard boundary for
   assert.match(routeSource, /wait\s*\/\s*avoid/);
   assert.match(routeSource, /摘要 action 不能升级为 buy\s*\/\s*add/);
   assert.match(routeSource, /headline\s*\/\s*action\s*\/\s*bias\s*\/\s*primary_reason/);
+  assert.match(routeSource, /periods\.\*\.deterministic_decision\.conclusion\.action/);
+  assert.doesNotMatch(routeSource, /deterministic_decision\.action/);
+  assert.match(routeSource, /不得突破后端硬边界/);
+  assert.match(routeSource, /trade_qualification/);
+  assert.match(routeSource, /position_permission/);
+  assert.match(routeSource, /优先级高于/);
+  assert.ok(
+    routeSource.indexOf('不得突破后端硬边界') < routeSource.indexOf('## 均线系统物理性质'),
+    '后端硬边界约束应出现在 legacy 激进策略表述之前'
+  );
 });
 
 test('buildCodexExecArgs runs codex in read-only exec mode and captures last message to file', () => {
