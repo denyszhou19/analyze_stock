@@ -186,6 +186,98 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertAlmostEqual(execution['timeframe_cap_ratio'], 0.25, places=3)
         self.assertIsNotNone(execution['wait_reason'])
 
+    def test_build_trinity_structure_decision_uses_standard_node_map_only_for_standard_family(self) -> None:
+        standard = self.analyzer._build_trinity_structure_decision(
+            {
+                'structure_type': 'A五段式',
+                'trend_direction': '上涨',
+                'description': '标准 A 结构',
+                'interpretation': {'focus_structure': {}},
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'standard_qualification': 'standard',
+                    },
+                    'explainability': {
+                        'a4_price': 10.8,
+                        'b8_price': None,
+                        'd3_price': None,
+                        'd4_price': None,
+                        'last_confirmed_price': 10.8,
+                    },
+                },
+            }
+        )
+        extended = self.analyzer._build_trinity_structure_decision(
+            {
+                'structure_type': '延伸C',
+                'trend_direction': '上涨',
+                'description': '延伸 C 结构',
+                'interpretation': {'focus_structure': {}},
+                'structure_details': {
+                    'focus_classification': {
+                        'type': '延伸C',
+                        'standard_qualification': 'extended',
+                    },
+                    'explainability': {
+                        'a4_price': 10.8,
+                        'b8_price': 11.2,
+                        'd3_price': 9.9,
+                        'd4_price': 12.4,
+                        'last_confirmed_price': 12.4,
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(
+            standard['node_map'],
+            {'a4': 10.8, 'b8': None, 'd3': None, 'd4': None, 'last_confirmed': 10.8},
+        )
+        self.assertTrue(standard['can_trade_by_structure_nodes'])
+        self.assertEqual(
+            extended['node_map'],
+            {'a4': None, 'b8': None, 'd3': None, 'd4': None, 'last_confirmed': None},
+        )
+        self.assertFalse(extended['can_trade_by_structure_nodes'])
+
+    def test_build_trinity_structure_decision_reads_boundary_levels_from_structure_details(self) -> None:
+        structure = self.analyzer._build_trinity_structure_decision(
+            {
+                'structure_type': 'C单平台式',
+                'trend_direction': '震荡',
+                'description': '平台边界测试',
+                'interpretation': {'focus_structure': {}},
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'C单平台式',
+                        'standard_qualification': 'standard',
+                    },
+                    'boundary_levels': {
+                        'upper': 18.8,
+                        'lower': 16.2,
+                        'mid': 17.5,
+                        'breakout_trigger': 18.9,
+                        'breakdown_trigger': 16.1,
+                        'stop_loss': 15.9,
+                    },
+                },
+            }
+        )
+
+        self.assertEqual(
+            structure['boundaries'],
+            {
+                'upper': 18.8,
+                'lower': 16.2,
+                'mid': 17.5,
+                'breakout_trigger': 18.9,
+                'breakdown_trigger': 16.1,
+                'stop_loss': 15.9,
+            },
+        )
+        self.assertTrue(structure['can_trade_by_boundaries'])
+
     def test_build_period_execution_uses_spacetime_gate_wait_reason_before_generic_wait(self) -> None:
         execution = self.analyzer._build_period_execution(
             level='hour30',

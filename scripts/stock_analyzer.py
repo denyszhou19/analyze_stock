@@ -42,6 +42,28 @@ except ImportError:
     pass
 
 
+STRUCTURE_FAMILY_MAP = {
+    'A五段式': ('standard', 'standard', 'A五段式'),
+    'B双平台式': ('standard', 'standard', 'B双平台式'),
+    'C单平台式': ('standard', 'standard', 'C单平台式'),
+    'D三段式': ('standard', 'standard', 'D三段式'),
+    '延伸A': ('extended', 'extended', 'A五段式'),
+    '延伸A类': ('extended', 'extended', 'A五段式'),
+    '延伸B': ('extended', 'extended', 'B双平台式'),
+    '延伸B类': ('extended', 'extended', 'B双平台式'),
+    '延伸C': ('extended', 'extended', 'C单平台式'),
+    '延伸C类': ('extended', 'extended', 'C单平台式'),
+    '延伸D': ('extended', 'extended', 'D三段式'),
+    '延伸D类': ('extended', 'extended', 'D三段式'),
+    '上升通道': ('channel', 'over_limit', None),
+    '下降通道': ('channel', 'over_limit', None),
+    '大平台震荡': ('range', 'over_limit', None),
+    '结构未完成': ('unfinished', 'unfinished', None),
+    '未完成结构': ('unfinished', 'unfinished', None),
+    '复杂结构': ('complex', 'failed', None),
+}
+
+
 class TrinityStockAnalyzer:
     """三位一体股票分析器"""
     
@@ -2615,17 +2637,26 @@ class TrinityStockAnalyzer:
         """Resolve structure family, visible numbering prefix, and standard qualification."""
         mapping = {
             'A五段式': ('A', 'a', 'standard'),
+            '延伸A': ('A', None, 'extended'),
             '延伸A类': ('A', None, 'extended'),
             'B双平台式': ('B', 'b', 'standard'),
+            '延伸B': ('B', None, 'extended'),
             '延伸B类': ('B', None, 'extended'),
             'C单平台式': ('C', 'c', 'standard'),
+            '延伸C': ('C', None, 'extended'),
             '延伸C类': ('C', None, 'extended'),
             'D三段式': ('D', 'd', 'standard'),
+            '延伸D': ('D', None, 'extended'),
             '延伸D类': ('D', None, 'extended'),
             '结构未完成': ('unfinished', None, 'unfinished'),
+            '未完成结构': ('unfinished', None, 'unfinished'),
             '延伸结构': ('complex', None, 'extended'),
+            '复杂结构': ('complex', None, 'failed'),
+            '上升通道': ('channel', None, 'over_limit'),
+            '下降通道': ('channel', None, 'over_limit'),
+            '大平台震荡': ('range', None, 'over_limit'),
         }
-        return mapping.get(structure_type, ('complex', None, 'complex'))
+        return mapping.get(structure_type, ('complex', None, 'failed'))
 
     def _resolve_structure_family(self, structure_type: str) -> Tuple[str, Optional[str]]:
         """Map structure type to explainability family and point id prefix."""
@@ -3239,6 +3270,52 @@ class TrinityStockAnalyzer:
 
         return boundaries
 
+    def _resolve_trinity_structure_family(
+        self,
+        focus_classification: Dict[str, Any],
+        structure_type: str,
+    ) -> Tuple[str, str, Optional[str]]:
+        resolved_type = focus_classification.get('type') or structure_type
+        return STRUCTURE_FAMILY_MAP.get(resolved_type, ('complex', 'failed', None))
+
+    def _build_trinity_boundaries(
+        self,
+        structure_payload: Dict[str, Any],
+    ) -> Dict[str, Optional[float]]:
+        details = structure_payload.get('structure_details') if isinstance(structure_payload, dict) else {}
+        details = details or {}
+        boundary = details.get('boundary_levels') or {}
+        boundaries = {
+            'upper': self._normalize_trinity_price(boundary.get('upper')),
+            'lower': self._normalize_trinity_price(boundary.get('lower')),
+            'mid': self._normalize_trinity_price(boundary.get('mid')),
+            'breakout_trigger': self._normalize_trinity_price(
+                boundary.get('breakout_trigger') or boundary.get('upper')
+            ),
+            'breakdown_trigger': self._normalize_trinity_price(
+                boundary.get('breakdown_trigger') or boundary.get('lower')
+            ),
+            'stop_loss': self._normalize_trinity_price(boundary.get('stop_loss')),
+        }
+        if any(value is not None for value in boundaries.values()):
+            return boundaries
+        return self._extract_trinity_boundaries(structure_payload)
+
+    def _build_trinity_node_map(
+        self,
+        explainability: Dict[str, Any],
+        qualification: str,
+    ) -> Dict[str, Optional[float]]:
+        if qualification != 'standard':
+            return {'a4': None, 'b8': None, 'd3': None, 'd4': None, 'last_confirmed': None}
+        return {
+            'a4': self._normalize_trinity_price(explainability.get('a4_price')),
+            'b8': self._normalize_trinity_price(explainability.get('b8_price')),
+            'd3': self._normalize_trinity_price(explainability.get('d3_price')),
+            'd4': self._normalize_trinity_price(explainability.get('d4_price')),
+            'last_confirmed': self._normalize_trinity_price(explainability.get('last_confirmed_price')),
+        }
+
     def _build_trinity_structure_decision(
         self,
         structure_payload: Dict[str, Any],
@@ -3274,26 +3351,18 @@ class TrinityStockAnalyzer:
         )
 
         structure_type = structure_payload.get('structure_type') if isinstance(structure_payload, dict) else None
+        family, default_qualification, standard_candidate = self._resolve_trinity_structure_family(
+            focus_classification,
+            structure_type,
+        )
         qualification = (
             focus_classification.get('standard_qualification')
             or focus_structure.get('standard_qualification')
-            or 'failed'
+            or default_qualification
         )
-        family = {
-            'standard': 'standard',
-            'extended': 'extended',
-        }.get(qualification, 'complex')
-        if structure_type in ('上升通道', '下降通道'):
-            family = 'channel'
-        elif structure_type == '大平台震荡':
-            family = 'range'
-        elif structure_type == '未完成结构':
-            family = 'unfinished'
-        elif structure_type == '复杂结构':
-            family = 'complex'
 
         trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
-        boundaries = self._extract_trinity_boundaries(structure_payload)
+        boundaries = self._build_trinity_boundaries(structure_payload)
         has_valid_boundary_range = (
             boundaries.get('upper') is not None
             and boundaries.get('lower') is not None
@@ -3305,7 +3374,7 @@ class TrinityStockAnalyzer:
             'execution_origin': execution_origin,
             'family': family,
             'type': structure_type,
-            'standard_candidate': focus_classification.get('type') or structure_type,
+            'standard_candidate': standard_candidate,
             'qualification': qualification,
             'direction': {
                 '上涨': 'up',
@@ -3313,9 +3382,7 @@ class TrinityStockAnalyzer:
                 '震荡': 'neutral',
             }.get(trend_direction, 'neutral'),
             'boundaries': boundaries,
-            'node_map': {
-                'last_confirmed': explainability.get('current_point_id'),
-            },
+            'node_map': self._build_trinity_node_map(explainability, qualification),
             'can_trade_by_structure_nodes': qualification == 'standard' and family == 'standard',
             'can_trade_by_boundaries': has_valid_boundary_range,
             'explainability': {
@@ -3933,12 +4000,16 @@ class TrinityStockAnalyzer:
 
         archetype_label_map = {
             'A五段式': 'A五段式原型',
+            '延伸A': '延伸A原型',
             '延伸A类': '延伸A类原型',
             'B双平台式': 'B双平台原型',
+            '延伸B': '延伸B原型',
             '延伸B类': '延伸B类原型',
             'C单平台式': 'C平台原型',
+            '延伸C': '延伸C原型',
             '延伸C类': '延伸C类原型',
             'D三段式': 'D三段式原型',
+            '延伸D': '延伸D原型',
             '延伸D类': '延伸D类原型',
         }
         archetype_label = archetype_label_map.get(structure_type, structure_type or '结构原型')

@@ -168,7 +168,7 @@ class StructureInterpretationModelTest(unittest.TestCase):
 
     def test_build_structure_interpretation_exposes_extended_focus_structure(self) -> None:
         interpretation = self.analyzer._build_structure_interpretation(
-            structure_type='延伸C类',
+            structure_type='延伸C',
             trend_direction='下跌',
             explanation={
                 'structure_start_point_id': 'p1',
@@ -197,7 +197,7 @@ class StructureInterpretationModelTest(unittest.TestCase):
         focus_structure = interpretation['focus_structure']
         self.assertEqual(focus_structure['archetype_family'], 'C')
         self.assertEqual(focus_structure['standard_qualification'], 'extended')
-        self.assertEqual(focus_structure['archetype_label'], '延伸C类原型')
+        self.assertEqual(focus_structure['archetype_label'], '延伸C原型')
         self.assertEqual(focus_structure['qualification_reason'], '超出标准点数，按延伸C类跟踪')
 
     def test_build_structure_interpretation_keeps_peak_extreme_start_anchor_metadata_for_standard_structure(self) -> None:
