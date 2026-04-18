@@ -3075,6 +3075,103 @@ class TrinityStockAnalyzer:
             'semantic': semantic or anchor.get('semantic'),
         }
 
+    def _build_background_origin_anchor(
+        self,
+        raw_classification: Dict[str, Any],
+        focus_structure: Optional[Dict[str, Any]] = None,
+        focus_origin_analysis: Optional[Dict[str, Any]] = None,
+    ) -> Optional[Dict[str, Any]]:
+        origin = (
+            raw_classification.get('macro_origin')
+            or (focus_structure or {}).get('reference_origin')
+            or (focus_origin_analysis or {}).get('macro_origin')
+            or {}
+        )
+        if origin.get('outside_window'):
+            return None
+
+        normalized_origin = self._normalize_trinity_anchor(
+            origin,
+            source='macro_origin',
+            semantic='background_origin',
+        )
+        if normalized_origin is not None:
+            return normalized_origin
+
+        if origin or raw_classification:
+            return {
+                'point_id': None,
+                'price': None,
+                'date': None,
+                'source': 'macro_origin',
+                'semantic': 'background_origin',
+            }
+        return None
+
+    def _build_focus_origin_anchor(
+        self,
+        focus_structure: Dict[str, Any],
+        focus_origin_analysis: Dict[str, Any],
+        raw_classification: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        priority = ('peak_extreme', 'valley_extreme', 'recent_component', 'macro_origin')
+        selected_source = (
+            focus_structure.get('start_anchor_source')
+            or focus_origin_analysis.get('selected_origin_kind')
+        )
+        if selected_source not in priority:
+            selected_source = 'macro_origin'
+        anchor = (
+            focus_structure.get('start_anchor')
+            or raw_classification.get('macro_origin')
+            or focus_origin_analysis.get('macro_origin')
+            or {}
+        )
+        return self._normalize_trinity_anchor(
+            anchor,
+            source=selected_source,
+            semantic='focus_origin',
+        )
+
+    def _build_execution_origin_anchor(
+        self,
+        structure_payload: Dict[str, Any],
+        focus_origin: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, Any]]:
+        details = structure_payload.get('structure_details') if isinstance(structure_payload, dict) else {}
+        details = details or {}
+        explainability = details.get('explainability') or {}
+        return self._normalize_trinity_anchor(
+            {
+                'point_id': explainability.get('current_point_id'),
+                'price': None,
+                'date': None,
+            },
+            source='current_structure',
+            semantic='execution_origin',
+        )
+
+    def _build_numbering_explainability(
+        self,
+        focus_classification: Dict[str, Any],
+        explainability: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        qualification = focus_classification.get('standard_qualification') or 'failed'
+        if qualification in {'extended', 'unfinished', 'failed'}:
+            return {
+                'status': 'downgraded',
+                'reason': (
+                    explainability.get('display_reason')
+                    or '非标准结构停止标准编号，仅保留解释锚点'
+                ),
+                'evidence': ['停止标准 A/B/C/D 编号'],
+            }
+        return {
+            'status': 'passed',
+            'reason': explainability.get('display_reason') or '标准结构从聚焦起点重新编号',
+            'evidence': ['聚焦起点已锁定', '结构编号从当前结构起点重新开始'],
+        }
+
     def _normalize_trinity_price(self, value: Any) -> Optional[float]:
         if value is None:
             return None
@@ -3165,26 +3262,26 @@ class TrinityStockAnalyzer:
         details = details or {}
         focus_origin_analysis = details.get('focus_origin_analysis') or {}
         focus_classification = details.get('focus_classification') or {}
+        raw_classification = details.get('raw_classification') or {}
         explainability = details.get('explainability') or {}
 
-        focus_anchor = self._normalize_trinity_anchor(
-            focus_structure.get('start_anchor'),
-            source=focus_structure.get('start_anchor_source') or focus_origin_analysis.get('selected_origin_kind'),
-            semantic='focus_origin',
+        background_origin = self._build_background_origin_anchor(
+            raw_classification,
+            focus_structure,
+            focus_origin_analysis,
         )
-        background_anchor = self._normalize_trinity_anchor(
-            focus_structure.get('reference_origin'),
-            source='macro_origin',
-            semantic='background_origin',
+        focus_origin = self._build_focus_origin_anchor(
+            focus_structure,
+            focus_origin_analysis,
+            raw_classification,
         )
-        execution_anchor = self._normalize_trinity_anchor(
-            {
-                'point_id': explainability.get('current_point_id'),
-                'price': None,
-                'date': None,
-            },
-            source='current_structure',
-            semantic='execution_origin',
+        execution_origin = self._build_execution_origin_anchor(
+            structure_payload,
+            focus_origin,
+        )
+        numbering_explainability = self._build_numbering_explainability(
+            focus_classification,
+            explainability,
         )
 
         structure_type = structure_payload.get('structure_type') if isinstance(structure_payload, dict) else None
@@ -3212,9 +3309,9 @@ class TrinityStockAnalyzer:
             and boundaries['upper'] > boundaries['lower']
         )
         return {
-            'background_origin': background_anchor,
-            'focus_origin': focus_anchor,
-            'execution_origin': execution_anchor,
+            'background_origin': background_origin,
+            'focus_origin': focus_origin,
+            'execution_origin': execution_origin,
             'family': family,
             'type': structure_type,
             'standard_candidate': focus_classification.get('type') or structure_type,
@@ -3231,17 +3328,22 @@ class TrinityStockAnalyzer:
             'can_trade_by_structure_nodes': qualification == 'standard' and family == 'standard',
             'can_trade_by_boundaries': has_valid_boundary_range,
             'explainability': {
-                'status': focus_origin_analysis.get('explainability_status') or 'passed',
+                'status': numbering_explainability.get('status') or 'passed',
                 'reason': (
-                    focus_origin_analysis.get('explainability_reason')
+                    explainability.get('display_reason')
+                    or focus_origin_analysis.get('explainability_reason')
+                    or numbering_explainability.get('reason')
                     or focus_structure.get('qualification_reason')
                     or structure_payload.get('description')
                     or ''
                 ),
                 'evidence': [
-                    structure_payload.get('description') or '',
-                    focus_structure.get('summary') or '',
-                    spacetime_gate.get('required_confirmation') or '',
+                    item for item in [
+                        structure_payload.get('description') or '',
+                        focus_structure.get('summary') or '',
+                        spacetime_gate.get('required_confirmation') or '',
+                        *(numbering_explainability.get('evidence') or []),
+                    ] if item
                 ],
             },
         }

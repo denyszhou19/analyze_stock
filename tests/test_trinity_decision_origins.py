@@ -7,34 +7,66 @@ class TrinityDecisionOriginsTest(unittest.TestCase):
     def setUp(self) -> None:
         self.analyzer = TrinityStockAnalyzer()
 
-    def test_background_origin_outside_window_does_not_map_to_first_visible_point(self) -> None:
+    def test_focus_origin_prefers_peak_extreme_then_recent_component_then_macro_origin(self) -> None:
         structure = self.analyzer._build_trinity_structure_decision(
             {
-                'structure_type': '复杂结构',
-                'trend_direction': '下跌',
-                'description': '复杂结构等待确认',
+                'structure_type': 'C单平台式',
+                'trend_direction': '震荡',
+                'description': '峰值切片后的右侧聚焦结构',
                 'interpretation': {
                     'focus_structure': {
-                        'reference_origin': {
-                            'price': 76.66,
-                            'date': '2025-07-14 00:00:00',
-                        },
-                        'start_anchor_source': 'macro_origin',
+                        'archetype_family': 'C',
+                        'standard_qualification': 'standard',
+                        'start_anchor': {'point_id': 'p7', 'price': 209.88, 'date': '2025-11-14'},
+                        'start_anchor_source': 'peak_extreme',
                     },
                 },
                 'structure_details': {
                     'focus_origin_analysis': {
-                        'selected_origin_kind': 'macro_origin',
-                        'selected_point_index': None,
-                        'explainability_reason': '当前窗口未包含该原点',
+                        'selected_origin_kind': 'peak_extreme',
+                        'selected_point_index': 7,
+                        'explainability_status': 'passed',
+                        'explainability_reason': '主峰切片优先',
+                    },
+                    'raw_classification': {'type': '延伸C类'},
+                    'focus_classification': {'type': 'C单平台式', 'standard_qualification': 'standard'},
+                    'explainability': {
+                        'structure_start_point_id': 'p7',
+                        'current_point_id': 'p12',
+                        'display_reason': '标准结构从聚焦起点重新编号',
                     },
                 },
             }
         )
 
-        self.assertEqual(structure['background_origin']['date'], '2025-07-14 00:00:00')
-        self.assertEqual(structure['background_origin']['source'], 'macro_origin')
-        self.assertIsNone(structure['focus_origin'])
+        self.assertEqual(structure['focus_origin']['source'], 'peak_extreme')
+        self.assertEqual(structure['focus_origin']['price'], 209.88)
+        self.assertEqual(structure['background_origin']['semantic'], 'background_origin')
+        self.assertEqual(structure['execution_origin']['semantic'], 'execution_origin')
+        self.assertEqual(structure['type'], 'C单平台式')
+        self.assertEqual(structure['explainability']['status'], 'passed')
+
+    def test_background_origin_outside_window_does_not_fall_back_to_first_visible_point(self) -> None:
+        payload = self.analyzer._build_trinity_structure_decision(
+            {
+                'structure_type': '延伸C',
+                'description': '窗口截断后的聚焦结构',
+                'interpretation': {'focus_structure': {}},
+                'structure_details': {
+                    'focus_origin_analysis': {
+                        'selected_origin_kind': 'macro_origin',
+                        'selected_point_index': None,
+                        'explainability_status': 'downgraded',
+                        'explainability_reason': '宏观原点在窗口外，仅保留来源说明',
+                    },
+                    'raw_classification': {'type': '延伸C类', 'macro_origin': {'outside_window': True}},
+                    'focus_classification': {'type': '延伸C', 'standard_qualification': 'extended'},
+                },
+            }
+        )
+
+        self.assertIsNone(payload['background_origin'])
+        self.assertIn('窗口外', payload['explainability']['reason'])
 
     def test_execution_origin_uses_current_point_as_child_anchor(self) -> None:
         structure = self.analyzer._build_trinity_structure_decision(

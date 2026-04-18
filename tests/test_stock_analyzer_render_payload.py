@@ -542,6 +542,34 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertEqual(focus_origin_analysis["selected_point_index"], 1)
         self.assertIn("最近平台起点", focus_origin_analysis["explainability_reason"])
 
+    def test_build_numbering_explainability_restarts_numbering_for_standard_focus_structure(self) -> None:
+        explainability = self.analyzer._build_numbering_explainability(
+            {
+                "type": "C单平台式",
+                "standard_qualification": "standard",
+            },
+            {
+                "display_reason": "标准结构从聚焦起点重新编号",
+            },
+        )
+
+        self.assertEqual(explainability["status"], "passed")
+        self.assertEqual(explainability["reason"], "标准结构从聚焦起点重新编号")
+        self.assertIn("结构编号从当前结构起点重新开始", explainability["evidence"])
+
+    def test_build_numbering_explainability_stops_standard_labels_for_extended_structure(self) -> None:
+        explainability = self.analyzer._build_numbering_explainability(
+            {
+                "type": "延伸C",
+                "standard_qualification": "extended",
+            },
+            {},
+        )
+
+        self.assertEqual(explainability["status"], "downgraded")
+        self.assertIn("停止标准 A/B/C/D 编号", explainability["evidence"])
+        self.assertIn("非标准结构停止标准编号", explainability["reason"])
+
     def test_analyze_structure_prediction_uses_completion_stage_for_d_with_four_inflections(self) -> None:
         recent = pd.DataFrame(
             [{"close": 10.0, "high": 10.5, "low": 9.5}]

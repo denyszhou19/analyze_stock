@@ -199,3 +199,40 @@ class StructureInterpretationModelTest(unittest.TestCase):
         self.assertEqual(focus_structure['standard_qualification'], 'extended')
         self.assertEqual(focus_structure['archetype_label'], '延伸C类原型')
         self.assertEqual(focus_structure['qualification_reason'], '超出标准点数，按延伸C类跟踪')
+
+    def test_build_structure_interpretation_keeps_peak_extreme_start_anchor_metadata_for_standard_structure(self) -> None:
+        interpretation = self.analyzer._build_structure_interpretation(
+            structure_type='C单平台式',
+            trend_direction='震荡',
+            explanation={
+                'structure_start_point_id': 'p7',
+                'focus_origin_source': 'peak_extreme',
+                'explainability_status': 'passed',
+                'qualification_reason': '标准结构从聚焦起点重新编号',
+            },
+            prediction={'current_stage': '第6个拐点', 'next_stage': '等待方向选择'},
+            moving_averages={
+                'price_vs_ma55': 'mixed',
+                'price_vs_ma233': 'mixed',
+                'ma_status': '缠绕',
+            },
+            peak_analysis={
+                'is_peak_structure': True,
+                'peak_type': 'mountain_peak',
+                'peak_price': 209.88,
+            },
+            labeled_points=[
+                {'point_id': 'p1', 'price': 168.7, 'date': '2025-09-29 00:00'},
+                {'point_id': 'p7', 'price': 209.88, 'date': '2025-11-14 00:00'},
+                {'point_id': 'live', 'price': 176.0, 'date': '2026-01-09 00:00', 'is_current': True},
+            ],
+            valid_range={
+                'start_date': '2025-07-14',
+                'start_price': 76.66,
+            },
+        )
+
+        focus_structure = interpretation['focus_structure']
+        self.assertEqual(focus_structure['standard_qualification'], 'standard')
+        self.assertEqual(focus_structure['start_anchor_source'], 'peak_extreme')
+        self.assertEqual(focus_structure['start_anchor']['point_id'], 'p7')

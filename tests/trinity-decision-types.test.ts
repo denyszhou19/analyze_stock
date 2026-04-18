@@ -170,3 +170,9 @@ test('PeriodAnalysisData carries trinity_decision contract', () => {
   assert.equal(periodData.trinity_decision?.level, 'daily');
   assert.equal(periodData.trinity_decision?.structure.focus_origin?.source, 'peak_extreme');
 });
+
+test('TrinityDecision structure origins preserve three origin semantics', () => {
+  assert.equal(sampleDecision.structure.background_origin?.semantic, 'background_origin');
+  assert.equal(sampleDecision.structure.focus_origin?.semantic, 'focus_origin');
+  assert.equal(sampleDecision.structure.execution_origin?.semantic, 'execution_origin');
+});
