@@ -3525,6 +3525,7 @@ class TrinityStockAnalyzer:
         ratio_5 = self._normalize_trinity_price(period_payload.get('volume_ratio_5'))
         ratio_20 = self._normalize_trinity_price(period_payload.get('volume_ratio_20'))
         amount_ratio = self._normalize_trinity_price(period_payload.get('amount_ratio_20'))
+        has_volume_data = any(value is not None for value in (ratio_5, ratio_20, amount_ratio))
         breakout_confirmed = bool(
             (ratio_5 is not None and ratio_5 >= 1.2)
             or (ratio_20 is not None and ratio_20 >= 1.15)
@@ -3541,6 +3542,9 @@ class TrinityStockAnalyzer:
             'amount_ratio_20': amount_ratio,
             'turnover_rate': None,
             'volume_state': (
+                'unknown'
+                if not has_volume_data
+                else
                 'expanding'
                 if breakout_confirmed
                 else 'shrinking'
@@ -3548,24 +3552,38 @@ class TrinityStockAnalyzer:
                 else 'normal'
             ),
             'breakout_volume': (
+                'unknown'
+                if not has_volume_data
+                else
                 'confirmed'
                 if breakthrough_payload.get('direction') == 'up' and breakout_confirmed
                 else 'weak'
             ),
             'breakdown_volume': (
+                'unknown'
+                if not has_volume_data
+                else
                 'confirmed'
                 if breakthrough_payload.get('direction') == 'down' and breakout_confirmed
                 else 'not_applicable'
             ),
-            'pullback_volume': 'healthy_shrink' if pullback_healthy else 'normal',
+            'pullback_volume': 'unknown' if not has_volume_data else 'healthy_shrink' if pullback_healthy else 'normal',
             'volume_gate': {
-                'supports_breakout': breakout_confirmed,
-                'supports_breakdown': breakthrough_payload.get('direction') == 'down' and breakout_confirmed,
-                'supports_pullback_confirmation': pullback_healthy,
-                'confidence_adjustment': 'upgrade' if breakout_confirmed or pullback_healthy else 'downgrade',
+                'supports_breakout': breakout_confirmed if has_volume_data else None,
+                'supports_breakdown': (breakthrough_payload.get('direction') == 'down' and breakout_confirmed) if has_volume_data else None,
+                'supports_pullback_confirmation': pullback_healthy if has_volume_data else None,
+                'confidence_adjustment': (
+                    'upgrade'
+                    if breakout_confirmed or pullback_healthy
+                    else 'neutral'
+                    if not has_volume_data
+                    else 'downgrade'
+                ),
                 'reason': (
                     '放量确认突破，缩量回踩更健康'
                     if breakout_confirmed
+                    else '量能数据缺失，暂不作为否决项'
+                    if not has_volume_data
                     else '量能未充分确认，需等待二次验证'
                 ),
             },
@@ -3593,6 +3611,11 @@ class TrinityStockAnalyzer:
         is_short_intent = direction == 'short'
         allow_long = bool(ma_gate.get('allow_long'))
         allow_short = bool(ma_gate.get('allow_short'))
+        volume_gate = volume_decision.get('volume_gate') or {}
+        supports_breakout = volume_gate.get('supports_breakout')
+        supports_breakdown = volume_gate.get('supports_breakdown')
+        supports_pullback_confirmation = volume_gate.get('supports_pullback_confirmation')
+        confidence_adjustment = volume_gate.get('confidence_adjustment') or 'neutral'
         direction_matches_structure = (
             (is_long_intent and structure_direction == 'up')
             or (is_short_intent and structure_direction == 'down')
@@ -3601,6 +3624,28 @@ class TrinityStockAnalyzer:
             (is_long_intent and allow_long and structure_direction != 'down')
             or (is_short_intent and allow_short and structure_direction != 'up')
         )
+        if is_long_intent:
+            volume_gate_passed = (
+                supports_breakout is None
+                or bool(supports_breakout)
+                or bool(supports_pullback_confirmation)
+            )
+        elif is_short_intent:
+            volume_gate_passed = (
+                supports_breakdown is None
+                or bool(supports_breakdown)
+                or bool(supports_pullback_confirmation)
+            )
+        else:
+            volume_gate_passed = True
+
+        def apply_confidence(base: str) -> str:
+            if confidence_adjustment == 'upgrade':
+                return {'low': 'medium', 'medium': 'high', 'high': 'high'}.get(base, base)
+            if confidence_adjustment == 'downgrade':
+                return {'high': 'medium', 'medium': 'low', 'low': 'low'}.get(base, base)
+            return base
+
         reasons = [
             structure_decision.get('explainability', {}).get('reason') or '沿用结构解释',
             spacetime_decision.get('mismatch_reason') or '时空未额外否决',
@@ -3608,24 +3653,17 @@ class TrinityStockAnalyzer:
             volume_decision.get('volume_gate', {}).get('reason') or '沿用量能门控',
         ]
         if action == 'wait':
-            if structure_family in {'extended', 'channel', 'range'} and can_trade_by_boundaries:
-                return {
-                    'trade_mode': 'conditional_boundary_trade',
-                    'position_permission': 'light_probe',
-                    'confidence': 'medium',
-                    'reason': ['边界有效，但当前仍需等待触发', *reasons],
-                }
             return {
                 'trade_mode': 'wait_confirmation',
                 'position_permission': 'no_position',
-                'confidence': 'low',
+                'confidence': apply_confidence('low'),
                 'reason': ['等待触发或确认信号', *reasons],
             }
         if structure_family == 'unfinished' or qualification == 'unfinished':
             return {
                 'trade_mode': 'wait_confirmation',
                 'position_permission': 'no_position',
-                'confidence': 'low',
+                'confidence': apply_confidence('low'),
                 'reason': ['未完成结构仅等待', *reasons],
             }
         if structure_family in {'extended', 'channel', 'range'} or qualification in {'extended', 'over_limit'}:
@@ -3633,47 +3671,47 @@ class TrinityStockAnalyzer:
                 return {
                     'trade_mode': 'conditional_boundary_trade',
                     'position_permission': 'light_probe',
-                    'confidence': 'medium',
+                    'confidence': apply_confidence('medium'),
                     'reason': ['非标准结构只允许边界条件交易', *reasons],
                 }
             return {
                 'trade_mode': 'no_trade',
                 'position_permission': 'no_position',
-                'confidence': 'low',
+                'confidence': apply_confidence('low'),
                 'reason': ['非标准结构边界无效，禁止交易', *reasons],
             }
         if action == 'avoid':
             return {
                 'trade_mode': 'risk_control',
                 'position_permission': 'reduce_only',
-                'confidence': 'high',
+                'confidence': apply_confidence('high'),
                 'reason': ['当前信号要求规避或仅做风险控制', *reasons],
             }
-        if can_trade_by_nodes and direction_matches_structure and direction_gate_passed:
+        if can_trade_by_nodes and direction_matches_structure and direction_gate_passed and volume_gate_passed:
             return {
                 'trade_mode': 'standard_node_trade',
                 'position_permission': 'half_position',
-                'confidence': 'medium',
+                'confidence': apply_confidence('medium'),
                 'reason': ['标准结构节点可交易', *reasons],
             }
         if action in {'sell', 'reduce'}:
             return {
                 'trade_mode': 'no_trade',
                 'position_permission': 'no_position',
-                'confidence': 'medium',
+                'confidence': apply_confidence('medium'),
                 'reason': ['方向或门控冲突，不放行节点交易', *reasons],
             }
         if not can_trade_by_nodes:
             return {
                 'trade_mode': 'no_trade',
                 'position_permission': 'no_position',
-                'confidence': 'low',
+                'confidence': apply_confidence('low'),
                 'reason': ['标准结构缺少真实可交易节点', *reasons],
             }
         return {
             'trade_mode': 'no_trade',
             'position_permission': 'no_position',
-            'confidence': 'medium',
+            'confidence': apply_confidence('medium'),
             'reason': ['方向或门控未满足，暂不交易', *reasons],
         }
 
@@ -3819,7 +3857,7 @@ class TrinityStockAnalyzer:
         )
         aligned = parent_status in ('极强', '强', '中偏强') and child_structure in ('A五段式', 'B双平台式', 'C单平台式')
         conflict = parent_status in ('极弱', '弱', '中偏弱') and child_structure in ('A五段式', 'B双平台式')
-        resonance = 'aligned' if aligned else 'conflict' if conflict else 'child_countertrend'
+        resonance = 'aligned' if aligned else 'conflict' if conflict else 'mixed'
         permission = {
             'allow_position_increase': aligned,
             'allow_t_trade': level in ('hour30', 'hour15'),
@@ -3829,7 +3867,7 @@ class TrinityStockAnalyzer:
                 if isinstance(raw_level_nesting, dict) and raw_level_nesting.get('summary')
                 else '父子级别共振'
                 if aligned
-                else '父子级别冲突，降级执行'
+                else '父子级别未形成明确共振，降级执行'
             ),
         }
         if parent_bias == 'bearish' and child_signal == 'long':

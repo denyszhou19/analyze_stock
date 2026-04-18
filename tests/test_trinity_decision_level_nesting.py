@@ -85,3 +85,23 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertFalse(decision['permission']['allow_position_increase'])
         self.assertTrue(decision['permission']['allow_only_light_probe'])
         self.assertTrue(decision['permission']['allow_t_trade'])
+
+    def test_neutral_parent_and_long_child_does_not_become_child_countertrend(self) -> None:
+        decision = self.analyzer._build_trinity_level_nesting_decision(
+            level='hour30',
+            normalized_results={
+                'daily': {
+                    'macd': {'status': '中性'},
+                    'trinity_decision': {'conclusion': {'bias': 'neutral'}},
+                },
+                'hour30': {
+                    'macd': {'status': '中偏强'},
+                    'trinity_decision': {'structure': {'type': 'A五段式'}},
+                },
+            },
+            raw_level_nesting={'summary': '日线中性，30分钟偏强反弹'},
+        )
+
+        self.assertEqual(decision['parent_bias'], 'neutral')
+        self.assertEqual(decision['child_signal'], 'long')
+        self.assertNotEqual(decision['resonance'], 'child_countertrend')
