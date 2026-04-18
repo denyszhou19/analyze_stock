@@ -5,6 +5,16 @@ import { runCodexStrategyAnalysis } from '@/lib/codex-strategy-analysis';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
+const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守）
+
+- 先输出 JSON 摘要，再输出 Markdown 正文
+- JSON 摘要必须放在 \`\`\`json\`\`\` 代码块内，且只能输出一个摘要对象
+- JSON 摘要字段必须包含 headline / action / bias / primary_reason / triggers / risks / guardrail
+- “操作策略参考”必须以 deterministic_decision 为硬边界
+- 如果 deterministic_decision.action = wait / avoid，摘要 action 不能升级为 buy / add
+- Markdown 正文再展开跨级别依据、仓位与执行方案、风险与应对
+`;
+
 // 三位一体策略系统提示词（精简版 - AI专注于策略分析）
 const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师，精通"三位一体操作策略"。你的任务是基于系统已经计算好的分析结果，进行深度策略解读和操作建议。
 
@@ -329,6 +339,7 @@ ${JSON.stringify(payload, null, 2)}
 ## 你的任务
 
 请输出一份偏“决策建议”而不是“重新分析”的报告，重点使用：
+- \`periods.*.deterministic_decision\`，把它视为最终可执行边界，优先级高于描述性分析
 - \`level_nesting.trading_decision\`，优先吸收其中“先分析后执行”的结论
 - 各周期的 \`execution_phase / execution\`，优先说明当前是否可执行、该怎么执行
 - 日线的 \`ma / ma_physics / breakthrough\`
@@ -338,14 +349,18 @@ ${JSON.stringify(payload, null, 2)}
 - 日线与 30分钟的 \`prediction\`
 - \`key_alerts\`
 
+${AI_REPORT_OUTPUT_CONTRACT}
+
 ## 输出结构
 
 ### 一、先给结论
 - 当前操作方向：买入 / 卖出 / 持有 / 观望
 - 一句话理由：先说最核心的因果链
+- JSON 摘要中的 \`action\`、\`bias\` 必须与 \`deterministic_decision.conclusion\` 保持同向，不得擅自升级风险偏好
 
 ### 二、跨级别决策依据
 - 用周线→日线→30分钟/15分钟的顺序解释
+- 先解释 deterministic_decision 给出的硬边界，再解释 level_nesting.trading_decision 与 execution_phase / execution
 - 优先解读 \`level_nesting.trading_decision\`，明确 \`analysis_order = top_down\`、\`execution_order = bottom_up\`
 - 再结合各周期 \`execution_phase / execution\` 说明执行级别、动作和仓位上限
 - 然后补充 \`multi_dimension_operation\` 与 \`level_nesting.summary / spacetime_confirmation\`
@@ -371,6 +386,7 @@ ${JSON.stringify(payload, null, 2)}
 - 不使用“必定”“一定”“百分之百”等绝对表达
 - 不要复述 JSON 字段名，重点做解读和决策落地
 - 如果信息不足以支持激进操作，请明确倾向保守应对
+- 若 deterministic_decision 给出 \`wait\` / \`avoid\`，正文也必须维持等待/回避基调，不能写成积极买入或加仓建议
 - \`ABCD\` 结构标签与 \`archetype\` 只是结构原型和背景解释，不代表未来一定会完整走完
 - \`archetype\` 不能单独当作交易开关；交易动作必须结合 \`trading_decision\`、\`execution_phase\`、\`execution\` 与日线关键信号`;
 }

@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import { readFileSync } from 'node:fs';
 
 const {
   buildCodexExecArgs,
@@ -17,6 +18,21 @@ test('buildCodexExecPrompt keeps system and user prompts in one stdin payload', 
   assert.match(prompt, /USER_PROMPT/);
   assert.match(prompt, /系统指令/);
   assert.match(prompt, /用户任务/);
+  assert.match(prompt, /先输出 JSON 摘要/);
+  assert.match(prompt, /再输出 Markdown 正文/);
+});
+
+test('ai-analysis route prompt enforces deterministic_decision hard boundary for summary action', () => {
+  const routeSource = readFileSync(
+    new URL('../src/app/api/stock/ai-analysis/route.ts', import.meta.url),
+    'utf8'
+  );
+
+  assert.match(routeSource, /deterministic_decision/);
+  assert.match(routeSource, /先输出 JSON 摘要，再输出 Markdown 正文/);
+  assert.match(routeSource, /wait\s*\/\s*avoid/);
+  assert.match(routeSource, /摘要 action 不能升级为 buy\s*\/\s*add/);
+  assert.match(routeSource, /headline\s*\/\s*action\s*\/\s*bias\s*\/\s*primary_reason/);
 });
 
 test('buildCodexExecArgs runs codex in read-only exec mode and captures last message to file', () => {

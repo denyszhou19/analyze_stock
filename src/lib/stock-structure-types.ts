@@ -370,11 +370,55 @@ export interface TrinityAnchor {
   semantic?: string | null;
 }
 
+export type TrinityDecisionAction =
+  | 'buy'
+  | 'add'
+  | 'hold'
+  | 'reduce'
+  | 'sell'
+  | 't_trade'
+  | 'wait'
+  | 'avoid';
+
+export type TrinityDecisionBias = 'bullish' | 'bearish' | 'neutral';
+
+export type TrinityDecisionConfidence = 'high' | 'medium' | 'low';
+
+export interface TrinityStructureBoundaries {
+  upper?: number | null;
+  lower?: number | null;
+  mid?: number | null;
+  breakout_trigger?: number | null;
+  breakdown_trigger?: number | null;
+  stop_loss?: number | null;
+}
+
+export type TrinityStructureNodeValue =
+  | string
+  | number
+  | boolean
+  | null
+  | undefined
+  | Record<string, unknown>
+  | Array<unknown>;
+
+export type TrinityStructureNodeMap = Record<string, TrinityStructureNodeValue>;
+
+export interface AiSummaryCard {
+  headline: string;
+  action: TrinityDecisionAction;
+  bias: TrinityDecisionBias;
+  primary_reason: string;
+  triggers: string[];
+  risks: string[];
+  guardrail: string;
+}
+
 export interface TrinityConclusion {
-  action: 'buy' | 'add' | 'hold' | 'reduce' | 'sell' | 't_trade' | 'wait' | 'avoid';
+  action: TrinityDecisionAction;
   action_label: string;
-  bias: 'bullish' | 'bearish' | 'neutral';
-  confidence: 'high' | 'medium' | 'low';
+  bias: TrinityDecisionBias;
+  confidence: TrinityDecisionConfidence;
   can_trade: boolean;
   wait_reason?: string | null;
 }
@@ -401,15 +445,8 @@ export interface TrinityStructureDecision {
   standard_candidate?: 'A五段式' | 'B双平台式' | 'C单平台式' | 'D三段式' | null;
   qualification: 'standard' | 'extended' | 'over_limit' | 'unfinished' | 'failed';
   direction: 'up' | 'down' | 'neutral';
-  boundaries: {
-    upper?: number | null;
-    lower?: number | null;
-    mid?: number | null;
-    breakout_trigger?: number | null;
-    breakdown_trigger?: number | null;
-    stop_loss?: number | null;
-  };
-  node_map: Record<string, unknown>;
+  boundaries: TrinityStructureBoundaries;
+  node_map: TrinityStructureNodeMap;
   can_trade_by_structure_nodes: boolean;
   can_trade_by_boundaries: boolean;
   explainability: {

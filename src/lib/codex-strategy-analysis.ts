@@ -45,7 +45,8 @@ export function buildCodexExecPrompt(systemPrompt: string, userPrompt: string): 
     userPrompt,
     '',
     '## 输出要求',
-    '只输出最终策略分析报告正文，使用 Markdown，不要添加额外解释。',
+    '严格按以下顺序输出：先输出 JSON 摘要，再输出 Markdown 正文。',
+    '除 JSON 摘要与 Markdown 正文外，不要添加额外解释。',
   ].join('\n');
 }
 

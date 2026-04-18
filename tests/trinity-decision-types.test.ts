@@ -1,6 +1,7 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 import type {
+  AiSummaryCard,
   PeriodAnalysisData,
   TrinityDecision,
 } from '../src/lib/stock-structure-types.ts';
@@ -175,4 +176,20 @@ test('TrinityDecision structure origins preserve three origin semantics', () => 
   assert.equal(sampleDecision.structure.background_origin?.semantic, 'background_origin');
   assert.equal(sampleDecision.structure.focus_origin?.semantic, 'focus_origin');
   assert.equal(sampleDecision.structure.execution_origin?.semantic, 'execution_origin');
+});
+
+test('AiSummaryCard action and bias stay aligned with TrinityDecision conclusion contract', () => {
+  const summary = {
+    headline: '等待结构边界确认',
+    action: sampleDecision.conclusion.action,
+    bias: sampleDecision.conclusion.bias,
+    primary_reason: sampleDecision.conclusion.wait_reason ?? '等待确认',
+    triggers: sampleDecision.execution.triggers,
+    risks: sampleDecision.execution.risk_flags,
+    guardrail: sampleDecision.execution.position_sizing.reason,
+  } satisfies AiSummaryCard;
+
+  assert.equal(summary.action, 'wait');
+  assert.equal(summary.bias, 'neutral');
+  assert.equal(summary.guardrail, '等待 C 结构边界确认');
 });

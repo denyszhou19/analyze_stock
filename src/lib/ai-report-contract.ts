@@ -1,0 +1,100 @@
+import type {
+  AiSummaryCard,
+  TrinityDecisionAction,
+  TrinityDecisionBias,
+} from '@/lib/stock-structure-types';
+
+const AI_REPORT_JSON_BLOCK_PATTERN = /^\s*```json\s*([\s\S]*?)\s*```\s*([\s\S]*)$/i;
+
+const SUMMARY_ACTIONS = new Set<TrinityDecisionAction>([
+  'buy',
+  'add',
+  'hold',
+  'reduce',
+  'sell',
+  't_trade',
+  'wait',
+  'avoid',
+]);
+
+const SUMMARY_BIASES = new Set<TrinityDecisionBias>(['bullish', 'bearish', 'neutral']);
+
+function parseStringField(
+  value: unknown,
+  fieldName: keyof AiSummaryCard
+): string {
+  if (typeof value !== 'string' || value.trim().length === 0) {
+    throw new Error(`AI 报告 JSON 摘要字段无效: ${fieldName}`);
+  }
+
+  return value.trim();
+}
+
+function parseStringListField(
+  value: unknown,
+  fieldName: 'triggers' | 'risks'
+): string[] {
+  if (!Array.isArray(value) || value.some((item) => typeof item !== 'string')) {
+    throw new Error(`AI 报告 JSON 摘要字段无效: ${fieldName}`);
+  }
+
+  return value.map((item) => item.trim()).filter(Boolean);
+}
+
+function parseAiSummaryCard(value: unknown): AiSummaryCard {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    throw new Error('AI 报告 JSON 摘要必须是对象');
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const action = parseStringField(candidate.action, 'action') as TrinityDecisionAction;
+  const bias = parseStringField(candidate.bias, 'bias') as TrinityDecisionBias;
+
+  if (!SUMMARY_ACTIONS.has(action)) {
+    throw new Error('AI 报告 JSON 摘要字段无效: action');
+  }
+
+  if (!SUMMARY_BIASES.has(bias)) {
+    throw new Error('AI 报告 JSON 摘要字段无效: bias');
+  }
+
+  return {
+    headline: parseStringField(candidate.headline, 'headline'),
+    action,
+    bias,
+    primary_reason: parseStringField(candidate.primary_reason, 'primary_reason'),
+    triggers: parseStringListField(candidate.triggers, 'triggers'),
+    risks: parseStringListField(candidate.risks, 'risks'),
+    guardrail: parseStringField(candidate.guardrail, 'guardrail'),
+  };
+}
+
+export function parseAiReportContract(report: string): {
+  summary: AiSummaryCard;
+  markdown: string;
+} {
+  const match = report.match(AI_REPORT_JSON_BLOCK_PATTERN);
+
+  if (!match) {
+    throw new Error('AI 报告缺少 JSON 摘要');
+  }
+
+  const [, jsonBlock, markdownBlock] = match;
+
+  let parsedSummary: unknown;
+  try {
+    parsedSummary = JSON.parse(jsonBlock);
+  } catch {
+    throw new Error('AI 报告 JSON 摘要解析失败');
+  }
+
+  const markdown = markdownBlock.trim();
+  if (!markdown) {
+    throw new Error('AI 报告缺少 Markdown 正文');
+  }
+
+  return {
+    summary: parseAiSummaryCard(parsedSummary),
+    markdown,
+  };
+}

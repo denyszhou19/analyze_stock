@@ -699,3 +699,120 @@ test('buildAiDecisionPayload preserves deterministic_decision for daily period',
     true
   );
 });
+
+test('buildAiDecisionPayload preserves deterministic_decision trade gate fields', () => {
+  const trinityDecision: TrinityDecision = {
+    version: 'v2',
+    level: 'daily',
+    conclusion: {
+      action: 'avoid',
+      action_label: '回避',
+      bias: 'bearish',
+      confidence: 'high',
+      can_trade: false,
+      wait_reason: '结构与时空共振均未满足',
+    },
+    structure: {
+      family: 'complex',
+      type: '复杂结构',
+      qualification: 'failed',
+      direction: 'down',
+      boundaries: {
+        upper: 171.99,
+        lower: 159.99,
+        stop_loss: 171.99,
+      },
+      node_map: {
+        last_confirmed: 165.2,
+        risk_pivot: 171.99,
+      },
+      can_trade_by_structure_nodes: false,
+      can_trade_by_boundaries: false,
+      explainability: {
+        status: 'failed',
+        reason: '关键节点未闭合',
+        evidence: ['当前仍属复杂结构'],
+      },
+    },
+    spacetime: {
+      status: '弱',
+      direction_bias: 'bearish',
+      expected_structures: { up: ['D三段式'], down: ['B双平台式'] },
+      structure_match: false,
+      mismatch_reason: '当前结构不符合预期',
+      divergence_policy: {
+        top_divergence_valid: true,
+        bottom_divergence_valid: false,
+        reason: '空头背景下仅观察顶部背离',
+      },
+    },
+    moving_average: {
+      ma55_role: 'resistance',
+      ma233_role: 'resistance',
+      price_position: {
+        above_ma55: false,
+        above_ma233: false,
+      },
+      breakthrough_state: 'valid_breakdown',
+      ma_gate: {
+        allow_long: false,
+        allow_short: true,
+        reason: '均线压制有效',
+      },
+    },
+    volume_confirmation: {
+      volume_state: 'normal',
+      breakout_volume: 'not_applicable',
+      breakdown_volume: 'confirmed',
+      pullback_volume: 'normal',
+      volume_gate: {
+        supports_breakout: false,
+        supports_breakdown: true,
+        supports_pullback_confirmation: false,
+        confidence_adjustment: 'upgrade',
+        reason: '放量跌破',
+      },
+    },
+    trade_qualification: {
+      trade_mode: 'no_trade',
+      position_permission: 'no_position',
+      confidence: 'high',
+      reason: ['结构失败', '均线压制有效'],
+    },
+    execution: {
+      entry_style: 'none',
+      triggers: ['等待重新站回 MA55'],
+      invalidation: ['继续放量跌破 159.99'],
+      confirmation: ['出现标准结构后再评估'],
+      position_sizing: {
+        reason: '当前禁止开仓',
+      },
+      risk_flags: ['禁止抄底'],
+    },
+    judgment_criteria: [],
+    ai_summary_facts: ['结构失败，不具备交易资格'],
+  };
+
+  const payload = buildAiDecisionPayload({
+    periods: {
+      daily: {
+        trinity_decision: trinityDecision,
+      },
+    },
+  });
+
+  assert.equal(payload.periods.daily.deterministic_decision?.conclusion.action, 'avoid');
+  assert.equal(payload.periods.daily.deterministic_decision?.structure.type, '复杂结构');
+  assert.equal(
+    payload.periods.daily.deterministic_decision?.structure.can_trade_by_structure_nodes,
+    false
+  );
+  assert.equal(
+    payload.periods.daily.deterministic_decision?.structure.node_map.last_confirmed,
+    165.2
+  );
+  assert.equal(
+    payload.periods.daily.deterministic_decision?.trade_qualification.position_permission,
+    'no_position'
+  );
+});
