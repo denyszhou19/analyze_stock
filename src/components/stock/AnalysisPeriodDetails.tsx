@@ -22,9 +22,28 @@ interface AnalysisPeriodDetailsProps {
   sections: AnalysisPeriodSection[];
 }
 
+const ACTION_LABELS: Record<string, string> = {
+  buy: '买入',
+  add: '加仓',
+  hold: '持有',
+  wait: '等待',
+  reduce: '减仓',
+  sell: '卖出',
+  t_trade: '做 T',
+  avoid: '规避',
+};
+
 function formatList(items?: Array<string | null | undefined> | null, fallback = '未提供') {
   const value = items?.filter(Boolean).join('、');
   return value || fallback;
+}
+
+function formatActionLabel(action?: string | null) {
+  if (!action) {
+    return null;
+  }
+
+  return ACTION_LABELS[action] ?? action;
 }
 
 function resolveSummary(section: AnalysisPeriodSection) {
@@ -96,7 +115,7 @@ function resolveTradeAction(section: AnalysisPeriodSection) {
   return [
     structure?.execution_phase?.label,
     decision?.conclusion.action_label,
-    execution?.action,
+    !decision?.conclusion.action_label ? formatActionLabel(execution?.action) : null,
     execution?.wait_reason,
     execution?.rationale,
     formatList(execution?.trigger, ''),

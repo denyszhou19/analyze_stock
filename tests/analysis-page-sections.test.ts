@@ -143,7 +143,9 @@ test('AnalysisPeriodDetails prefers daily as default and renders deterministic p
   assert.match(html, /A五段式/);
   assert.match(html, /周线偏多/);
   assert.match(html, /MA55支撑有效/);
+  assert.match(html, /等待/);
   assert.match(html, /等待确认信号后再执行/);
+  assert.doesNotMatch(html, /｜wait｜/);
   assert.equal(html.match(/默认展开/g)?.length, 1);
   assert.doesNotMatch(html, /data-default-open/);
 });
