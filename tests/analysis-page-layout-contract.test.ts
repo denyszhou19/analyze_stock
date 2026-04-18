@@ -11,6 +11,7 @@ test('analysis page composes the confirmed IA sections', () => {
   assert.match(pageSource, /TrinityRuleChain/);
   assert.match(pageSource, /AnalysisPeriodDetails/);
   assert.match(pageSource, /parseAiReportContract/);
+  assert.doesNotMatch(pageSource, /StructureExplainabilityPanel/);
 });
 
 test('analysis page keeps decision bus directly after summary panel', () => {

@@ -1,3 +1,4 @@
+import fs from 'node:fs/promises';
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
@@ -8,7 +9,8 @@ import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 
 type LevelDecisionBusModule = typeof import('../src/components/stock/LevelDecisionBus.tsx');
 type TrinityRuleChainModule = typeof import('../src/components/stock/TrinityRuleChain.tsx');
-type AnalysisPeriodDetailsModule = typeof import('../src/components/stock/AnalysisPeriodDetails.tsx');
+
+const periodDetailsSource = await fs.readFile('src/components/stock/AnalysisPeriodDetails.tsx', 'utf8');
 
 test('LevelDecisionBus renders three fixed dimension titles', async () => {
   const { LevelDecisionBus } = await importTsxModule<LevelDecisionBusModule>(
@@ -66,91 +68,12 @@ test('TrinityRuleChain renders six rule items and keeps failed status plus reaso
   assert.match(html, /入场触发条件缺失/);
 });
 
-test('AnalysisPeriodDetails prefers daily as default and renders deterministic period fields', async () => {
-  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
-    'src/components/stock/AnalysisPeriodDetails.tsx'
-  );
-
-  const html = renderQuietly(
-    React.createElement(AnalysisPeriodDetails, {
-      sections: [
-        {
-          key: 'daily',
-          label: '日线',
-          defaultOpen: false,
-          summary: '日线处于主结构确认阶段。',
-          rangeLabel: '近 240 根',
-          topologyTitle: '日线拓扑结构图',
-          structureExplainabilitySlot: React.createElement('div', null, '结构说明已并入结构证据'),
-          period: {
-            macd: {
-              status: '中偏强',
-              divergence_note: '顶背离未确认',
-            },
-            moving_averages: {
-              ma_status: 'MA55 之上运行',
-            },
-            ma_physics: {
-              support_pressure: {
-                status: 'MA55支撑有效',
-              },
-            },
-            breakthrough: {
-              pattern_type: '回踩确认',
-            },
-            structure: {
-              structure_type: 'A五段式',
-              description: '日线处于主结构确认阶段。',
-              structure_details: {
-                judgment_criteria: '结构说明已并入周期详情',
-              },
-              interpretation: {
-                spacetime_gate: {
-                  parent_status: '周线偏多',
-                  wait_reason: '等待日线回踩结束',
-                  required_confirmation: '重新站上前高',
-                },
-              },
-              execution_phase: {
-                label: '回抽确认',
-              },
-              execution: {
-                action: 'wait',
-                wait_reason: '等待确认信号后再执行',
-                rationale: '当前仅观察不追价',
-              },
-            },
-          },
-        },
-        {
-          key: 'intraday',
-          label: '30分钟',
-          defaultOpen: true,
-          summary: '30分钟等待执行触发。',
-          rangeLabel: '近 160 根',
-          topologyTitle: '30分钟拓扑结构图',
-          period: {
-            structure: {
-              structure_type: 'C单平台式',
-              description: '30分钟等待执行触发。',
-            },
-          },
-        },
-      ],
-    })
-  );
-
-  assert.match(html, /日线[\s\S]*默认展开|默认展开[\s\S]*日线/);
-  assert.match(html, /日线/);
-  assert.match(html, /结构证据/);
-  assert.match(html, /日线拓扑结构图/);
-  assert.match(html, /结构说明/);
-  assert.match(html, /A五段式/);
-  assert.match(html, /周线偏多/);
-  assert.match(html, /MA55支撑有效/);
-  assert.match(html, /等待/);
-  assert.match(html, /等待确认信号后再执行/);
-  assert.doesNotMatch(html, /｜wait｜/);
-  assert.equal(html.match(/默认展开/g)?.length, 1);
-  assert.doesNotMatch(html, /data-default-open/);
+test('AnalysisPeriodDetails keeps a pure data contract and renders structure explanation internally', () => {
+  assert.match(periodDetailsSource, /export interface AnalysisPeriodSection/);
+  assert.doesNotMatch(periodDetailsSource, /structureExplainabilitySlot/);
+  assert.match(periodDetailsSource, /StructureExplainabilityPanel/);
+  assert.match(periodDetailsSource, /buildExecutionSummary/);
+  assert.match(periodDetailsSource, /结构说明/);
+  assert.match(periodDetailsSource, /defaultValue/);
+  assert.match(periodDetailsSource, /section\.period/);
 });

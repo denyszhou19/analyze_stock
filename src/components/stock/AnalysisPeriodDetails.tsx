@@ -1,15 +1,16 @@
-import type { ReactNode } from 'react';
 import {
   Accordion,
   AccordionContent,
   AccordionItem,
   AccordionTrigger,
 } from '@/components/ui/accordion';
+import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
-import type { PeriodAnalysisData } from '@/lib/stock-structure-types';
+import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
+import type { PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
 
-interface AnalysisPeriodSection {
+export interface AnalysisPeriodSection {
   key: string;
   label: string;
   defaultOpen?: boolean;
@@ -17,12 +18,21 @@ interface AnalysisPeriodSection {
   rangeLabel?: string | null;
   topologyTitle?: string | null;
   period?: PeriodAnalysisData | null;
-  structureExplainabilitySlot?: ReactNode;
 }
 
 interface AnalysisPeriodDetailsProps {
   sections: AnalysisPeriodSection[];
 }
+
+const STRUCTURE_COLORS: Record<string, string> = {
+  A五段式: 'bg-amber-100 text-amber-800 border border-amber-300',
+  B双平台式: 'bg-purple-100 text-purple-800 border border-purple-300',
+  C单平台式: 'bg-blue-100 text-blue-800 border border-blue-300',
+  D三段式: 'bg-gray-100 text-gray-700 border border-gray-300',
+  复杂结构: 'bg-rose-100 text-rose-800 border border-rose-300',
+  山峰形态: 'bg-gradient-to-r from-red-100 to-green-100 text-gray-800 border border-gray-300',
+  山谷形态: 'bg-gradient-to-r from-green-100 to-red-100 text-gray-800 border border-gray-300',
+};
 
 const ACTION_LABELS: Record<string, string> = {
   buy: '买入',
@@ -126,6 +136,22 @@ function resolveTradeAction(section: AnalysisPeriodSection) {
     .join('｜') || '当前周期暂无交易动作结论。';
 }
 
+function buildExplainabilityStructure(period?: PeriodAnalysisData | null) {
+  const structure = period?.structure;
+  if (!structure) {
+    return null;
+  }
+
+  return {
+    structure_type: structure.structure_type || '未识别结构',
+    inflection_points: typeof structure.inflection_points === 'number' ? structure.inflection_points : 0,
+    description: structure.description || '当前周期暂无结构说明。',
+    interpretation: structure.interpretation,
+    archetype: structure.archetype,
+    structure_details: structure.structure_details as StructureData['structure_details'],
+  };
+}
+
 export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) {
   if (!sections.length) {
     return null;
@@ -144,8 +170,11 @@ export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) 
       </div>
 
       <Accordion type="single" defaultValue={defaultValue} className="rounded-xl border px-4">
-        {sections.map((section) => (
-          <AccordionItem key={section.key} value={section.key}>
+        {sections.map((section) => {
+          const explainabilityStructure = buildExplainabilityStructure(section.period);
+
+          return (
+            <AccordionItem key={section.key} value={section.key}>
             <AccordionTrigger className="gap-4 py-4 hover:no-underline">
               <div className="space-y-1 text-left">
                 <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
@@ -175,10 +204,14 @@ export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) 
                       <div className="font-medium text-foreground">{resolveTopologyTitle(section)}</div>
                       <div className="mt-1">{resolveStructureEvidence(section)}</div>
                     </div>
-                    {section.structureExplainabilitySlot ? (
+                    {explainabilityStructure ? (
                       <div className="space-y-2 pt-1">
                         <div className="font-medium text-foreground">结构说明</div>
-                        {section.structureExplainabilitySlot}
+                        <StructureExplainabilityPanel
+                          structure={explainabilityStructure}
+                          executionSummary={buildExecutionSummary(section.period)}
+                          structureColors={STRUCTURE_COLORS}
+                        />
                       </div>
                     ) : null}
                   </div>
@@ -206,8 +239,9 @@ export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) 
                 </CardContent>
               </Card>
             </AccordionContent>
-          </AccordionItem>
-        ))}
+            </AccordionItem>
+          );
+        })}
       </Accordion>
     </section>
   );

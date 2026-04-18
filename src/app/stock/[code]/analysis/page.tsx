@@ -7,12 +7,12 @@ import jsPDF from 'jspdf';
 import { domToJpeg } from 'modern-screenshot';
 
 import { AnalysisPeriodDetails } from '@/components/stock/AnalysisPeriodDetails';
+import type { AnalysisPeriodSection } from '@/components/stock/AnalysisPeriodDetails';
 import { AnalysisStatusBar } from '@/components/stock/AnalysisStatusBar';
 import { AnalysisSummaryPanel } from '@/components/stock/AnalysisSummaryPanel';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
 import { LevelDecisionBus } from '@/components/stock/LevelDecisionBus';
-import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
 import { TrinityRuleChain } from '@/components/stock/TrinityRuleChain';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -20,9 +20,8 @@ import { Markdown } from '@/components/ui/markdown';
 import { SmartLoading } from '@/components/ui/smart-loading';
 import type { AnalysisLoadingStage } from '@/lib/analysis-loading-stage';
 import { parseAiReportContract } from '@/lib/ai-report-contract';
-import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
 import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
-import type { AnalysisResultData, PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
+import type { AnalysisResultData, PeriodAnalysisData } from '@/lib/stock-structure-types';
 import type { AnalysisPageAiState } from '@/lib/trinity-analysis-page-view-model';
 import { buildAnalysisPageViewModel } from '@/lib/trinity-analysis-page-view-model';
 
@@ -53,16 +52,6 @@ const PERIOD_LABELS: Record<(typeof PERIOD_ORDER)[number], string> = {
   hour60: '60分钟',
   hour30: '30分钟',
   hour15: '15分钟',
-};
-
-const STRUCTURE_COLORS: Record<string, string> = {
-  A五段式: 'bg-amber-100 text-amber-800 border border-amber-300',
-  B双平台式: 'bg-purple-100 text-purple-800 border border-purple-300',
-  C单平台式: 'bg-blue-100 text-blue-800 border border-blue-300',
-  D三段式: 'bg-gray-100 text-gray-700 border border-gray-300',
-  复杂结构: 'bg-rose-100 text-rose-800 border border-rose-300',
-  山峰形态: 'bg-gradient-to-r from-red-100 to-green-100 text-gray-800 border border-gray-300',
-  山谷形态: 'bg-gradient-to-r from-green-100 to-red-100 text-gray-800 border border-gray-300',
 };
 
 function createIntegrityFallback(code: string, warning: string | null): DataIntegritySnapshot {
@@ -103,10 +92,9 @@ function formatRangeLabel(period?: PeriodAnalysisData | null) {
   return [typeof count === 'number' ? `近 ${count} 根` : null, coverage].filter(Boolean).join(' · ') || null;
 }
 
-function buildPeriodSections(result: AnalysisResultData) {
+function buildPeriodSections(result: AnalysisResultData): AnalysisPeriodSection[] {
   return PERIOD_ORDER.flatMap((level) => {
     const period = result.periods[level];
-    const structure = period?.structure;
     if (!period || period.error) {
       return [];
     }
@@ -124,21 +112,6 @@ function buildPeriodSections(result: AnalysisResultData) {
         rangeLabel: formatRangeLabel(period),
         topologyTitle: `${PERIOD_LABELS[level]}结构证据`,
         period,
-        structureExplainabilitySlot: structure ? (
-          <StructureExplainabilityPanel
-            structure={{
-              structure_type: structure.structure_type || '未识别结构',
-              inflection_points:
-                typeof structure.inflection_points === 'number' ? structure.inflection_points : 0,
-              description: structure.description || '当前周期暂无结构说明。',
-              interpretation: structure.interpretation,
-              archetype: structure.archetype,
-              structure_details: structure.structure_details as StructureData['structure_details'],
-            }}
-            executionSummary={buildExecutionSummary(period)}
-            structureColors={STRUCTURE_COLORS}
-          />
-        ) : null,
       },
     ];
   });
