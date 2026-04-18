@@ -366,6 +366,63 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
         self.assertEqual(decision['structure']['boundaries']['mid'], 17.5)
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'conditional_boundary_trade')
 
+    def test_build_trinity_decision_extracts_lower_when_stop_comes_first(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'C单平台式',
+                'structure_stage': '平台震荡区间',
+                'trend_direction': '震荡',
+                'description': 'stop 在前时也要保留下沿',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'C',
+                        'standard_qualification': 'extended',
+                        'summary': '边界顺序不应影响解释',
+                    },
+                    'spacetime_gate': {
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'required_confirmation': '等待平台边界突破',
+                    },
+                },
+                'structure_details': {
+                    'prediction': {
+                        'key_price_levels': [
+                            {'price': 15.9, 'type': 'stop', 'note': '止损位'},
+                            {'price': 18.8, 'type': '上沿参考', 'note': '延伸平台上沿'},
+                            {'price': 16.2, 'type': '下沿参考', 'note': '延伸平台下沿'},
+                        ],
+                    },
+                },
+            },
+            macd_payload={'status': '中性'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'boundary',
+                'trigger': ['突破平台上沿'],
+                'invalidation': ['跌破平台下沿'],
+                'confirmation': ['量能确认'],
+                'position_sizing': {'initial': 'light_probe'},
+                'risk_flags': [],
+                'rationale': '边界交易候选',
+            },
+            level_nesting_payload=None,
+        )
+
+        self.assertEqual(decision['structure']['boundaries']['lower'], 16.2)
+        self.assertEqual(decision['structure']['boundaries']['breakdown_trigger'], 16.2)
+        self.assertEqual(decision['structure']['boundaries']['stop_loss'], 15.9)
+        self.assertEqual(decision['structure']['boundaries']['mid'], 17.5)
+
     def test_build_trinity_decision_does_not_use_boundary_trade_without_boundaries(self) -> None:
         decision = self.analyzer._build_trinity_decision(
             level='hour30',
@@ -413,6 +470,62 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
         self.assertFalse(decision['structure']['can_trade_by_boundaries'])
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'no_trade')
         self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+        self.assertFalse(decision['conclusion']['can_trade'])
+
+    def test_build_trinity_decision_does_not_use_boundary_trade_with_single_sided_support_only(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'C单平台式',
+                'structure_stage': '平台震荡区间',
+                'trend_direction': '震荡',
+                'description': '只有单侧支撑不能放行边界交易',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'C',
+                        'standard_qualification': 'extended',
+                        'summary': '只有下侧参考位',
+                    },
+                    'spacetime_gate': {
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'required_confirmation': '边界不足',
+                    },
+                },
+                'structure_details': {
+                    'prediction': {
+                        'key_price_levels': [
+                            {'price': 16.2, 'type': '近期支撑', 'note': '仅有下侧支撑参考'},
+                        ],
+                    },
+                },
+            },
+            macd_payload={'status': '中性'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'boundary',
+                'trigger': ['等待边界触发'],
+                'invalidation': ['边界失效'],
+                'confirmation': ['等待确认'],
+                'position_sizing': {'initial': 'light_probe'},
+                'risk_flags': [],
+                'rationale': '只有单侧边界',
+            },
+            level_nesting_payload=None,
+        )
+
+        self.assertFalse(decision['structure']['can_trade_by_boundaries'])
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'no_trade')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+        self.assertFalse(decision['conclusion']['can_trade'])
 
     def test_build_trinity_decision_reduce_uses_direction_not_action_for_ma_gate(self) -> None:
         long_reduce_decision = self.analyzer._build_trinity_decision(

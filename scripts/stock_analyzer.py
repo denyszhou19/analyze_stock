@@ -3128,7 +3128,7 @@ class TrinityStockAnalyzer:
                 if boundaries['breakout_trigger'] is None:
                     boundaries['breakout_trigger'] = price
 
-            if is_lower or is_stop:
+            if is_lower:
                 if boundaries['lower'] is None:
                     boundaries['lower'] = price
                 if boundaries['breakdown_trigger'] is None:
@@ -3217,7 +3217,7 @@ class TrinityStockAnalyzer:
                 'last_confirmed': explainability.get('current_point_id'),
             },
             'can_trade_by_structure_nodes': qualification == 'standard' and family == 'standard',
-            'can_trade_by_boundaries': any(value is not None for value in boundaries.values()),
+            'can_trade_by_boundaries': boundaries.get('upper') is not None and boundaries.get('lower') is not None,
             'explainability': {
                 'status': focus_origin_analysis.get('explainability_status') or 'passed',
                 'reason': (
@@ -3428,6 +3428,9 @@ class TrinityStockAnalyzer:
         execution_decision = self._build_trinity_execution_decision(execution_payload)
 
         action = execution_payload.get('action') or 'wait'
+        can_trade = bool(execution_payload.get('can_trade'))
+        if trade_qualification['trade_mode'] == 'no_trade':
+            can_trade = False
         return {
             'version': 'v2',
             'level': level,
@@ -3442,7 +3445,7 @@ class TrinityStockAnalyzer:
                     else 'neutral'
                 ),
                 'confidence': trade_qualification['confidence'],
-                'can_trade': bool(execution_payload.get('can_trade')),
+                'can_trade': can_trade,
                 'wait_reason': execution_payload.get('wait_reason'),
             },
             'structure': structure_decision,
