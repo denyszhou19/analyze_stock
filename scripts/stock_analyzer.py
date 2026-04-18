@@ -3223,6 +3223,33 @@ class TrinityStockAnalyzer:
         except (TypeError, ValueError):
             return None
 
+    def _calculate_trinity_volume_metrics(self, df: pd.DataFrame) -> Dict[str, Optional[float]]:
+        if df is None or len(df) == 0:
+            return {
+                'volume_ratio_5': None,
+                'volume_ratio_20': None,
+                'amount_ratio_20': None,
+            }
+
+        latest = df.iloc[-1]
+
+        def safe_ratio(column: str, window: int) -> Optional[float]:
+            if column not in df.columns:
+                return None
+            series = pd.to_numeric(df[column], errors='coerce')
+            if series.empty or pd.isna(series.iloc[-1]):
+                return None
+            base = series.tail(window).mean()
+            if pd.isna(base) or not np.isfinite(base) or base == 0:
+                return None
+            return round(float(series.iloc[-1] / base), 4)
+
+        return {
+            'volume_ratio_5': safe_ratio('volume', 5),
+            'volume_ratio_20': safe_ratio('volume', 20),
+            'amount_ratio_20': safe_ratio('amount', 20),
+        }
+
     def _extract_trinity_boundaries(
         self,
         structure_payload: Dict[str, Any],
@@ -3526,6 +3553,7 @@ class TrinityStockAnalyzer:
         ratio_20 = self._normalize_trinity_price(period_payload.get('volume_ratio_20'))
         amount_ratio = self._normalize_trinity_price(period_payload.get('amount_ratio_20'))
         has_volume_data = any(value is not None for value in (ratio_5, ratio_20, amount_ratio))
+        signal_valid = bool(breakthrough_payload.get('is_valid'))
         breakout_confirmed = bool(
             (ratio_5 is not None and ratio_5 >= 1.2)
             or (ratio_20 is not None and ratio_20 >= 1.15)
@@ -3537,13 +3565,17 @@ class TrinityStockAnalyzer:
             or (amount_ratio is not None and amount_ratio <= 0.9)
         )
         direction = breakthrough_payload.get('direction')
-        supports_breakout = direction == 'up' and breakout_confirmed
-        supports_breakdown = direction == 'down' and breakout_confirmed
+        supports_breakout = direction == 'up' and signal_valid and breakout_confirmed
+        supports_breakdown = direction == 'down' and signal_valid and breakout_confirmed
         volume_reason = (
             '放量确认突破，缩量回踩更健康'
             if supports_breakout
             else '放量确认跌破，反抽仍需谨慎'
             if supports_breakdown
+            else '量能放大但突破形态未确认'
+            if direction == 'up' and breakout_confirmed and not signal_valid
+            else '量能放大但跌破形态未确认'
+            if direction == 'down' and breakout_confirmed and not signal_valid
             else '量能数据不足，暂不作为确认信号'
             if not has_volume_data
             else '量能未充分确认，需等待二次验证'
@@ -3778,9 +3810,13 @@ class TrinityStockAnalyzer:
         )
         execution_decision = self._build_trinity_execution_decision(execution_payload)
 
-        action = execution_payload.get('action') or 'wait'
+        raw_action = execution_payload.get('action') or 'wait'
+        action = raw_action
         can_trade = bool(execution_payload.get('can_trade'))
-        if trade_qualification['trade_mode'] == 'no_trade' or action == 'wait':
+        if trade_qualification['trade_mode'] in {'wait_confirmation', 'no_trade'}:
+            action = 'wait'
+            can_trade = False
+        elif action == 'wait':
             can_trade = False
         return {
             'version': 'v2',
@@ -3880,7 +3916,7 @@ class TrinityStockAnalyzer:
             resonance = 'child_countertrend'
             permission = {
                 'allow_position_increase': False,
-                'allow_t_trade': True,
+                'allow_t_trade': level in ('hour30', 'hour15'),
                 'allow_only_light_probe': True,
                 'reason': '子级别逆父级别，只允许轻仓试探或做T',
             }
@@ -6067,6 +6103,7 @@ class TrinityStockAnalyzer:
             # 重点提醒（新增：汇总所有关键信号）
             'key_alerts': all_alerts if all_alerts else None
         }
+        result.update(self._calculate_trinity_volume_metrics(df))
         result['trinity_decision'] = self._build_trinity_decision(
             level=period_name,
             structure_payload=result.get('structure') or {},

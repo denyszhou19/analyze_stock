@@ -281,6 +281,8 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertTrue(decision['structure']['can_trade_by_boundaries'])
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
         self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+        self.assertFalse(decision['conclusion']['can_trade'])
+        self.assertEqual(decision['conclusion']['action'], 'wait')
 
     def test_extended_boundary_trade_requires_ma_and_direction_gate(self) -> None:
         decision = self.analyzer._build_trinity_decision(
@@ -323,3 +325,35 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertTrue(decision['structure']['can_trade_by_boundaries'])
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
         self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+        self.assertFalse(decision['conclusion']['can_trade'])
+        self.assertEqual(decision['conclusion']['action'], 'wait')
+
+    def test_no_trade_qualification_also_forces_conclusion_to_wait(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': '大平台震荡',
+                'trend_direction': '震荡',
+                'description': '没有边界的大平台',
+                'interpretation': {'focus_structure': {'archetype_family': 'C', 'standard_qualification': 'failed'}},
+                'structure_details': {},
+            },
+            macd_payload={'status': '中性'},
+            moving_averages={'price_vs_ma55': 'above', 'price_vs_ma233': 'above', 'ma_status': '多头排列'},
+            breakthrough_payload={},
+            execution_payload={
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'boundary',
+                'trigger': ['等待边界触发'],
+                'invalidation': ['边界失效'],
+                'confirmation': ['等待确认'],
+                'position_sizing': {'initial': 'light_probe'},
+                'risk_flags': [],
+            },
+            level_nesting_payload=None,
+        )
+
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'no_trade')
+        self.assertFalse(decision['conclusion']['can_trade'])
+        self.assertEqual(decision['conclusion']['action'], 'wait')

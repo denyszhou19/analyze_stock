@@ -279,6 +279,40 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertFalse(decision['volume_gate']['supports_breakdown'])
         self.assertFalse(decision['volume_gate']['supports_pullback_confirmation'])
 
+    def test_build_trinity_volume_confirmation_requires_valid_breakout_signal(self) -> None:
+        decision = self.analyzer._build_trinity_volume_confirmation_decision(
+            period_payload={
+                'volume_ratio_5': 1.35,
+                'volume_ratio_20': 1.2,
+                'amount_ratio_20': 1.25,
+            },
+            breakthrough_payload={
+                'direction': 'up',
+                'is_valid': False,
+                'pattern_type': 'breakout',
+            },
+        )
+
+        self.assertFalse(decision['volume_gate']['supports_breakout'])
+        self.assertEqual(decision['breakout_volume'], 'weak')
+
+    def test_build_trinity_volume_confirmation_requires_valid_breakdown_signal(self) -> None:
+        decision = self.analyzer._build_trinity_volume_confirmation_decision(
+            period_payload={
+                'volume_ratio_5': 1.35,
+                'volume_ratio_20': 1.2,
+                'amount_ratio_20': 1.25,
+            },
+            breakthrough_payload={
+                'direction': 'down',
+                'is_valid': False,
+                'pattern_type': 'breakdown',
+            },
+        )
+
+        self.assertFalse(decision['volume_gate']['supports_breakdown'])
+        self.assertEqual(decision['breakdown_volume'], 'not_applicable')
+
     def test_build_trinity_structure_decision_uses_standard_node_map_only_for_standard_family(self) -> None:
         line_geometry = {
             'points': [
@@ -704,6 +738,26 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertEqual(result['trinity_decision']['level'], 'daily')
         self.assertIn('structure', result['trinity_decision'])
         self.assertIn('trade_qualification', result['trinity_decision'])
+
+    def test_analyze_single_period_populates_real_volume_ratios_into_trinity_payload(self) -> None:
+        df = pd.DataFrame(
+            {
+                'date': pd.date_range('2026-01-01', periods=120, freq='D'),
+                'open': [10 + i * 0.1 for i in range(120)],
+                'high': [10.2 + i * 0.1 for i in range(120)],
+                'low': [9.8 + i * 0.1 for i in range(120)],
+                'close': [10.1 + i * 0.1 for i in range(120)],
+                'volume': [1000000 + i * 5000 for i in range(120)],
+                'amount': [(1000000 + i * 5000) * (10.1 + i * 0.1) for i in range(120)],
+            }
+        )
+
+        result = self.analyzer.analyze_single_period(df, 'daily')
+
+        volume_confirmation = result['trinity_decision']['volume_confirmation']
+        self.assertIsNotNone(volume_confirmation['volume_ratio_5'])
+        self.assertIsNotNone(volume_confirmation['volume_ratio_20'])
+        self.assertIsNotNone(volume_confirmation['amount_ratio_20'])
 
     def test_analyze_trading_decision_exposes_orders_caps_and_stop_rules(self) -> None:
         results = {
