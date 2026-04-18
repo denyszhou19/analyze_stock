@@ -431,6 +431,102 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertNotEqual(decision['decision_type'], '做T')
         self.assertNotIn('适合正T', decision['analysis'])
 
+    def test_analyze_with_local_data_backfills_trinity_level_nesting(self) -> None:
+        self.analyzer.analyze_single_period = lambda _df, level: {
+            'period': level,
+            'macd': {'status': '强' if level == 'weekly' else '中偏强'},
+            'moving_averages': {},
+            'breakthrough': {},
+            'structure': {
+                'structure_type': 'A五段式',
+                'structure_stage': '趋势启动阶段',
+                'trend_direction': '上涨',
+                'description': 'mock',
+                'execution': {
+                    'can_trade': True,
+                    'action': 'buy',
+                    'direction': 'long',
+                    'entry_style': 'pullback_confirm',
+                    'trigger': [],
+                    'invalidation': [],
+                    'confirmation': [],
+                    'position_sizing': {},
+                    'risk_flags': [],
+                },
+            },
+            'trinity_decision': {
+                'version': 'v2',
+                'level': level,
+                'conclusion': {'bias': 'bullish'},
+                'structure': {'type': 'A五段式'},
+            },
+        }
+        self.analyzer.convert_to_dataframe = lambda rows: pd.DataFrame(rows)
+        self.analyzer._apply_spacetime_gate_to_results = lambda results: None
+        self.analyzer.analyze_level_nesting = lambda results: {'summary': '周线强 / 日线强'}
+        self.analyzer.analyze_level_operation = lambda results: {}
+
+        result = self.analyzer.analyze_with_local_data(
+            '300274',
+            {
+                'stock_name': '阳光电源',
+                'periods': {
+                    'weekly': [{'date': '2026-01-01', 'open': 1, 'high': 1, 'low': 1, 'close': 1, 'volume': 1}],
+                    'daily': [{'date': '2026-01-01', 'open': 1, 'high': 1, 'low': 1, 'close': 1, 'volume': 1}],
+                },
+            },
+        )
+
+        daily_nesting = result['periods']['daily']['trinity_decision']['level_nesting']
+        self.assertEqual(daily_nesting['parent_level'], 'weekly')
+        self.assertEqual(daily_nesting['resonance'], 'aligned')
+        self.assertEqual(daily_nesting['child_signal'], 'long')
+
+    def test_analyze_backfills_trinity_level_nesting(self) -> None:
+        self.analyzer.login = lambda: True
+        self.analyzer.logout = lambda: None
+        self.analyzer.get_stock_data = lambda *_args, **_kwargs: pd.DataFrame(
+            [{'date': pd.Timestamp('2026-01-01'), 'open': 1, 'high': 1, 'low': 1, 'close': 1, 'volume': 1}]
+        )
+        self.analyzer.analyze_single_period = lambda _df, level: {
+            'period': level,
+            'macd': {'status': '强' if level == 'weekly' else '中偏强'},
+            'moving_averages': {},
+            'breakthrough': {},
+            'structure': {
+                'structure_type': 'A五段式',
+                'structure_stage': '趋势启动阶段',
+                'trend_direction': '上涨',
+                'description': 'mock',
+                'execution': {
+                    'can_trade': True,
+                    'action': 'buy',
+                    'direction': 'long',
+                    'entry_style': 'pullback_confirm',
+                    'trigger': [],
+                    'invalidation': [],
+                    'confirmation': [],
+                    'position_sizing': {},
+                    'risk_flags': [],
+                },
+            },
+            'trinity_decision': {
+                'version': 'v2',
+                'level': level,
+                'conclusion': {'bias': 'bullish'},
+                'structure': {'type': 'A五段式'},
+            },
+        }
+        self.analyzer._apply_spacetime_gate_to_results = lambda results: None
+        self.analyzer.analyze_level_nesting = lambda results: {'summary': '周线强 / 日线强'}
+
+        result = self.analyzer.analyze('300274', levels=['weekly', 'daily'])
+
+        daily_nesting = result['periods']['daily']['trinity_decision']['level_nesting']
+        self.assertEqual(daily_nesting['parent_level'], 'weekly')
+        self.assertEqual(daily_nesting['resonance'], 'aligned')
+        self.assertEqual(daily_nesting['child_signal'], 'long')
+
     def test_analyze_trading_decision_maps_add_action_without_falling_back_to_heuristics(self) -> None:
         results = {
             'daily': {

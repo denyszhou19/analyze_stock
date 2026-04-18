@@ -26,6 +26,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['parent_level'], 'weekly')
         self.assertEqual(decision['child_level'], 'daily')
         self.assertEqual(decision['resonance'], 'aligned')
+        self.assertEqual(decision['child_signal'], 'long')
         self.assertTrue(decision['permission']['allow_position_increase'])
 
     def test_build_trinity_level_nesting_marks_parent_unclear_when_weekly_missing(self) -> None:
@@ -43,3 +44,23 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['resonance'], 'parent_unclear')
         self.assertTrue(decision['permission']['allow_only_light_probe'])
         self.assertIn('父级别缺失', decision['permission']['reason'])
+
+    def test_build_trinity_level_nesting_maps_aligned_c_structure_to_long_signal(self) -> None:
+        decision = self.analyzer._build_trinity_level_nesting_decision(
+            level='daily',
+            normalized_results={
+                'weekly': {
+                    'macd': {'status': '中偏强'},
+                    'trinity_decision': {'conclusion': {'bias': 'bullish'}},
+                },
+                'daily': {
+                    'macd': {'status': '中偏强'},
+                    'trinity_decision': {'structure': {'type': 'C单平台式'}},
+                },
+            },
+            raw_level_nesting={'summary': '周线中偏强 / 日线C单平台式'},
+        )
+
+        self.assertEqual(decision['resonance'], 'aligned')
+        self.assertEqual(decision['child_signal'], 'long')
+        self.assertTrue(decision['permission']['allow_position_increase'])

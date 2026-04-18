@@ -3529,7 +3529,7 @@ class TrinityStockAnalyzer:
             ),
             'child_signal': (
                 'long'
-                if child_structure in ('A五段式', 'B双平台式')
+                if child_structure in ('A五段式', 'B双平台式', 'C单平台式')
                 else 'short'
                 if child_structure == 'D三段式'
                 else 'wait'
