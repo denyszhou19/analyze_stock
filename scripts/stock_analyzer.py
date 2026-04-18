@@ -3127,6 +3127,14 @@ class TrinityStockAnalyzer:
             family = 'unfinished'
 
         trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
+        boundaries = {
+            'upper': None,
+            'lower': None,
+            'mid': None,
+            'breakout_trigger': None,
+            'breakdown_trigger': None,
+            'stop_loss': None,
+        }
         return {
             'background_origin': background_anchor,
             'focus_origin': focus_anchor,
@@ -3140,19 +3148,12 @@ class TrinityStockAnalyzer:
                 '下跌': 'down',
                 '震荡': 'neutral',
             }.get(trend_direction, 'neutral'),
-            'boundaries': {
-                'upper': None,
-                'lower': None,
-                'mid': None,
-                'breakout_trigger': None,
-                'breakdown_trigger': None,
-                'stop_loss': None,
-            },
+            'boundaries': boundaries,
             'node_map': {
                 'last_confirmed': explainability.get('current_point_id'),
             },
             'can_trade_by_structure_nodes': qualification == 'standard' and family == 'standard',
-            'can_trade_by_boundaries': True,
+            'can_trade_by_boundaries': any(value is not None for value in boundaries.values()),
             'explainability': {
                 'status': focus_origin_analysis.get('explainability_status') or 'passed',
                 'reason': (
@@ -3272,10 +3273,19 @@ class TrinityStockAnalyzer:
         execution_payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
-        if execution_payload.get('action') == 'wait':
+        action = execution_payload.get('action')
+        is_short_intent = action in ('sell', 'short', 'reduce')
+        ma_gate = moving_average_decision.get('ma_gate') or {}
+        if action == 'wait':
             trade_mode = 'wait_confirmation'
             position_permission = 'no_position'
-        elif structure_decision.get('can_trade_by_structure_nodes') and moving_average_decision['ma_gate']['allow_long']:
+        elif (
+            structure_decision.get('can_trade_by_structure_nodes')
+            and (
+                (is_short_intent and ma_gate.get('allow_short'))
+                or (not is_short_intent and ma_gate.get('allow_long'))
+            )
+        ):
             trade_mode = 'standard_node_trade'
             position_permission = 'half_position'
         else:
@@ -3297,17 +3307,22 @@ class TrinityStockAnalyzer:
         execution_payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
+        position_sizing = execution_payload.get('position_sizing') or {}
+        if not isinstance(position_sizing, dict):
+            position_sizing = {}
+        position_sizing = dict(position_sizing)
+        position_sizing.update({
+            'max_ratio': execution_payload.get('timeframe_cap_ratio'),
+            'reason': execution_payload.get('rationale') or execution_payload.get('wait_reason') or '沿用现有执行摘要',
+            'upgrade_condition': execution_payload.get('upgrade_condition'),
+            'downgrade_condition': execution_payload.get('wait_reason'),
+        })
         return {
             'entry_style': execution_payload.get('entry_style') or 'none',
             'triggers': execution_payload.get('trigger') or [],
             'invalidation': execution_payload.get('invalidation') or [],
             'confirmation': execution_payload.get('confirmation') or [],
-            'position_sizing': {
-                'max_ratio': execution_payload.get('timeframe_cap_ratio'),
-                'reason': execution_payload.get('rationale') or execution_payload.get('wait_reason') or '沿用现有执行摘要',
-                'upgrade_condition': None,
-                'downgrade_condition': execution_payload.get('wait_reason'),
-            },
+            'position_sizing': position_sizing,
             'risk_flags': execution_payload.get('risk_flags') or [],
         }
 
