@@ -1,3 +1,4 @@
+import type { ReactNode } from 'react';
 import {
   Accordion,
   AccordionContent,
@@ -16,6 +17,7 @@ interface AnalysisPeriodSection {
   rangeLabel?: string | null;
   topologyTitle?: string | null;
   period?: PeriodAnalysisData | null;
+  structureExplainabilitySlot?: ReactNode;
 }
 
 interface AnalysisPeriodDetailsProps {
@@ -173,6 +175,12 @@ export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) 
                       <div className="font-medium text-foreground">{resolveTopologyTitle(section)}</div>
                       <div className="mt-1">{resolveStructureEvidence(section)}</div>
                     </div>
+                    {section.structureExplainabilitySlot ? (
+                      <div className="space-y-2 pt-1">
+                        <div className="font-medium text-foreground">结构说明</div>
+                        {section.structureExplainabilitySlot}
+                      </div>
+                    ) : null}
                   </div>
 
                   <div className="grid gap-3 lg:grid-cols-3">

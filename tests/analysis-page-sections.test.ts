@@ -81,6 +81,7 @@ test('AnalysisPeriodDetails prefers daily as default and renders deterministic p
           summary: '日线处于主结构确认阶段。',
           rangeLabel: '近 240 根',
           topologyTitle: '日线拓扑结构图',
+          structureExplainabilitySlot: React.createElement('div', null, '结构说明已并入结构证据'),
           period: {
             macd: {
               status: '中偏强',
@@ -100,6 +101,9 @@ test('AnalysisPeriodDetails prefers daily as default and renders deterministic p
             structure: {
               structure_type: 'A五段式',
               description: '日线处于主结构确认阶段。',
+              structure_details: {
+                judgment_criteria: '结构说明已并入周期详情',
+              },
               interpretation: {
                 spacetime_gate: {
                   parent_status: '周线偏多',
@@ -140,6 +144,7 @@ test('AnalysisPeriodDetails prefers daily as default and renders deterministic p
   assert.match(html, /日线/);
   assert.match(html, /结构证据/);
   assert.match(html, /日线拓扑结构图/);
+  assert.match(html, /结构说明/);
   assert.match(html, /A五段式/);
   assert.match(html, /周线偏多/);
   assert.match(html, /MA55支撑有效/);

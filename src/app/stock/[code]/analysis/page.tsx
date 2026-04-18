@@ -106,6 +106,7 @@ function formatRangeLabel(period?: PeriodAnalysisData | null) {
 function buildPeriodSections(result: AnalysisResultData) {
   return PERIOD_ORDER.flatMap((level) => {
     const period = result.periods[level];
+    const structure = period?.structure;
     if (!period || period.error) {
       return [];
     }
@@ -123,6 +124,21 @@ function buildPeriodSections(result: AnalysisResultData) {
         rangeLabel: formatRangeLabel(period),
         topologyTitle: `${PERIOD_LABELS[level]}结构证据`,
         period,
+        structureExplainabilitySlot: structure ? (
+          <StructureExplainabilityPanel
+            structure={{
+              structure_type: structure.structure_type || '未识别结构',
+              inflection_points:
+                typeof structure.inflection_points === 'number' ? structure.inflection_points : 0,
+              description: structure.description || '当前周期暂无结构说明。',
+              interpretation: structure.interpretation,
+              archetype: structure.archetype,
+              structure_details: structure.structure_details as StructureData['structure_details'],
+            }}
+            executionSummary={buildExecutionSummary(period)}
+            structureColors={STRUCTURE_COLORS}
+          />
+        ) : null,
       },
     ];
   });
@@ -481,34 +497,6 @@ export default function StockAnalysisPage() {
 
   const periodSections = useMemo(() => (result ? buildPeriodSections(result) : []), [result]);
 
-  const structurePanels = useMemo(
-    () =>
-      PERIOD_ORDER.flatMap((level) => {
-        const period = result?.periods[level];
-        const structure = period?.structure;
-        if (!period || !structure || period.error) {
-          return [];
-        }
-
-        return [
-          {
-            key: level,
-            label: PERIOD_LABELS[level],
-            structure: {
-              structure_type: structure.structure_type || '未识别结构',
-              inflection_points: typeof structure.inflection_points === 'number' ? structure.inflection_points : 0,
-              description: structure.description || '当前周期暂无结构说明。',
-              interpretation: structure.interpretation,
-              archetype: structure.archetype,
-              structure_details: structure.structure_details as StructureData['structure_details'],
-            },
-            executionSummary: buildExecutionSummary(period),
-          },
-        ];
-      }),
-    [result]
-  );
-
   return (
     <div className="container mx-auto max-w-6xl space-y-4 p-4">
       <div className="flex flex-col gap-3 border-b pb-4 sm:flex-row sm:items-center sm:justify-between">
@@ -622,6 +610,8 @@ export default function StockAnalysisPage() {
             canGenerate={Boolean(result) && !isLoading}
           />
 
+          <LevelDecisionBus dimensions={pageViewModel.bus.dimensions} />
+
           {aiMarkdown && aiState.status === 'ready' ? (
             <Card className="border-border/70 bg-card/95 shadow-sm">
               <CardHeader>
@@ -633,36 +623,9 @@ export default function StockAnalysisPage() {
             </Card>
           ) : null}
 
-          <LevelDecisionBus dimensions={pageViewModel.bus.dimensions} />
-
           <TrinityRuleChain items={pageViewModel.ruleChain.items} />
 
           <AnalysisPeriodDetails sections={periodSections} />
-
-          {structurePanels.length ? (
-            <section className="space-y-3">
-              <div className="space-y-1">
-                <h2 className="text-base font-semibold">周期详情补充</h2>
-                <p className="text-sm text-muted-foreground">保留各周期结构解释、拓扑与执行语义，便于复盘排错。</p>
-              </div>
-              <div className="grid gap-4">
-                {structurePanels.map((item) => (
-                  <Card key={item.key} className="border-border/70 bg-card/95 shadow-sm">
-                    <CardHeader className="pb-0">
-                      <CardTitle className="text-base">{item.label}结构说明</CardTitle>
-                    </CardHeader>
-                    <CardContent className="pt-4">
-                      <StructureExplainabilityPanel
-                        structure={item.structure}
-                        executionSummary={item.executionSummary}
-                        structureColors={STRUCTURE_COLORS}
-                      />
-                    </CardContent>
-                  </Card>
-                ))}
-              </div>
-            </section>
-          ) : null}
         </div>
       ) : null}
     </div>
