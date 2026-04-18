@@ -9,7 +9,7 @@
 - **数据库**：Supabase (PostgreSQL)
 - **分析引擎**：Python 3（scripts/stock_analyzer.py）
 - **包管理**：pnpm
-- **开发端口**：5000（若被系统占用，HTTP 回归验证统一改用 `5001`）
+- **开发端口**：5001
 
 ---
 
@@ -21,7 +21,7 @@
 
 ```bash
 # 测试 300274（阳光电源）周线结构识别（基准测试用例）
-# 若 5000 被系统占用，回归验证改用 5001
+# 默认使用 5001
 curl -s "http://localhost:5001/api/stock/analysis?code=300274&levels=weekly" | python3 -c "
 import json,sys
 r=json.load(sys.stdin)
@@ -111,8 +111,7 @@ Platform + Directional 组合判断时，**必须检查 Platform 笔数**：
 ## 开发服务器
 
 ```bash
-# 启动（默认 5000；若被系统占用可切到 5001）
-PORT=5000 npx next dev --webpack --port 5000
+# 启动（默认 5001）
 PORT=5001 npx next dev --webpack --port 5001
 
 # 日志查看
