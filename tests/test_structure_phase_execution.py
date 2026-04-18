@@ -310,6 +310,26 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertEqual(structure['execution']['timing_timeframe'], 'hour30')
         self.assertAlmostEqual(structure['execution']['timeframe_cap_ratio'], 1 / 3, places=3)
 
+    def test_analyze_single_period_exposes_trinity_decision(self) -> None:
+        df = pd.DataFrame(
+            {
+                'date': pd.date_range('2026-01-01', periods=120, freq='D'),
+                'open': [10 + i * 0.1 for i in range(120)],
+                'high': [10.2 + i * 0.1 for i in range(120)],
+                'low': [9.8 + i * 0.1 for i in range(120)],
+                'close': [10.1 + i * 0.1 for i in range(120)],
+                'volume': [1000000 for _ in range(120)],
+            }
+        )
+
+        result = self.analyzer.analyze_single_period(df, 'daily')
+
+        self.assertIn('trinity_decision', result)
+        self.assertEqual(result['trinity_decision']['version'], 'v2')
+        self.assertEqual(result['trinity_decision']['level'], 'daily')
+        self.assertIn('structure', result['trinity_decision'])
+        self.assertIn('trade_qualification', result['trinity_decision'])
+
     def test_analyze_trading_decision_exposes_orders_caps_and_stop_rules(self) -> None:
         results = {
             'daily': {

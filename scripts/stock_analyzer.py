@@ -3480,6 +3480,75 @@ class TrinityStockAnalyzer:
             ],
         }
 
+    def _build_trinity_level_nesting_decision(
+        self,
+        *,
+        level: str,
+        normalized_results: Dict[str, Any],
+        raw_level_nesting: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        parent_map = {
+            'daily': 'weekly',
+            'hour60': 'daily',
+            'hour30': 'daily',
+            'hour15': 'hour60',
+        }
+        parent_level = parent_map.get(level)
+        parent_payload = normalized_results.get(parent_level or '') if parent_level else None
+        child_payload = normalized_results.get(level)
+
+        if not parent_level or not isinstance(parent_payload, dict):
+            return {
+                'parent_level': parent_level,
+                'child_level': level,
+                'parent_bias': 'neutral',
+                'child_signal': 'wait',
+                'resonance': 'parent_unclear',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': level in ('hour30', 'hour15'),
+                    'allow_only_light_probe': True,
+                    'reason': '父级别缺失或尚未归一化，降级为轻仓/等待',
+                },
+            }
+
+        parent_status = ((parent_payload.get('macd') or {}).get('status'))
+        child_structure = (((child_payload or {}).get('trinity_decision') or {}).get('structure') or {}).get('type')
+        aligned = parent_status in ('极强', '强', '中偏强') and child_structure in ('A五段式', 'B双平台式', 'C单平台式')
+        conflict = parent_status in ('极弱', '弱', '中偏弱') and child_structure in ('A五段式', 'B双平台式')
+
+        return {
+            'parent_level': parent_level,
+            'child_level': level,
+            'parent_bias': (
+                'bullish'
+                if parent_status in ('极强', '强', '中偏强')
+                else 'bearish'
+                if parent_status in ('极弱', '弱', '中偏弱')
+                else 'neutral'
+            ),
+            'child_signal': (
+                'long'
+                if child_structure in ('A五段式', 'B双平台式')
+                else 'short'
+                if child_structure == 'D三段式'
+                else 'wait'
+            ),
+            'resonance': 'aligned' if aligned else 'conflict' if conflict else 'child_countertrend',
+            'permission': {
+                'allow_position_increase': aligned,
+                'allow_t_trade': level in ('hour30', 'hour15'),
+                'allow_only_light_probe': not aligned,
+                'reason': (
+                    raw_level_nesting.get('summary')
+                    if isinstance(raw_level_nesting, dict) and raw_level_nesting.get('summary')
+                    else '父子级别共振'
+                    if aligned
+                    else '父子级别冲突，降级执行'
+                ),
+            },
+        }
+
     def _build_macro_background(
         self,
         moving_averages: Dict[str, Any],
@@ -5573,7 +5642,7 @@ class TrinityStockAnalyzer:
         all_alerts = []
         all_alerts.extend(ma_physics.get('alerts', []))
         
-        return {
+        result = {
             'period': period_name,
             'analysis_date': latest['date'].strftime('%Y-%m-%d %H:%M') if pd.notna(latest['date']) else None,
             'latest_price': latest_price,
@@ -5618,6 +5687,17 @@ class TrinityStockAnalyzer:
             # 重点提醒（新增：汇总所有关键信号）
             'key_alerts': all_alerts if all_alerts else None
         }
+        result['trinity_decision'] = self._build_trinity_decision(
+            level=period_name,
+            structure_payload=result.get('structure') or {},
+            macd_payload=result.get('macd') or {},
+            moving_averages=result.get('moving_averages') or {},
+            breakthrough_payload=result.get('breakthrough') or {},
+            execution_payload=((result.get('structure') or {}).get('execution') or {}),
+            level_nesting_payload=None,
+            period_payload=result,
+        )
+        return result
     
     def analyze_level_nesting(self, results: Dict) -> Dict:
         """
@@ -6147,9 +6227,55 @@ class TrinityStockAnalyzer:
             # 级别嵌套分析
             nesting = self.analyze_level_nesting(results)
             
+            normalized_results = {}
+            for level_name, payload in results.items():
+                if not isinstance(payload, dict) or payload.get('error'):
+                    continue
+                payload['trinity_decision'] = self._build_trinity_decision(
+                    level=level_name,
+                    structure_payload=payload.get('structure') or {},
+                    macd_payload=payload.get('macd') or {},
+                    moving_averages=payload.get('moving_averages') or {},
+                    breakthrough_payload=payload.get('breakthrough') or {},
+                    execution_payload=((payload.get('structure') or {}).get('execution') or {}),
+                    level_nesting_payload=None,
+                    period_payload=payload,
+                )
+                normalized_results[level_name] = payload
+
+            for level_name, payload in normalized_results.items():
+                payload['trinity_decision']['level_nesting'] = self._build_trinity_level_nesting_decision(
+                    level=level_name,
+                    normalized_results=normalized_results,
+                    raw_level_nesting=nesting,
+                )
+
             # 多维度跨级别操作建议（三个维度）
             multi_dimension_operation = self.analyze_level_operation(results)
             
+            normalized_results = {}
+            for level_name, payload in results.items():
+                if not isinstance(payload, dict) or payload.get('error'):
+                    continue
+                payload['trinity_decision'] = self._build_trinity_decision(
+                    level=level_name,
+                    structure_payload=payload.get('structure') or {},
+                    macd_payload=payload.get('macd') or {},
+                    moving_averages=payload.get('moving_averages') or {},
+                    breakthrough_payload=payload.get('breakthrough') or {},
+                    execution_payload=((payload.get('structure') or {}).get('execution') or {}),
+                    level_nesting_payload=None,
+                    period_payload=payload,
+                )
+                normalized_results[level_name] = payload
+
+            for level_name, payload in normalized_results.items():
+                payload['trinity_decision']['level_nesting'] = self._build_trinity_level_nesting_decision(
+                    level=level_name,
+                    normalized_results=normalized_results,
+                    raw_level_nesting=nesting,
+                )
+
             # 构建输出结果 - 使用北京时间
             beijing_tz = ZoneInfo('Asia/Shanghai')
             beijing_time = datetime.now(beijing_tz)
@@ -6311,6 +6437,29 @@ class TrinityStockAnalyzer:
             
             # 级别嵌套分析
             nesting = self.analyze_level_nesting(results)
+
+            normalized_results = {}
+            for level_name, payload in results.items():
+                if not isinstance(payload, dict) or payload.get('error'):
+                    continue
+                payload['trinity_decision'] = self._build_trinity_decision(
+                    level=level_name,
+                    structure_payload=payload.get('structure') or {},
+                    macd_payload=payload.get('macd') or {},
+                    moving_averages=payload.get('moving_averages') or {},
+                    breakthrough_payload=payload.get('breakthrough') or {},
+                    execution_payload=((payload.get('structure') or {}).get('execution') or {}),
+                    level_nesting_payload=None,
+                    period_payload=payload,
+                )
+                normalized_results[level_name] = payload
+
+            for level_name, payload in normalized_results.items():
+                payload['trinity_decision']['level_nesting'] = self._build_trinity_level_nesting_decision(
+                    level=level_name,
+                    normalized_results=normalized_results,
+                    raw_level_nesting=nesting,
+                )
             
             # 构建输出结果 - 使用北京时间
             beijing_tz = ZoneInfo('Asia/Shanghai')
