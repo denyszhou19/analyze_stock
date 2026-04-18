@@ -23,9 +23,10 @@ import { SmartLoading } from '@/components/ui/smart-loading';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
 import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
+import { TrinityDecisionPanel } from '@/components/stock/TrinityDecisionPanel';
 import type { AnalysisLoadingStage } from '@/lib/analysis-loading-stage';
 import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
-import type { StructureData } from '@/lib/stock-structure-types';
+import type { StructureData, TrinityDecision } from '@/lib/stock-structure-types';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
 import { domToJpeg } from 'modern-screenshot';
 import jsPDF from 'jspdf';
@@ -123,6 +124,7 @@ interface PeriodAnalysis {
   breakthrough?: BreakthroughPattern; // 突破形态识别（新增）
   macd: MacdData;
   structure: StructureData;
+  trinity_decision?: TrinityDecision | null;
   key_levels: KeyLevels;
   key_alerts?: string[] | null;     // 重点提醒（新增）
 }
@@ -1289,6 +1291,13 @@ export default function StockAnalysisPage() {
                   </div>
 
                   <CardContent className="p-4 space-y-4">
+                    {periodData.trinity_decision ? (
+                      <>
+                        <TrinityDecisionPanel decision={periodData.trinity_decision} />
+                        <Separator />
+                      </>
+                    ) : null}
+
                     {/* MACD 详情 */}
                     <div className="space-y-2">
                       <div className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">MACD 时空状态</div>
