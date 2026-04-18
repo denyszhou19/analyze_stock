@@ -1,10 +1,208 @@
+import type {
+  AnalysisResultData,
+  PeriodAnalysisData,
+  StructurePrediction,
+  TrinityDecision,
+} from '@/lib/stock-structure-types';
+
+export interface AiDecisionPeriodStructureSummary {
+  type?: string;
+  stage?: string;
+  trend?: string;
+  description?: string;
+  interpretation?: {
+    macro_background?: {
+      label?: string | null;
+      direction?: string | null;
+      basis?: string[] | null;
+    };
+    focus_structure?: {
+      focus_mode?: string | null;
+      archetype_label?: string | null;
+      archetype_family?: string | null;
+      standard_qualification?: string | null;
+      maturity?: string | null;
+      directional_bias?: string | null;
+      summary?: string | null;
+      start_anchor_source?: string | null;
+      explainability_status?: string | null;
+      downgrade_reason?: string | null;
+      qualification_reason?: string | null;
+    };
+    current_leg?: {
+      label?: string | null;
+      direction?: string | null;
+      status?: string | null;
+    };
+    next_confirmation?: {
+      label?: string | null;
+      type?: string | null;
+      trigger?: string | null;
+    };
+    spacetime_gate?: {
+      parent_status?: string | null;
+      allowed_child_structures?: string[] | null;
+      child_structure_match?: boolean | null;
+      resonance_enabled?: boolean | null;
+      structure_readiness?: string | null;
+      wait_reason?: string | null;
+      required_confirmation?: string | null;
+    };
+    scenario_paths?: unknown[] | null;
+  };
+  focus_origin_analysis?: {
+    selected_origin_kind?: string | null;
+    selected_point_index?: number | null;
+    explainability_status?: string | null;
+    explainability_reason?: string | null;
+  };
+  raw_classification?: {
+    type?: string | null;
+    stage?: string | null;
+    description?: string | null;
+    component_summary?: string[] | null;
+  };
+  focus_classification?: {
+    type?: string | null;
+    stage?: string | null;
+    description?: string | null;
+    archetype_family?: string | null;
+    standard_qualification?: string | null;
+    qualification_reason?: string | null;
+    trend_direction?: string | null;
+    component_summary?: string[] | null;
+  };
+  archetype?: {
+    primary?: string | null;
+    maturity?: string | null;
+    confidence?: string | null;
+    reason?: string | null;
+    alternatives?: unknown[] | null;
+  };
+}
+
+export interface AiDecisionPeriodPredictionSummary {
+  current_stage?: string;
+  next_stage?: string;
+  prediction_alert?: string;
+  key_price_levels?: StructurePrediction['key_price_levels'];
+  confidence?: 'high' | 'medium' | 'low';
+  action_hint?: string;
+  unstable_point?: StructurePrediction['unstable_point'];
+  structure_perfect?: StructurePrediction['structure_perfect'];
+}
+
+export interface AiDecisionPeriodSummary {
+  macd?: {
+    status?: string | null;
+    divergence_note?: string | null;
+  };
+  ma?: {
+    ma55?: number | null;
+    ma233?: number | null;
+    price_vs_ma55?: string | null;
+    price_vs_ma233?: string | null;
+    ma_status?: string | null;
+  };
+  structure?: AiDecisionPeriodStructureSummary;
+  deterministic_decision?: TrinityDecision;
+  execution_phase?: {
+    code?: string;
+    label?: string;
+    bias?: string;
+    tradable?: boolean;
+    maturity?: string;
+    reason?: string;
+  };
+  execution?: {
+    can_trade?: boolean;
+    action?: string;
+    direction?: string;
+    setup_quality?: string;
+    rationale?: string;
+    timing_timeframe?: string;
+    timeframe_cap_ratio?: number;
+    trigger?: string[];
+    invalidation?: string[];
+    confirmation?: string[];
+    entry_style?: string;
+    position_sizing?: Record<string, unknown>;
+    t_trade_rule?: Record<string, unknown>;
+    risk_rules?: Record<string, unknown>;
+    take_profit_plan?: Record<string, unknown>;
+    key_levels?: Array<Record<string, unknown>>;
+    risk_flags?: string[];
+    wait_reason?: string | null;
+  };
+  latest_price?: number;
+  price_change_pct?: number | null;
+  prediction?: AiDecisionPeriodPredictionSummary;
+  ma_physics?: {
+    support_pressure_status?: string | null;
+    ma55_role?: string | null;
+    ma55_value?: number | null;
+    traction_force?: string | null;
+    deviation_ma55_pct?: number | null;
+    pullback_expected?: boolean | null;
+    resonance_strength?: string | null;
+    resonance_zone?: string | null;
+    key_signals?: string[] | null;
+  };
+  breakthrough?: {
+    pattern_type?: string | null;
+    direction?: string | null;
+    target_ma?: string | null;
+    is_valid?: boolean | null;
+    confidence?: string | null;
+    t0_date?: string | null;
+    key_signals?: string[] | null;
+  };
+}
+
+export interface AiDecisionLevelNestingSummary {
+  summary?: string;
+  spacetime_confirmation?: {
+    space_confirmed?: unknown;
+    time_confirmed?: unknown;
+    spacetime_resonance?: unknown;
+    analysis?: unknown;
+    space_analysis?: unknown;
+    time_analysis?: unknown;
+  };
+  trading_decision?: {
+    decision_type?: unknown;
+    t_type?: unknown;
+    analysis?: unknown;
+    action_hint?: unknown;
+    analysis_order?: unknown;
+    execution_order?: unknown;
+    core_questions?: unknown;
+  };
+}
+
+export interface AiDecisionDimensionOperation {
+  major_level?: unknown;
+  major_level_name?: unknown;
+  major_status?: unknown;
+  minor_level?: unknown;
+  minor_level_name?: unknown;
+  minor_structure?: unknown;
+  minor_trend?: unknown;
+  advice?: {
+    operation_advice?: unknown;
+    structure_match?: unknown;
+    structure_direction?: unknown;
+    explanation?: unknown;
+  };
+}
+
 export interface AiDecisionPayload {
   stock_code?: string;
   stock_name?: string;
   analysis_time?: string;
-  periods: Record<string, Record<string, unknown>>;
-  level_nesting?: Record<string, unknown>;
-  multi_dimension_operation?: Record<string, unknown>;
+  periods: Record<string, AiDecisionPeriodSummary>;
+  level_nesting?: AiDecisionLevelNestingSummary;
+  multi_dimension_operation?: Record<string, AiDecisionDimensionOperation>;
   key_alerts: string[] | null;
 }
 
@@ -14,8 +212,8 @@ function compactRecord<T extends Record<string, unknown>>(value: T): T {
   ) as T;
 }
 
-function summarizePeriod(periodData: any, level: string) {
-  const summary: Record<string, unknown> = compactRecord({
+function summarizePeriod(periodData: PeriodAnalysisData, level: string): AiDecisionPeriodSummary {
+  const summary: AiDecisionPeriodSummary = compactRecord({
     macd: compactRecord({
       status: periodData.macd?.status,
       divergence_note: periodData.macd?.divergence_note || undefined,
@@ -139,6 +337,22 @@ function summarizePeriod(periodData: any, level: string) {
           })
         : undefined,
     }),
+    deterministic_decision: periodData.trinity_decision
+      ? compactRecord({
+          version: periodData.trinity_decision.version,
+          level: periodData.trinity_decision.level,
+          conclusion: periodData.trinity_decision.conclusion,
+          structure: periodData.trinity_decision.structure,
+          spacetime: periodData.trinity_decision.spacetime,
+          moving_average: periodData.trinity_decision.moving_average,
+          volume_confirmation: periodData.trinity_decision.volume_confirmation,
+          level_nesting: periodData.trinity_decision.level_nesting,
+          trade_qualification: periodData.trinity_decision.trade_qualification,
+          execution: periodData.trinity_decision.execution,
+          judgment_criteria: periodData.trinity_decision.judgment_criteria,
+          ai_summary_facts: periodData.trinity_decision.ai_summary_facts,
+        })
+      : undefined,
     execution_phase: periodData.structure?.execution_phase
       ? compactRecord({
           code: periodData.structure.execution_phase.code,
@@ -216,38 +430,43 @@ function summarizePeriod(periodData: any, level: string) {
   return summary;
 }
 
-function summarizeLevelNesting(levelNesting: any) {
+function summarizeLevelNesting(levelNesting: AnalysisResultData['level_nesting']) {
   if (!levelNesting) {
     return undefined;
   }
 
+  const spacetimeConfirmation = levelNesting['spacetime_confirmation'] as
+    | Record<string, unknown>
+    | undefined;
+  const tradingDecision = levelNesting['trading_decision'] as Record<string, unknown> | undefined;
+
   return compactRecord({
-    summary: levelNesting.summary,
-    spacetime_confirmation: levelNesting.spacetime_confirmation
+    summary: typeof levelNesting['summary'] === 'string' ? levelNesting['summary'] : undefined,
+    spacetime_confirmation: spacetimeConfirmation
       ? compactRecord({
-          space_confirmed: levelNesting.spacetime_confirmation.space_confirmed,
-          time_confirmed: levelNesting.spacetime_confirmation.time_confirmed,
-          spacetime_resonance: levelNesting.spacetime_confirmation.spacetime_resonance,
-          analysis: levelNesting.spacetime_confirmation.analysis,
-          space_analysis: levelNesting.spacetime_confirmation.space_analysis,
-          time_analysis: levelNesting.spacetime_confirmation.time_analysis,
+          space_confirmed: spacetimeConfirmation.space_confirmed,
+          time_confirmed: spacetimeConfirmation.time_confirmed,
+          spacetime_resonance: spacetimeConfirmation.spacetime_resonance,
+          analysis: spacetimeConfirmation.analysis,
+          space_analysis: spacetimeConfirmation.space_analysis,
+          time_analysis: spacetimeConfirmation.time_analysis,
         })
       : undefined,
-    trading_decision: levelNesting.trading_decision
+    trading_decision: tradingDecision
       ? compactRecord({
-          decision_type: levelNesting.trading_decision.decision_type,
-          t_type: levelNesting.trading_decision.t_type,
-          analysis: levelNesting.trading_decision.analysis,
-          action_hint: levelNesting.trading_decision.action_hint,
-          analysis_order: levelNesting.trading_decision.analysis_order,
-          execution_order: levelNesting.trading_decision.execution_order,
-          core_questions: levelNesting.trading_decision.core_questions,
+          decision_type: tradingDecision.decision_type,
+          t_type: tradingDecision.t_type,
+          analysis: tradingDecision.analysis,
+          action_hint: tradingDecision.action_hint,
+          analysis_order: tradingDecision.analysis_order,
+          execution_order: tradingDecision.execution_order,
+          core_questions: tradingDecision.core_questions,
         })
       : undefined,
   });
 }
 
-function summarizeMultiDimensionOperation(operation: any) {
+function summarizeMultiDimensionOperation(operation: AnalysisResultData['multi_dimension_operation']) {
   if (!operation) {
     return undefined;
   }
@@ -256,7 +475,8 @@ function summarizeMultiDimensionOperation(operation: any) {
     Object.entries(operation)
       .filter(([, value]) => value)
       .map(([dimension, value]) => {
-        const item = value as any;
+        const item = value as Record<string, unknown>;
+        const advice = item.advice as Record<string, unknown> | undefined;
         return [
           dimension,
           compactRecord({
@@ -267,26 +487,26 @@ function summarizeMultiDimensionOperation(operation: any) {
             minor_level_name: item.minor_level_name,
             minor_structure: item.minor_structure,
             minor_trend: item.minor_trend,
-            advice: item.advice
+            advice: advice
               ? compactRecord({
-                  operation_advice: item.advice.operation_advice,
-                  structure_match: item.advice.structure_match,
-                  structure_direction: item.advice.structure_direction,
-                  explanation: item.advice.explanation,
+                  operation_advice: advice.operation_advice,
+                  structure_match: advice.structure_match,
+                  structure_direction: advice.structure_direction,
+                  explanation: advice.explanation,
                 })
               : undefined,
           }),
         ];
       })
-  );
+  ) as Record<string, AiDecisionDimensionOperation>;
 }
 
-export function buildAiDecisionPayload(analysisData: any): AiDecisionPayload {
-  const periods: Record<string, Record<string, unknown>> = {};
+export function buildAiDecisionPayload(analysisData: AnalysisResultData): AiDecisionPayload {
+  const periods: Record<string, AiDecisionPeriodSummary> = {};
   const allAlerts: string[] = [];
 
   for (const [level, periodData] of Object.entries(analysisData?.periods || {})) {
-    const item = periodData as any;
+    const item = periodData as PeriodAnalysisData;
     if (item.error) {
       continue;
     }

@@ -1,11 +1,12 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { AnalysisResultData, TrinityDecision } from '../src/lib/stock-structure-types.ts';
 
 const {
   buildAiDecisionPayload,
 } = await import(new URL('../src/lib/ai-analysis-payload.ts', import.meta.url).href);
 
-const sampleAnalysisData = {
+const sampleAnalysisData: AnalysisResultData = {
   stock_code: '300274',
   stock_name: '阳光电源',
   analysis_time: '2026-03-30 10:00:00',
@@ -62,7 +63,10 @@ const sampleAnalysisData = {
             current_stage: 'c3',
             next_stage: 'c4',
             prediction_alert: '周线等待选择方向',
-            key_price_levels: [160, 170],
+            key_price_levels: [
+              { price: 160, type: 'support', note: '周线支撑观察' },
+              { price: 170, type: 'resistance', note: '周线阻力观察' },
+            ],
             confidence: 'medium',
             action_hint: '等待',
           },
@@ -204,7 +208,10 @@ const sampleAnalysisData = {
             current_stage: 'a3',
             next_stage: 'a4',
             prediction_alert: '当前可能处于上涨中的修正段',
-            key_price_levels: [159.99, 156.89],
+            key_price_levels: [
+              { price: 159.99, type: 'support', note: 'MA55 支撑' },
+              { price: 156.89, type: 'stop', note: '确认止损位' },
+            ],
             confidence: 'high',
             action_hint: '回踩确认后再看加仓',
             unstable_point: {
@@ -284,7 +291,10 @@ const sampleAnalysisData = {
             current_stage: '震荡末端',
             next_stage: '方向选择',
             prediction_alert: '接近方向选择位',
-            key_price_levels: [161.2, 165.8],
+            key_price_levels: [
+              { price: 161.2, type: 'support', note: '下沿观察' },
+              { price: 165.8, type: 'resistance', note: '上沿观察' },
+            ],
             confidence: 'medium',
             action_hint: '等突破确认',
           },
@@ -516,9 +526,9 @@ test('buildAiDecisionPayload includes focus-origin downgrade facts for daily str
         },
       },
     },
-  } as any);
+  });
 
-  const daily = payload.periods.daily as any;
+  const daily = payload.periods.daily;
   assert.equal(
     daily.structure.interpretation.focus_structure.start_anchor_source,
     'peak_extreme'
@@ -561,13 +571,131 @@ test('buildAiDecisionPayload includes focus classification and extended qualific
         },
       },
     },
-  } as any);
+  });
 
-  const daily = payload.periods.daily as any;
+  const daily = payload.periods.daily;
   assert.equal(daily.structure.interpretation.focus_structure.archetype_family, 'C');
   assert.equal(
     daily.structure.interpretation.focus_structure.standard_qualification,
     'extended'
   );
   assert.equal(daily.structure.focus_classification.standard_qualification, 'extended');
+});
+
+  const dailyTrinityDecision: TrinityDecision = {
+    version: 'v2',
+    level: 'daily',
+    conclusion: {
+      action: 'wait',
+      action_label: '等待',
+      bias: 'neutral',
+      confidence: 'medium',
+      can_trade: false,
+      wait_reason: '等待 C 结构边界确认',
+    },
+    structure: {
+      background_origin: null,
+      focus_origin: {
+        point_id: 'a1',
+        price: 10.5,
+        date: '2026-02-10 00:00:00',
+        source: 'peak_extreme',
+        semantic: 'focus_origin',
+      },
+      execution_origin: null,
+      family: 'standard',
+      type: 'A五段式',
+      standard_candidate: 'A五段式',
+      qualification: 'standard',
+      direction: 'up',
+      boundaries: {},
+      node_map: {},
+      can_trade_by_structure_nodes: true,
+      can_trade_by_boundaries: true,
+      explainability: { status: 'passed', reason: 'A原型成立', evidence: ['A五段式'] },
+    },
+    spacetime: {
+      status: '中偏强',
+      direction_bias: 'bullish',
+      expected_structures: { up: ['A五段式'], down: ['D三段式'] },
+      structure_match: false,
+      mismatch_reason: '等待 C 结构边界确认',
+      divergence_policy: {
+        top_divergence_valid: false,
+        bottom_divergence_valid: false,
+        reason: 'none',
+      },
+    },
+    moving_average: {
+      ma55_role: 'support',
+      ma233_role: 'support',
+      price_position: { above_ma55: true, above_ma233: true },
+      breakthrough_state: 'valid_breakout',
+      ma_gate: { allow_long: true, allow_short: false, reason: 'ok' },
+    },
+    volume_confirmation: {
+      volume_state: 'unknown',
+      breakout_volume: 'weak',
+      breakdown_volume: 'not_applicable',
+      pullback_volume: 'not_applicable',
+      volume_gate: {
+        supports_breakout: false,
+        supports_breakdown: false,
+        supports_pullback_confirmation: false,
+        confidence_adjustment: 'neutral',
+        reason: 'phase1',
+      },
+    },
+    level_nesting: {
+      parent_level: 'weekly',
+      child_level: 'daily',
+      parent_bias: 'bullish',
+      child_signal: 'wait',
+      resonance: 'child_countertrend',
+      permission: {
+        allow_position_increase: false,
+        allow_t_trade: false,
+        allow_only_light_probe: true,
+        reason: '父子级别冲突，降级执行',
+      },
+    },
+    trade_qualification: {
+      trade_mode: 'wait_confirmation',
+      position_permission: 'no_position',
+      confidence: 'medium',
+      reason: ['A原型成立'],
+    },
+    execution: {
+      entry_style: 'pullback',
+      triggers: ['重新站上平台上沿'],
+      invalidation: ['跌回平台下沿'],
+      confirmation: ['回踩 MA55 不破'],
+      position_sizing: { reason: '等待' },
+      risk_flags: [],
+    },
+    judgment_criteria: [],
+    ai_summary_facts: ['A五段式'],
+  };
+
+test('buildAiDecisionPayload preserves deterministic_decision for daily period', () => {
+  const payload = buildAiDecisionPayload({
+    stock_code: '300274',
+    periods: {
+      daily: {
+        trinity_decision: dailyTrinityDecision,
+      },
+    },
+  });
+
+  const daily = payload.periods.daily;
+
+  assert.equal(daily.deterministic_decision?.level, 'daily');
+  assert.equal(
+    daily.deterministic_decision?.structure.focus_origin?.source,
+    'peak_extreme'
+  );
+  assert.equal(
+    daily.deterministic_decision?.level_nesting?.permission.allow_only_light_probe,
+    true
+  );
 });
