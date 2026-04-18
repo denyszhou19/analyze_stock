@@ -9,7 +9,7 @@
 - **数据库**：Supabase (PostgreSQL)
 - **分析引擎**：Python 3（scripts/stock_analyzer.py）
 - **包管理**：pnpm
-- **开发端口**：5000
+- **开发端口**：5000（若被系统占用，HTTP 回归验证统一改用 `5001`）
 
 ---
 
@@ -21,15 +21,20 @@
 
 ```bash
 # 测试 300274（阳光电源）周线结构识别（基准测试用例）
-curl -s "http://localhost:5000/api/stock/analysis?code=300274&levels=weekly" | python3 -c "
+# 若 5000 被系统占用，回归验证改用 5001
+curl -s "http://localhost:5001/api/stock/analysis?code=300274&levels=weekly" | python3 -c "
 import json,sys
 r=json.load(sys.stdin)
 w=r['data']['periods'].get('weekly',{})
 s=w.get('structure',{})
 d=s.get('structure_details',{})
-print('结构类型:', s.get('structure_type'))
-print('笔数:', s.get('segment_count'))
-print('顶分型:', [f['high'] for f in d.get('top_fractals',[])[-3:]])
+focus=((w.get('trinity_decision') or {}).get('structure') or {}).get('focus_origin') or {}
+print('聚焦结构:', s.get('structure_type'))
+print('聚焦笔数:', s.get('segment_count'))
+print('原始结构:', (d.get('raw_classification') or {}).get('type'))
+print('聚焦起点来源:', (d.get('focus_origin_analysis') or {}).get('selected_origin_kind'))
+print('顶分型包含209.88:', 209.88 in [f['high'] for f in d.get('top_fractals',[])])
+print('聚焦起点:', focus)
 print('底分型:', [f['low'] for f in d.get('bottom_fractals',[])[-3:]])
 "
 ```
@@ -38,15 +43,19 @@ print('底分型:', [f['low'] for f in d.get('bottom_fractals',[])[-3:]])
 
 | 检查项 | 期望值 | 说明 |
 |--------|--------|------|
-| 顶分型最高点 | 209.88（2025-11-14） | 包含处理修复后的正确识别 |
-| 笔数 | ≥ 12 | 修复后笔数增加（原为10） |
-| 结构类型 | 非「A五段式」 | 超大平台不应识别为A五段式 |
+| 聚焦起点来源 | `peak_extreme` | 当前规范采用 focus-origin 语义，必须从主峰切片开始解释右侧结构 |
+| 聚焦起点价格 | `209.88`（2025-11-14） | `trinity_decision.structure.focus_origin` 必须锁定该峰值 |
+| 顶分型列表包含 209.88 | `True` | 209.88 不能在分型识别链路中丢失，但不再要求出现在最后 3 个顶分型里 |
+| 聚焦结构类型 | `C单平台式` | 表层 `structure_type` 现表示峰值切片后的聚焦结构，而非全局宏观结构 |
+| 原始结构类型 | `延伸C类` | `raw_classification.type` 仍应保留宏观结构视角，避免聚焦语义覆盖掉原始判定 |
+
+> 说明：`segment_count` 现表示**聚焦起点之后的右侧结构笔数**，不再等价于旧规范中的全局周线笔数，因此不再使用“≥ 12”作为强制回归指标。
 
 ### 测试其他股票
 
 ```bash
 # 完整五周期分析
-curl -s "http://localhost:5000/api/stock/analysis?code={股票代码}&levels=weekly,daily,hour60,hour30,hour15"
+curl -s "http://localhost:5001/api/stock/analysis?code={股票代码}&levels=weekly,daily,hour60,hour30,hour15"
 ```
 
 ---
@@ -102,8 +111,9 @@ Platform + Directional 组合判断时，**必须检查 Platform 笔数**：
 ## 开发服务器
 
 ```bash
-# 启动
+# 启动（默认 5000；若被系统占用可切到 5001）
 PORT=5000 npx next dev --webpack --port 5000
+PORT=5001 npx next dev --webpack --port 5001
 
 # 日志查看
 tail -f /tmp/nextjs-dev.log
