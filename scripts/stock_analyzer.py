@@ -58,6 +58,7 @@ STRUCTURE_FAMILY_MAP = {
     '上升通道': ('channel', 'over_limit', None),
     '下降通道': ('channel', 'over_limit', None),
     '大平台震荡': ('range', 'over_limit', None),
+    '延伸结构': ('extended', 'extended', None),
     '结构未完成': ('unfinished', 'unfinished', None),
     '未完成结构': ('unfinished', 'unfinished', None),
     '复杂结构': ('complex', 'failed', None),
