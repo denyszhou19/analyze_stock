@@ -3053,6 +3053,322 @@ class TrinityStockAnalyzer:
         }
         return labeled_geometry, explainability
 
+    def _normalize_trinity_anchor(
+        self,
+        anchor: Optional[Dict[str, Any]],
+        *,
+        source: Optional[str] = None,
+        semantic: Optional[str] = None,
+    ) -> Optional[Dict[str, Any]]:
+        if not isinstance(anchor, dict):
+            return None
+        price = anchor.get('price')
+        date = anchor.get('date')
+        point_id = anchor.get('point_id')
+        if price is None and date is None and point_id is None:
+            return None
+        return {
+            'point_id': point_id,
+            'price': price,
+            'date': date,
+            'source': source or anchor.get('source'),
+            'semantic': semantic or anchor.get('semantic'),
+        }
+
+    def _build_trinity_structure_decision(
+        self,
+        structure_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        interpretation = structure_payload.get('interpretation') if isinstance(structure_payload, dict) else {}
+        interpretation = interpretation or {}
+        focus_structure = interpretation.get('focus_structure') or {}
+        spacetime_gate = interpretation.get('spacetime_gate') or {}
+        details = structure_payload.get('structure_details') if isinstance(structure_payload, dict) else {}
+        details = details or {}
+        focus_origin_analysis = details.get('focus_origin_analysis') or {}
+        focus_classification = details.get('focus_classification') or {}
+        explainability = details.get('explainability') or {}
+
+        focus_anchor = self._normalize_trinity_anchor(
+            focus_structure.get('start_anchor'),
+            source=focus_structure.get('start_anchor_source') or focus_origin_analysis.get('selected_origin_kind'),
+            semantic='focus_origin',
+        )
+        background_anchor = self._normalize_trinity_anchor(
+            focus_structure.get('reference_origin'),
+            source='macro_origin',
+            semantic='background_origin',
+        )
+        execution_anchor = self._normalize_trinity_anchor(
+            {
+                'point_id': explainability.get('current_point_id'),
+                'price': None,
+                'date': None,
+            },
+            source='current_structure',
+            semantic='execution_origin',
+        )
+
+        structure_type = structure_payload.get('structure_type') if isinstance(structure_payload, dict) else None
+        qualification = (
+            focus_classification.get('standard_qualification')
+            or focus_structure.get('standard_qualification')
+            or 'failed'
+        )
+        family = {
+            'standard': 'standard',
+            'extended': 'extended',
+        }.get(qualification, 'complex')
+        if structure_type in ('上升通道', '下降通道'):
+            family = 'channel'
+        elif structure_type == '大平台震荡':
+            family = 'range'
+        elif structure_type == '未完成结构':
+            family = 'unfinished'
+
+        trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
+        return {
+            'background_origin': background_anchor,
+            'focus_origin': focus_anchor,
+            'execution_origin': execution_anchor,
+            'family': family,
+            'type': structure_type,
+            'standard_candidate': focus_classification.get('type') or structure_type,
+            'qualification': qualification,
+            'direction': {
+                '上涨': 'up',
+                '下跌': 'down',
+                '震荡': 'neutral',
+            }.get(trend_direction, 'neutral'),
+            'boundaries': {
+                'upper': None,
+                'lower': None,
+                'mid': None,
+                'breakout_trigger': None,
+                'breakdown_trigger': None,
+                'stop_loss': None,
+            },
+            'node_map': {
+                'last_confirmed': explainability.get('current_point_id'),
+            },
+            'can_trade_by_structure_nodes': qualification == 'standard' and family == 'standard',
+            'can_trade_by_boundaries': True,
+            'explainability': {
+                'status': focus_origin_analysis.get('explainability_status') or 'passed',
+                'reason': (
+                    focus_origin_analysis.get('explainability_reason')
+                    or focus_structure.get('qualification_reason')
+                    or structure_payload.get('description')
+                    or ''
+                ),
+                'evidence': [
+                    structure_payload.get('description') or '',
+                    focus_structure.get('summary') or '',
+                    spacetime_gate.get('required_confirmation') or '',
+                ],
+            },
+        }
+
+    def _build_trinity_spacetime_decision(
+        self,
+        structure_payload: Dict[str, Any],
+        macd_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        interpretation = structure_payload.get('interpretation') if isinstance(structure_payload, dict) else {}
+        gate = (interpretation or {}).get('spacetime_gate') or {}
+        status = macd_payload.get('status') if isinstance(macd_payload, dict) else None
+        status = status or '未知'
+        return {
+            'status': status,
+            'direction_bias': (
+                'bullish'
+                if status in ('极强', '强', '中偏强')
+                else 'bearish'
+                if status in ('极弱', '弱', '中偏弱')
+                else 'neutral'
+            ),
+            'expected_structures': {
+                'up': ['A五段式', 'B双平台式', 'C单平台式'],
+                'down': ['D三段式', 'B双平台式', 'C单平台式'],
+            },
+            'structure_match': bool(gate.get('child_structure_match')),
+            'mismatch_reason': gate.get('wait_reason'),
+            'divergence_policy': {
+                'top_divergence_valid': bool(macd_payload.get('top_divergence')) if isinstance(macd_payload, dict) else False,
+                'bottom_divergence_valid': bool(macd_payload.get('bottom_divergence')) if isinstance(macd_payload, dict) else False,
+                'reason': (
+                    macd_payload.get('divergence_note')
+                    if isinstance(macd_payload, dict)
+                    else None
+                ) or '沿用现有 MACD 背离字段',
+            },
+        }
+
+    def _build_trinity_moving_average_decision(
+        self,
+        moving_averages: Dict[str, Any],
+        breakthrough_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        moving_averages = moving_averages if isinstance(moving_averages, dict) else {}
+        breakthrough_payload = breakthrough_payload if isinstance(breakthrough_payload, dict) else {}
+        above_ma55 = moving_averages.get('price_vs_ma55') == 'above'
+        above_ma233 = moving_averages.get('price_vs_ma233') == 'above'
+        ma_status = moving_averages.get('ma_status') or ''
+        allow_long = above_ma55
+        allow_short = not above_ma55 and '空头' in ma_status
+        breakthrough_state = 'none'
+        if breakthrough_payload.get('pattern_type'):
+            if breakthrough_payload.get('direction') == 'up' and breakthrough_payload.get('is_valid'):
+                breakthrough_state = 'valid_breakout'
+            elif breakthrough_payload.get('direction') == 'down' and breakthrough_payload.get('is_valid'):
+                breakthrough_state = 'valid_breakdown'
+
+        return {
+            'ma55_role': 'support' if above_ma55 else 'resistance',
+            'ma233_role': 'support' if above_ma233 else 'resistance',
+            'price_position': {
+                'above_ma55': above_ma55,
+                'above_ma233': above_ma233,
+                'deviation_ma55_pct': None,
+                'deviation_ma233_pct': None,
+            },
+            'breakthrough_state': breakthrough_state,
+            'ma_gate': {
+                'allow_long': allow_long,
+                'allow_short': allow_short,
+                'reason': '沿用现有 MA55 / MA233 相对位置与突破字段',
+            },
+        }
+
+    def _build_trinity_volume_confirmation_decision(
+        self,
+        period_payload: Dict[str, Any],
+        breakthrough_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        breakthrough_payload = breakthrough_payload if isinstance(breakthrough_payload, dict) else {}
+        return {
+            'volume_ratio_5': None,
+            'volume_ratio_20': None,
+            'amount_ratio_20': None,
+            'turnover_rate': None,
+            'volume_state': 'unknown',
+            'breakout_volume': 'not_applicable' if breakthrough_payload.get('direction') != 'up' else 'weak',
+            'breakdown_volume': 'not_applicable' if breakthrough_payload.get('direction') != 'down' else 'weak',
+            'pullback_volume': 'not_applicable',
+            'volume_gate': {
+                'supports_breakout': False,
+                'supports_breakdown': False,
+                'supports_pullback_confirmation': False,
+                'confidence_adjustment': 'neutral',
+                'reason': 'Phase 1 先保留字段，后续阶段接入均量比和成交额比',
+            },
+        }
+
+    def _build_trinity_trade_qualification(
+        self,
+        structure_decision: Dict[str, Any],
+        spacetime_decision: Dict[str, Any],
+        moving_average_decision: Dict[str, Any],
+        execution_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
+        if execution_payload.get('action') == 'wait':
+            trade_mode = 'wait_confirmation'
+            position_permission = 'no_position'
+        elif structure_decision.get('can_trade_by_structure_nodes') and moving_average_decision['ma_gate']['allow_long']:
+            trade_mode = 'standard_node_trade'
+            position_permission = 'half_position'
+        else:
+            trade_mode = 'conditional_boundary_trade'
+            position_permission = 'light_probe'
+        return {
+            'trade_mode': trade_mode,
+            'position_permission': position_permission,
+            'confidence': 'medium',
+            'reason': [
+                structure_decision['explainability']['reason'],
+                spacetime_decision.get('mismatch_reason') or '时空未额外否决',
+                moving_average_decision['ma_gate']['reason'],
+            ],
+        }
+
+    def _build_trinity_execution_decision(
+        self,
+        execution_payload: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
+        return {
+            'entry_style': execution_payload.get('entry_style') or 'none',
+            'triggers': execution_payload.get('trigger') or [],
+            'invalidation': execution_payload.get('invalidation') or [],
+            'confirmation': execution_payload.get('confirmation') or [],
+            'position_sizing': {
+                'max_ratio': execution_payload.get('timeframe_cap_ratio'),
+                'reason': execution_payload.get('rationale') or execution_payload.get('wait_reason') or '沿用现有执行摘要',
+                'upgrade_condition': None,
+                'downgrade_condition': execution_payload.get('wait_reason'),
+            },
+            'risk_flags': execution_payload.get('risk_flags') or [],
+        }
+
+    def _build_trinity_decision(
+        self,
+        *,
+        level: str,
+        structure_payload: Dict[str, Any],
+        macd_payload: Dict[str, Any],
+        moving_averages: Dict[str, Any],
+        breakthrough_payload: Dict[str, Any],
+        execution_payload: Dict[str, Any],
+        level_nesting_payload: Optional[Dict[str, Any]],
+        period_payload: Optional[Dict[str, Any]] = None,
+    ) -> Dict[str, Any]:
+        structure_payload = structure_payload if isinstance(structure_payload, dict) else {}
+        execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
+        structure_decision = self._build_trinity_structure_decision(structure_payload)
+        spacetime_decision = self._build_trinity_spacetime_decision(structure_payload, macd_payload)
+        moving_average_decision = self._build_trinity_moving_average_decision(moving_averages, breakthrough_payload)
+        volume_decision = self._build_trinity_volume_confirmation_decision(period_payload or {}, breakthrough_payload)
+        trade_qualification = self._build_trinity_trade_qualification(
+            structure_decision,
+            spacetime_decision,
+            moving_average_decision,
+            execution_payload,
+        )
+        execution_decision = self._build_trinity_execution_decision(execution_payload)
+
+        action = execution_payload.get('action') or 'wait'
+        return {
+            'version': 'v2',
+            'level': level,
+            'conclusion': {
+                'action': action,
+                'action_label': action,
+                'bias': (
+                    'bullish'
+                    if execution_payload.get('direction') == 'long'
+                    else 'bearish'
+                    if execution_payload.get('direction') == 'short'
+                    else 'neutral'
+                ),
+                'confidence': trade_qualification['confidence'],
+                'can_trade': bool(execution_payload.get('can_trade')),
+                'wait_reason': execution_payload.get('wait_reason'),
+            },
+            'structure': structure_decision,
+            'spacetime': spacetime_decision,
+            'moving_average': moving_average_decision,
+            'volume_confirmation': volume_decision,
+            'level_nesting': level_nesting_payload,
+            'trade_qualification': trade_qualification,
+            'execution': execution_decision,
+            'judgment_criteria': [],
+            'ai_summary_facts': [
+                structure_payload.get('description') or '',
+                execution_payload.get('rationale') or execution_payload.get('wait_reason') or '',
+            ],
+        }
+
     def _build_macro_background(
         self,
         moving_averages: Dict[str, Any],
