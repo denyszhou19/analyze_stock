@@ -3523,21 +3523,48 @@ class TrinityStockAnalyzer:
         breakthrough_payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         breakthrough_payload = breakthrough_payload if isinstance(breakthrough_payload, dict) else {}
+        period_payload = period_payload if isinstance(period_payload, dict) else {}
+        ratio_5 = self._normalize_trinity_price(period_payload.get('volume_ratio_5'))
+        ratio_20 = self._normalize_trinity_price(period_payload.get('volume_ratio_20'))
+        amount_ratio = self._normalize_trinity_price(period_payload.get('amount_ratio_20'))
+        breakout_confirmed = bool(
+            (ratio_5 is not None and ratio_5 >= 1.2)
+            or (ratio_20 is not None and ratio_20 >= 1.15)
+        )
+        pullback_healthy = bool(ratio_5 is not None and ratio_5 <= 0.85)
         return {
-            'volume_ratio_5': None,
-            'volume_ratio_20': None,
-            'amount_ratio_20': None,
+            'volume_ratio_5': ratio_5,
+            'volume_ratio_20': ratio_20,
+            'amount_ratio_20': amount_ratio,
             'turnover_rate': None,
-            'volume_state': 'unknown',
-            'breakout_volume': 'not_applicable' if breakthrough_payload.get('direction') != 'up' else 'weak',
-            'breakdown_volume': 'not_applicable' if breakthrough_payload.get('direction') != 'down' else 'weak',
-            'pullback_volume': 'not_applicable',
+            'volume_state': (
+                'expanding'
+                if breakout_confirmed
+                else 'shrinking'
+                if pullback_healthy
+                else 'normal'
+            ),
+            'breakout_volume': (
+                'confirmed'
+                if breakthrough_payload.get('direction') == 'up' and breakout_confirmed
+                else 'weak'
+            ),
+            'breakdown_volume': (
+                'confirmed'
+                if breakthrough_payload.get('direction') == 'down' and breakout_confirmed
+                else 'not_applicable'
+            ),
+            'pullback_volume': 'healthy_shrink' if pullback_healthy else 'normal',
             'volume_gate': {
-                'supports_breakout': False,
-                'supports_breakdown': False,
-                'supports_pullback_confirmation': False,
-                'confidence_adjustment': 'neutral',
-                'reason': 'Phase 1 先保留字段，后续阶段接入均量比和成交额比',
+                'supports_breakout': breakout_confirmed,
+                'supports_breakdown': breakthrough_payload.get('direction') == 'down' and breakout_confirmed,
+                'supports_pullback_confirmation': pullback_healthy,
+                'confidence_adjustment': 'upgrade' if breakout_confirmed or pullback_healthy else 'downgrade',
+                'reason': (
+                    '放量确认突破，缩量回踩更健康'
+                    if breakout_confirmed
+                    else '量能未充分确认，需等待二次验证'
+                ),
             },
         }
 
@@ -3546,47 +3573,43 @@ class TrinityStockAnalyzer:
         structure_decision: Dict[str, Any],
         spacetime_decision: Dict[str, Any],
         moving_average_decision: Dict[str, Any],
+        volume_decision: Dict[str, Any],
         execution_payload: Dict[str, Any],
     ) -> Dict[str, Any]:
         execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
-        action = execution_payload.get('action')
-        direction = execution_payload.get('direction')
-        is_short_intent = direction == 'short'
-        is_long_intent = direction == 'long'
-        structure_direction = structure_decision.get('direction')
-        ma_gate = moving_average_decision.get('ma_gate') or {}
-        direction_matches_structure = (
-            (is_long_intent and structure_direction == 'up')
-            or (is_short_intent and structure_direction == 'down')
-        )
-        if action == 'wait':
-            trade_mode = 'wait_confirmation'
-            position_permission = 'no_position'
-        elif (
-            structure_decision.get('can_trade_by_structure_nodes')
-            and direction_matches_structure
-            and (
-                (is_short_intent and ma_gate.get('allow_short'))
-                or (is_long_intent and ma_gate.get('allow_long'))
-            )
-        ):
-            trade_mode = 'standard_node_trade'
-            position_permission = 'half_position'
-        elif structure_decision.get('can_trade_by_boundaries'):
-            trade_mode = 'conditional_boundary_trade'
-            position_permission = 'light_probe'
-        else:
-            trade_mode = 'no_trade'
-            position_permission = 'no_position'
+        volume_decision = volume_decision if isinstance(volume_decision, dict) else {}
+        reasons = [
+            structure_decision.get('explainability', {}).get('reason') or '沿用结构解释',
+            spacetime_decision.get('mismatch_reason') or '时空未额外否决',
+            moving_average_decision.get('ma_gate', {}).get('reason') or '沿用均线门控',
+            volume_decision.get('volume_gate', {}).get('reason') or '沿用量能门控',
+        ]
+        if structure_decision.get('family') == 'unfinished':
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': 'low',
+                'reason': ['未完成结构仅等待', *reasons],
+            }
+        if structure_decision.get('family') in {'extended', 'channel', 'range'}:
+            return {
+                'trade_mode': 'conditional_boundary_trade',
+                'position_permission': 'light_probe',
+                'confidence': 'medium',
+                'reason': ['非标准结构只允许边界条件交易', *reasons],
+            }
+        if execution_payload.get('action') in {'reduce', 'sell', 'avoid'}:
+            return {
+                'trade_mode': 'risk_control',
+                'position_permission': 'reduce_only',
+                'confidence': 'high',
+                'reason': ['跌破边界或均线，进入风险控制', *reasons],
+            }
         return {
-            'trade_mode': trade_mode,
-            'position_permission': position_permission,
+            'trade_mode': 'standard_node_trade',
+            'position_permission': 'half_position',
             'confidence': 'medium',
-            'reason': [
-                structure_decision['explainability']['reason'],
-                spacetime_decision.get('mismatch_reason') or '时空未额外否决',
-                moving_average_decision['ma_gate']['reason'],
-            ],
+            'reason': ['标准结构节点可交易', *reasons],
         }
 
     def _build_trinity_execution_decision(
@@ -3641,6 +3664,7 @@ class TrinityStockAnalyzer:
             structure_decision,
             spacetime_decision,
             moving_average_decision,
+            volume_decision,
             execution_payload,
         )
         execution_decision = self._build_trinity_execution_decision(execution_payload)
@@ -3714,39 +3738,51 @@ class TrinityStockAnalyzer:
 
         parent_status = ((parent_payload.get('macd') or {}).get('status'))
         child_structure = (((child_payload or {}).get('trinity_decision') or {}).get('structure') or {}).get('type')
+        parent_bias = (
+            'bullish'
+            if parent_status in ('极强', '强', '中偏强')
+            else 'bearish'
+            if parent_status in ('极弱', '弱', '中偏弱')
+            else 'neutral'
+        )
+        child_signal = (
+            'long'
+            if child_structure in ('A五段式', 'B双平台式', 'C单平台式')
+            else 'short'
+            if child_structure == 'D三段式'
+            else 'wait'
+        )
         aligned = parent_status in ('极强', '强', '中偏强') and child_structure in ('A五段式', 'B双平台式', 'C单平台式')
         conflict = parent_status in ('极弱', '弱', '中偏弱') and child_structure in ('A五段式', 'B双平台式')
+        resonance = 'aligned' if aligned else 'conflict' if conflict else 'child_countertrend'
+        permission = {
+            'allow_position_increase': aligned,
+            'allow_t_trade': level in ('hour30', 'hour15'),
+            'allow_only_light_probe': not aligned,
+            'reason': (
+                raw_level_nesting.get('summary')
+                if isinstance(raw_level_nesting, dict) and raw_level_nesting.get('summary')
+                else '父子级别共振'
+                if aligned
+                else '父子级别冲突，降级执行'
+            ),
+        }
+        if parent_bias == 'bearish' and child_signal == 'long':
+            resonance = 'child_countertrend'
+            permission = {
+                'allow_position_increase': False,
+                'allow_t_trade': True,
+                'allow_only_light_probe': True,
+                'reason': '子级别逆父级别，只允许轻仓试探或做T',
+            }
 
         return {
             'parent_level': parent_level,
             'child_level': level,
-            'parent_bias': (
-                'bullish'
-                if parent_status in ('极强', '强', '中偏强')
-                else 'bearish'
-                if parent_status in ('极弱', '弱', '中偏弱')
-                else 'neutral'
-            ),
-            'child_signal': (
-                'long'
-                if child_structure in ('A五段式', 'B双平台式', 'C单平台式')
-                else 'short'
-                if child_structure == 'D三段式'
-                else 'wait'
-            ),
-            'resonance': 'aligned' if aligned else 'conflict' if conflict else 'child_countertrend',
-            'permission': {
-                'allow_position_increase': aligned,
-                'allow_t_trade': level in ('hour30', 'hour15'),
-                'allow_only_light_probe': not aligned,
-                'reason': (
-                    raw_level_nesting.get('summary')
-                    if isinstance(raw_level_nesting, dict) and raw_level_nesting.get('summary')
-                    else '父子级别共振'
-                    if aligned
-                    else '父子级别冲突，降级执行'
-                ),
-            },
+            'parent_bias': parent_bias,
+            'child_signal': child_signal,
+            'resonance': resonance,
+            'permission': permission,
         }
 
     def _build_macro_background(

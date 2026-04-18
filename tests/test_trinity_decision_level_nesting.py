@@ -64,3 +64,22 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['resonance'], 'aligned')
         self.assertEqual(decision['child_signal'], 'long')
         self.assertTrue(decision['permission']['allow_position_increase'])
+
+    def test_parent_conflict_forces_child_to_wait_or_light_probe(self) -> None:
+        decision = self.analyzer._build_trinity_level_nesting_decision(
+            level='hour30',
+            normalized_results={
+                'daily': {
+                    'macd': {'status': '弱'},
+                    'trinity_decision': {'conclusion': {'bias': 'bearish'}},
+                },
+                'hour30': {
+                    'macd': {'status': '中偏强'},
+                    'trinity_decision': {'structure': {'type': 'A五段式'}},
+                },
+            },
+            raw_level_nesting={'summary': '日线偏弱，30分钟反弹'},
+        )
+
+        self.assertIn(decision['resonance'], {'conflict', 'child_countertrend'})
+        self.assertFalse(decision['permission']['allow_position_increase'])

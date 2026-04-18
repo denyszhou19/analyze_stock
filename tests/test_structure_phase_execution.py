@@ -186,6 +186,25 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertAlmostEqual(execution['timeframe_cap_ratio'], 0.25, places=3)
         self.assertIsNotNone(execution['wait_reason'])
 
+    def test_build_trinity_volume_confirmation_marks_breakout_as_confirmed_with_expanding_volume(self) -> None:
+        decision = self.analyzer._build_trinity_volume_confirmation_decision(
+            period_payload={
+                'volume_ratio_5': 1.32,
+                'volume_ratio_20': 1.18,
+                'amount_ratio_20': 1.21,
+            },
+            breakthrough_payload={
+                'direction': 'up',
+                'is_valid': True,
+                'pattern_type': 'breakout',
+            },
+        )
+
+        self.assertEqual(decision['volume_state'], 'expanding')
+        self.assertEqual(decision['breakout_volume'], 'confirmed')
+        self.assertTrue(decision['volume_gate']['supports_breakout'])
+        self.assertEqual(decision['volume_gate']['confidence_adjustment'], 'upgrade')
+
     def test_build_trinity_structure_decision_uses_standard_node_map_only_for_standard_family(self) -> None:
         line_geometry = {
             'points': [
