@@ -187,6 +187,41 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertIsNotNone(execution['wait_reason'])
 
     def test_build_trinity_structure_decision_uses_standard_node_map_only_for_standard_family(self) -> None:
+        line_geometry = {
+            'points': [
+                {'price': 10.0, 'date': '2024-01-01 00:00'},
+                {'price': 12.0, 'date': '2024-01-02 00:00'},
+                {'price': 11.0, 'date': '2024-01-03 00:00'},
+                {'price': 10.8, 'date': '2024-01-04 00:00'},
+                {'price': 11.6, 'date': '2024-01-05 00:00', 'is_current': True},
+            ],
+            'segments': [
+                {'from_point': 0, 'to_point': 1},
+                {'from_point': 1, 'to_point': 2},
+                {'from_point': 2, 'to_point': 3},
+                {'from_point': 3, 'to_point': 4},
+            ],
+        }
+        _, standard_explainability = self.analyzer._build_structure_explainability(
+            structure_type='A五段式',
+            line_geometry=line_geometry,
+            prediction={'current_stage': 'a4拐点', 'next_stage': 'a5拐点'},
+            peak_analysis=None,
+            structure_start_point_index=0,
+            focus_origin_source='recent_component',
+            explainability_status='passed',
+            downgrade_reason=None,
+        )
+        _, extended_explainability = self.analyzer._build_structure_explainability(
+            structure_type='延伸C',
+            line_geometry=line_geometry,
+            prediction={'current_stage': '延伸C进行中', 'next_stage': '等待平台边界确认'},
+            peak_analysis=None,
+            structure_start_point_index=0,
+            focus_origin_source='recent_component',
+            explainability_status='extended',
+            downgrade_reason='超出标准点数',
+        )
         standard = self.analyzer._build_trinity_structure_decision(
             {
                 'structure_type': 'A五段式',
@@ -198,13 +233,7 @@ class StructurePhaseExecutionTest(unittest.TestCase):
                         'type': 'A五段式',
                         'standard_qualification': 'standard',
                     },
-                    'explainability': {
-                        'a4_price': 10.8,
-                        'b8_price': None,
-                        'd3_price': None,
-                        'd4_price': None,
-                        'last_confirmed_price': 10.8,
-                    },
+                    'explainability': standard_explainability,
                 },
             }
         )
@@ -219,13 +248,7 @@ class StructurePhaseExecutionTest(unittest.TestCase):
                         'type': '延伸C',
                         'standard_qualification': 'extended',
                     },
-                    'explainability': {
-                        'a4_price': 10.8,
-                        'b8_price': 11.2,
-                        'd3_price': 9.9,
-                        'd4_price': 12.4,
-                        'last_confirmed_price': 12.4,
-                    },
+                    'explainability': extended_explainability,
                 },
             }
         )
@@ -240,6 +263,87 @@ class StructurePhaseExecutionTest(unittest.TestCase):
             {'a4': None, 'b8': None, 'd3': None, 'd4': None, 'last_confirmed': None},
         )
         self.assertFalse(extended['can_trade_by_structure_nodes'])
+
+    def test_detect_structure_syncs_focus_classification_after_explainability_downgrade(self) -> None:
+        df = pd.DataFrame([{'date': pd.Timestamp('2024-01-01'), 'open': 1, 'high': 1, 'low': 1, 'close': 1}])
+        recent = pd.DataFrame([{'date': pd.Timestamp('2024-01-01'), 'open': 1, 'high': 1, 'low': 1, 'close': 1}])
+
+        self.analyzer._run_structure_pipeline = lambda _df, _lookback: {
+            'actual_lookback': 1,
+            'recent': recent,
+            'trend_direction': '上涨',
+            'valid_range_info': None,
+            'processed_df': recent,
+            'top_fractals': [],
+            'bottom_fractals': [],
+            'validated_fractals': [],
+            'final_fractals': [],
+            'strokes': [{'direction': '上涨', 'from_price': 10.0, 'to_price': 12.0}],
+            'valid_fractals': [{'type': 'bottom', 'high': 12.0, 'low': 10.0}],
+            'stroke_list': [{'direction': '上涨', 'from_price': 10.0, 'to_price': 12.0}],
+        }
+        self.analyzer._serialize_fractals = lambda fractals, _field: fractals
+        self.analyzer._build_line_geometry = lambda _stroke_list: {
+            'points': [
+                {'price': 10.0, 'date': '2024-01-01 00:00'},
+                {'price': 12.0, 'date': '2024-01-02 00:00'},
+            ],
+            'segments': [{'from_point': 0, 'to_point': 1}],
+        }
+        self.analyzer._build_structure_pipeline_metadata = lambda **_kwargs: {}
+        self.analyzer._consolidate_boxes = lambda *_args, **_kwargs: []
+        self.analyzer._summarize_macro_components = lambda _components: []
+        self.analyzer._classify_structure_by_counts = lambda *_args: ('A五段式', '趋势启动', 'A五段式', [])
+        self.analyzer._analyze_peak_structure = lambda *_args: {'is_peak_structure': False}
+        self.analyzer._build_focus_origin_analysis = lambda **_kwargs: {
+            'selected_origin_kind': 'macro_origin',
+            'selected_point_index': None,
+            'explainability_status': 'downgraded',
+            'explainability_reason': '宏观原点在窗口外，无法诚实解释标准起点',
+            'macro_origin': {'outside_window': True},
+        }
+        self.analyzer._build_structure_focus_context = lambda **_kwargs: {
+            'stroke_count': 1,
+            'inflection_count': 4,
+            'strokes': [{'direction': '上涨', 'from_price': 10.0, 'to_price': 12.0}],
+            'valid_fractals': [{'type': 'bottom', 'high': 12.0, 'low': 10.0}],
+            'render_structure_start_point_index': 0,
+        }
+        self.analyzer._determine_stroke_trend = lambda _strokes: '上涨'
+        self.analyzer._build_focus_structure_classification = lambda **_kwargs: {
+            'type': 'A五段式',
+            'stage': '趋势启动',
+            'description': 'A五段式',
+            'archetype_family': 'A',
+            'standard_qualification': 'standard',
+            'qualification_reason': 'A 原型成立',
+            'trend_direction': '上涨',
+            'component_summary': [],
+            'criteria': [],
+        }
+        self.analyzer._validate_focus_structure_explainability = lambda *_args: {
+            'passed': False,
+            'status': 'downgraded',
+            'reason': '宏观原点在窗口外，无法诚实解释标准起点',
+        }
+        self.analyzer._analyze_structure_prediction = lambda *args, **kwargs: {
+            'current_stage': '第4个拐点',
+            'next_stage': '等待确认',
+            'prediction_alert': '等待确认',
+            'key_price_levels': [],
+        }
+        self.analyzer._build_render_payload = lambda _geometry: {}
+        self.analyzer._build_structure_interpretation = lambda **kwargs: {'focus_structure': {'archetype_family': 'complex'}}
+        self.analyzer.analyze_ma_position = lambda _latest: {}
+
+        result = self.analyzer.detect_structure(df)
+
+        self.assertEqual(result['structure_type'], '复杂结构')
+        self.assertEqual(result['structure_stage'], '等待确认')
+        self.assertEqual(result['structure_details']['focus_classification']['type'], '复杂结构')
+        self.assertEqual(result['structure_details']['focus_classification']['stage'], '等待确认')
+        self.assertEqual(result['structure_details']['focus_classification']['standard_qualification'], 'failed')
+        self.assertIn('无法诚实解释标准起点', result['structure_details']['focus_classification']['qualification_reason'])
 
     def test_build_trinity_structure_decision_reads_boundary_levels_from_structure_details(self) -> None:
         structure = self.analyzer._build_trinity_structure_decision(

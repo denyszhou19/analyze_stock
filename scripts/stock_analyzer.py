@@ -2933,6 +2933,11 @@ class TrinityStockAnalyzer:
         )
 
         point_index_map = {point['point_id']: idx for idx, point in enumerate(labeled_points)}
+        point_price_map = {
+            point['point_id']: point.get('price')
+            for point in labeled_points
+            if point.get('point_id')
+        }
 
         current_segment = None
         if live_point and last_confirmed_point and current_point_id == last_confirmed_point['point_id']:
@@ -3072,6 +3077,11 @@ class TrinityStockAnalyzer:
             'standard_qualification': standard_qualification,
             'structure_start_point_id': structure_start_point_id,
             'current_point_id': current_point_id,
+            'a4_price': point_price_map.get('a4'),
+            'b8_price': point_price_map.get('b8'),
+            'd3_price': point_price_map.get('d3'),
+            'd4_price': point_price_map.get('d4'),
+            'last_confirmed_price': last_confirmed_point.get('price') if last_confirmed_point else None,
             'current_segment': current_segment,
             'next_segment_preview': next_segment_preview,
             'point_labels': point_labels,
@@ -3175,8 +3185,9 @@ class TrinityStockAnalyzer:
         self,
         focus_classification: Dict[str, Any],
         explainability: Dict[str, Any],
+        qualification: Optional[str] = None,
     ) -> Dict[str, Any]:
-        qualification = focus_classification.get('standard_qualification') or 'failed'
+        qualification = qualification or focus_classification.get('standard_qualification') or 'failed'
         if qualification in {'extended', 'unfinished', 'failed'}:
             return {
                 'status': 'downgraded',
@@ -3275,7 +3286,7 @@ class TrinityStockAnalyzer:
         focus_classification: Dict[str, Any],
         structure_type: str,
     ) -> Tuple[str, str, Optional[str]]:
-        resolved_type = focus_classification.get('type') or structure_type
+        resolved_type = structure_type or focus_classification.get('type')
         return STRUCTURE_FAMILY_MAP.get(resolved_type, ('complex', 'failed', None))
 
     def _build_trinity_boundaries(
@@ -3345,20 +3356,22 @@ class TrinityStockAnalyzer:
             structure_payload,
             focus_origin,
         )
-        numbering_explainability = self._build_numbering_explainability(
-            focus_classification,
-            explainability,
-        )
-
         structure_type = structure_payload.get('structure_type') if isinstance(structure_payload, dict) else None
         family, default_qualification, standard_candidate = self._resolve_trinity_structure_family(
             focus_classification,
             structure_type,
         )
-        qualification = (
-            focus_classification.get('standard_qualification')
-            or focus_structure.get('standard_qualification')
-            or default_qualification
+        qualification = default_qualification
+        if not structure_type:
+            qualification = (
+                focus_classification.get('standard_qualification')
+                or focus_structure.get('standard_qualification')
+                or default_qualification
+            )
+        numbering_explainability = self._build_numbering_explainability(
+            focus_classification,
+            explainability,
+            qualification,
         )
 
         trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
@@ -4777,6 +4790,15 @@ class TrinityStockAnalyzer:
             result['structure_type'] = '复杂结构'
             result['structure_stage'] = '等待确认'
             result['description'] = '当前聚焦区间无法诚实解释为标准结构，已降级'
+            result['structure_details']['focus_classification'].update({
+                'type': result['structure_type'],
+                'stage': result['structure_stage'],
+                'description': result['description'],
+                'archetype_family': 'complex',
+                'standard_qualification': 'failed',
+                'qualification_reason': explainability_verdict['reason'],
+                'trend_direction': focus_trend_direction,
+            })
             judgment_criteria.append(f"⚠️ 解释性降级: {explainability_verdict['reason']}")
 
         if result['description'] not in (
