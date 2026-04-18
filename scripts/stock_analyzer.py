@@ -3079,9 +3079,11 @@ class TrinityStockAnalyzer:
         if value is None:
             return None
         if isinstance(value, (int, float, np.integer, np.floating)):
-            return float(value)
+            normalized = float(value)
+            return normalized if np.isfinite(normalized) else None
         try:
-            return float(str(value).strip())
+            normalized = float(str(value).strip())
+            return normalized if np.isfinite(normalized) else None
         except (TypeError, ValueError):
             return None
 
@@ -3142,7 +3144,11 @@ class TrinityStockAnalyzer:
         if boundaries['stop_loss'] is None and boundaries['lower'] is not None:
             boundaries['stop_loss'] = boundaries['lower']
 
-        if boundaries['upper'] is not None and boundaries['lower'] is not None:
+        if (
+            boundaries['upper'] is not None
+            and boundaries['lower'] is not None
+            and boundaries['upper'] > boundaries['lower']
+        ):
             boundaries['mid'] = round((boundaries['upper'] + boundaries['lower']) / 2, 2)
 
         return boundaries
@@ -3200,6 +3206,11 @@ class TrinityStockAnalyzer:
 
         trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
         boundaries = self._extract_trinity_boundaries(structure_payload)
+        has_valid_boundary_range = (
+            boundaries.get('upper') is not None
+            and boundaries.get('lower') is not None
+            and boundaries['upper'] > boundaries['lower']
+        )
         return {
             'background_origin': background_anchor,
             'focus_origin': focus_anchor,
@@ -3218,7 +3229,7 @@ class TrinityStockAnalyzer:
                 'last_confirmed': explainability.get('current_point_id'),
             },
             'can_trade_by_structure_nodes': qualification == 'standard' and family == 'standard',
-            'can_trade_by_boundaries': boundaries.get('upper') is not None and boundaries.get('lower') is not None,
+            'can_trade_by_boundaries': has_valid_boundary_range,
             'explainability': {
                 'status': focus_origin_analysis.get('explainability_status') or 'passed',
                 'reason': (
@@ -3342,12 +3353,18 @@ class TrinityStockAnalyzer:
         direction = execution_payload.get('direction')
         is_short_intent = direction == 'short'
         is_long_intent = direction == 'long'
+        structure_direction = structure_decision.get('direction')
         ma_gate = moving_average_decision.get('ma_gate') or {}
+        direction_matches_structure = (
+            (is_long_intent and structure_direction == 'up')
+            or (is_short_intent and structure_direction == 'down')
+        )
         if action == 'wait':
             trade_mode = 'wait_confirmation'
             position_permission = 'no_position'
         elif (
             structure_decision.get('can_trade_by_structure_nodes')
+            and direction_matches_structure
             and (
                 (is_short_intent and ma_gate.get('allow_short'))
                 or (is_long_intent and ma_gate.get('allow_long'))
@@ -3430,7 +3447,7 @@ class TrinityStockAnalyzer:
 
         action = execution_payload.get('action') or 'wait'
         can_trade = bool(execution_payload.get('can_trade'))
-        if trade_qualification['trade_mode'] == 'no_trade':
+        if trade_qualification['trade_mode'] == 'no_trade' or action == 'wait':
             can_trade = False
         return {
             'version': 'v2',
