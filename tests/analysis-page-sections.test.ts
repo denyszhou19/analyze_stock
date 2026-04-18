@@ -76,7 +76,7 @@ test('AnalysisPeriodDetails defaults to open daily section and includes structur
         {
           key: 'daily',
           label: '日线',
-          defaultOpen: true,
+          defaultOpen: false,
           summary: '日线处于主结构确认阶段。',
           rangeLabel: '近 240 根',
           topologyTitle: '日线拓扑结构图',
@@ -85,7 +85,7 @@ test('AnalysisPeriodDetails defaults to open daily section and includes structur
         {
           key: 'intraday',
           label: '30分钟',
-          defaultOpen: false,
+          defaultOpen: true,
           summary: '30分钟等待执行触发。',
           rangeLabel: '近 160 根',
           topologyTitle: '30分钟拓扑结构图',
@@ -99,4 +99,9 @@ test('AnalysisPeriodDetails defaults to open daily section and includes structur
   assert.match(html, /结构证据/);
   assert.match(html, /日线拓扑结构图/);
   assert.match(html, /日线复盘内容/);
+  assert.match(html, /data-default-open="true"[^>]*data-section-key="daily"|data-section-key="daily"[^>]*data-default-open="true"/);
+  assert.doesNotMatch(
+    html,
+    /data-default-open="true"[^>]*data-section-key="intraday"|data-section-key="intraday"[^>]*data-default-open="true"/
+  );
 });

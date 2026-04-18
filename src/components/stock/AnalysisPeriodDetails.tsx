@@ -28,8 +28,8 @@ export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) 
   }
 
   const defaultValue =
+    sections.find((section) => section.key === 'daily' || section.label === '日线')?.key ??
     sections.find((section) => section.defaultOpen)?.key ??
-    sections.find((section) => section.label === '日线')?.key ??
     sections[0]?.key;
 
   return (
@@ -41,7 +41,12 @@ export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) 
 
       <Accordion type="single" defaultValue={defaultValue} className="rounded-xl border px-4">
         {sections.map((section) => (
-          <AccordionItem key={section.key} value={section.key}>
+          <AccordionItem
+            key={section.key}
+            value={section.key}
+            data-default-open={section.key === defaultValue}
+            data-section-key={section.key}
+          >
             <AccordionTrigger className="gap-4 py-4 hover:no-underline">
               <div className="space-y-1 text-left">
                 <div className="text-sm font-semibold text-foreground">{section.label}</div>
