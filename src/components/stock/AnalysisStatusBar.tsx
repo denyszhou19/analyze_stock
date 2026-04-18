@@ -7,28 +7,12 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import type { AnalysisPageStatusBarViewModel } from '@/lib/trinity-analysis-page-view-model';
 import { cn } from '@/lib/utils';
 
-type AiStatusTone = 'muted' | 'loading' | 'success' | 'danger';
+export type AnalysisStatusBarProps = AnalysisPageStatusBarViewModel;
 
-export interface AnalysisStatusBarProps {
-  syncStatus: {
-    label: string;
-    detail: string | null;
-  };
-  aiStatus: {
-    label: string;
-    tone: AiStatusTone;
-  };
-  dataRanges: Array<{
-    level: string;
-    label: string;
-    countLabel: string;
-    coverageLabel: string;
-  }>;
-}
-
-const aiStatusToneClassName: Record<AiStatusTone, string> = {
+const aiStatusToneClassName: Record<AnalysisPageStatusBarViewModel['aiStatus']['tone'], string> = {
   muted: 'border-muted-foreground/20 bg-muted text-muted-foreground',
   loading: 'border-amber-500/25 bg-amber-50 text-amber-700',
   success: 'border-emerald-500/25 bg-emerald-50 text-emerald-700',
@@ -36,7 +20,9 @@ const aiStatusToneClassName: Record<AiStatusTone, string> = {
 };
 
 export function AnalysisStatusBar({
-  syncStatus,
+  stockLabel,
+  analysisTimeLabel,
+  integrityStatus,
   aiStatus,
   dataRanges,
 }: AnalysisStatusBarProps) {
@@ -50,7 +36,7 @@ export function AnalysisStatusBar({
           </div>
           <div className="flex flex-wrap gap-2">
             <Badge variant="outline" className="bg-background">
-              数据同步：{syncStatus.label}
+              数据同步：{integrityStatus.label}
             </Badge>
             <Badge
               variant="outline"
@@ -60,9 +46,11 @@ export function AnalysisStatusBar({
             </Badge>
           </div>
         </div>
-        {syncStatus.detail ? (
-          <p className="text-sm text-muted-foreground">{syncStatus.detail}</p>
-        ) : null}
+        <div className="space-y-1 text-sm text-muted-foreground">
+          <p>标的：{stockLabel}</p>
+          <p>分析时间：{analysisTimeLabel}</p>
+          {integrityStatus.detail ? <p>{integrityStatus.detail}</p> : null}
+        </div>
       </CardHeader>
       <CardContent className="space-y-4">
         <Separator />

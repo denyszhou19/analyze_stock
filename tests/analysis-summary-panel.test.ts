@@ -2,7 +2,10 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import React from 'react';
-import type { AnalysisPageSummaryViewModel } from '../src/lib/trinity-analysis-page-view-model';
+import type {
+  AnalysisPageStatusBarViewModel,
+  AnalysisPageSummaryViewModel,
+} from '../src/lib/trinity-analysis-page-view-model';
 
 // @ts-expect-error Node test runtime needs the explicit .ts extension here.
 import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
@@ -22,6 +25,27 @@ const summaryViewModel: AnalysisPageSummaryViewModel = {
     { label: '后端最终动作', value: '等待' },
     { label: '交易模式', value: '等待确认' },
     { label: '仓位权限', value: '空仓等待' },
+  ],
+};
+
+const statusBarViewModel: AnalysisPageStatusBarViewModel = {
+  stockLabel: '浦发银行｜SH600000',
+  analysisTimeLabel: '2026-04-18 15:00:00',
+  integrityStatus: {
+    label: '数据完整',
+    detail: null,
+  },
+  aiStatus: {
+    label: '未生成',
+    tone: 'muted',
+  },
+  dataRanges: [
+    {
+      level: 'daily',
+      label: '日线',
+      countLabel: '近 240 根',
+      coverageLabel: '2025-05-12 至 2026-04-18',
+    },
   ],
 };
 
@@ -68,26 +92,59 @@ test('AnalysisSummaryPanel ready renders AI headline without backend enum leakag
   assert.doesNotMatch(html, /wait_confirmation/);
 });
 
+test('AnalysisSummaryPanel loading renders Chinese progress copy and disabled action', async () => {
+  const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
+    'src/components/stock/AnalysisSummaryPanel.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisSummaryPanel, {
+      viewModel: {
+        ...summaryViewModel,
+        mode: 'loading',
+      },
+      onGenerate: () => {},
+      canGenerate: true,
+    })
+  );
+
+  assert.match(html, /AI 正在生成综合判断，请稍候。/);
+  assert.match(html, /AI 综合判断生成中/);
+  assert.match(html, /disabled/);
+});
+
+test('AnalysisSummaryPanel error renders fallback copy and retry action', async () => {
+  const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
+    'src/components/stock/AnalysisSummaryPanel.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisSummaryPanel, {
+      viewModel: {
+        ...summaryViewModel,
+        mode: 'error',
+      },
+      onGenerate: () => {},
+      canGenerate: true,
+    })
+  );
+
+  assert.match(html, /AI 综合判断生成失败，当前展示后端确定性结论。/);
+  assert.match(html, /重试生成 AI 综合判断/);
+  assert.match(html, /后端最终动作/);
+});
+
 test('AnalysisStatusBar renders data ranges with no legacy window copy', async () => {
   const { AnalysisStatusBar } = await importTsxModule<AnalysisStatusBarModule>(
     'src/components/stock/AnalysisStatusBar.tsx'
   );
 
   const html = renderQuietly(
-    React.createElement(AnalysisStatusBar, {
-      syncStatus: { label: '数据完整', detail: null },
-      aiStatus: { label: '未生成', tone: 'muted' },
-      dataRanges: [
-        {
-          level: 'daily',
-          label: '日线',
-          countLabel: '近 240 根',
-          coverageLabel: '2025-05-12 至 2026-04-18',
-        },
-      ],
-    })
+    React.createElement(AnalysisStatusBar, statusBarViewModel)
   );
 
+  assert.match(html, /标的：浦发银行｜SH600000/);
+  assert.match(html, /分析时间：2026-04-18 15:00:00/);
   assert.match(html, /本次判定使用的数据范围/);
   assert.match(html, /日线/);
   assert.match(html, /近 240 根/);
