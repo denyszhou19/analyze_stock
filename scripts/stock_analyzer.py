@@ -3686,6 +3686,10 @@ class TrinityStockAnalyzer:
             volume_decision.get('volume_gate', {}).get('reason') or '沿用量能门控',
         ]
         nesting_permission = level_nesting_decision.get('permission') or {}
+        light_probe_only = (
+            bool(nesting_permission.get('allow_only_light_probe'))
+            and not nesting_permission.get('allow_position_increase')
+        )
         is_child_countertrend_long = (
             level_nesting_decision.get('resonance') == 'child_countertrend'
             and level_nesting_decision.get('parent_bias') == 'bearish'
@@ -3746,9 +3750,16 @@ class TrinityStockAnalyzer:
         if can_trade_by_nodes and direction_matches_structure and direction_gate_passed and volume_gate_passed:
             return {
                 'trade_mode': 'standard_node_trade',
-                'position_permission': 'half_position',
+                'position_permission': 'light_probe' if light_probe_only else 'half_position',
                 'confidence': apply_confidence('medium'),
-                'reason': ['标准结构节点可交易', *reasons],
+                'reason': [
+                    (
+                        nesting_permission.get('reason') or '级别权限限制为轻仓试探'
+                    )
+                    if light_probe_only
+                    else '标准结构节点可交易',
+                    *reasons,
+                ],
             }
         if action in {'sell', 'reduce'}:
             return {

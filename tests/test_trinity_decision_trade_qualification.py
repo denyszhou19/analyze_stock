@@ -103,6 +103,95 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertFalse(decision['conclusion']['can_trade'])
         self.assertEqual(decision['conclusion']['action'], 'wait')
 
+    def test_parent_unclear_light_probe_permission_downgrades_standard_node_position(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': False,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': '标准多头节点已确认'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': 'MA55 之上'}},
+            volume_decision={'volume_gate': {'reason': '量能支持'}},
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'parent_level': 'weekly',
+                'child_level': 'daily',
+                'parent_bias': 'neutral',
+                'child_signal': 'long',
+                'resonance': 'parent_unclear',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': False,
+                    'allow_only_light_probe': True,
+                    'reason': '父级别缺失或尚未归一化，降级为轻仓/等待',
+                },
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'standard_node_trade')
+        self.assertEqual(decision['position_permission'], 'light_probe')
+
+    def test_refresh_trinity_decisions_applies_parent_unclear_light_probe_permission(self) -> None:
+        results = {
+            'daily': {
+                'structure': {
+                    'structure_type': 'A五段式',
+                    'structure_stage': '趋势中继',
+                    'trend_direction': '上涨',
+                    'description': '父级缺失下的日线多头节点',
+                    'interpretation': {
+                        'focus_structure': {
+                            'archetype_family': 'A',
+                            'standard_qualification': 'standard',
+                        },
+                        'spacetime_gate': {'child_structure_match': True, 'resonance_enabled': True},
+                    },
+                    'structure_details': {
+                        'focus_classification': {
+                            'type': 'A五段式',
+                            'standard_qualification': 'standard',
+                        },
+                        'explainability': {'a4_price': 21.6},
+                    },
+                    'execution': {
+                        'can_trade': True,
+                        'action': 'buy',
+                        'direction': 'long',
+                        'entry_style': 'pullback_confirm',
+                        'trigger': ['日线 a4 买点'],
+                        'invalidation': ['跌破 a4'],
+                        'confirmation': ['放量突破'],
+                        'position_sizing': {'initial': '20%-30%'},
+                        'risk_flags': [],
+                        'rationale': '父级缺失时应降级为轻仓试探',
+                    },
+                },
+                'macd': {'status': '中偏强'},
+                'moving_averages': {
+                    'price_vs_ma55': 'above',
+                    'price_vs_ma233': 'above',
+                    'ma_status': '多头排列',
+                },
+                'breakthrough': {'direction': 'up', 'is_valid': True, 'pattern_type': 'breakout'},
+                'volume_ratio_5': 1.2,
+                'volume_ratio_20': 1.1,
+                'amount_ratio_20': 1.15,
+            }
+        }
+
+        normalized_results = self.analyzer._refresh_trinity_decisions_with_level_nesting(results, raw_level_nesting=None)
+        decision = normalized_results['daily']['trinity_decision']
+
+        self.assertEqual(decision['level_nesting']['resonance'], 'parent_unclear')
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'standard_node_trade')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'light_probe')
+        self.assertTrue(decision['conclusion']['can_trade'])
+        self.assertEqual(decision['conclusion']['action'], 'buy')
+
     def test_standard_node_trade_requires_volume_gate_support(self) -> None:
         decision = self.analyzer._build_trinity_trade_qualification(
             structure_decision={
