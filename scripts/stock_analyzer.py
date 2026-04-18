@@ -3075,6 +3075,77 @@ class TrinityStockAnalyzer:
             'semantic': semantic or anchor.get('semantic'),
         }
 
+    def _normalize_trinity_price(self, value: Any) -> Optional[float]:
+        if value is None:
+            return None
+        if isinstance(value, (int, float, np.integer, np.floating)):
+            return float(value)
+        try:
+            return float(str(value).strip())
+        except (TypeError, ValueError):
+            return None
+
+    def _extract_trinity_boundaries(
+        self,
+        structure_payload: Dict[str, Any],
+    ) -> Dict[str, Optional[float]]:
+        boundaries = {
+            'upper': None,
+            'lower': None,
+            'mid': None,
+            'breakout_trigger': None,
+            'breakdown_trigger': None,
+            'stop_loss': None,
+        }
+
+        details = structure_payload.get('structure_details') if isinstance(structure_payload, dict) else {}
+        details = details or {}
+        prediction = details.get('prediction') if isinstance(details, dict) else {}
+        prediction = prediction or {}
+        key_price_levels = prediction.get('key_price_levels') if isinstance(prediction, dict) else []
+
+        for level in key_price_levels or []:
+            if not isinstance(level, dict):
+                continue
+
+            price = self._normalize_trinity_price(level.get('price'))
+            if price is None:
+                continue
+
+            level_type = str(level.get('type') or '')
+            note = str(level.get('note') or '')
+            label = f'{level_type} {note}'
+
+            is_stop = level_type == 'stop' or '止损' in label
+            is_lower = any(keyword in label for keyword in ('底分型', '支撑', '下沿', '下轨'))
+            is_upper = any(keyword in label for keyword in ('压力', '阻力', '上沿', '上轨'))
+            if '突破' in label and '跌破' not in label:
+                is_upper = True
+
+            if is_upper:
+                if boundaries['upper'] is None:
+                    boundaries['upper'] = price
+                if boundaries['breakout_trigger'] is None:
+                    boundaries['breakout_trigger'] = price
+
+            if is_lower or is_stop:
+                if boundaries['lower'] is None:
+                    boundaries['lower'] = price
+                if boundaries['breakdown_trigger'] is None:
+                    boundaries['breakdown_trigger'] = price
+
+            if is_stop:
+                if boundaries['stop_loss'] is None:
+                    boundaries['stop_loss'] = price
+
+        if boundaries['stop_loss'] is None and boundaries['lower'] is not None:
+            boundaries['stop_loss'] = boundaries['lower']
+
+        if boundaries['upper'] is not None and boundaries['lower'] is not None:
+            boundaries['mid'] = round((boundaries['upper'] + boundaries['lower']) / 2, 2)
+
+        return boundaries
+
     def _build_trinity_structure_decision(
         self,
         structure_payload: Dict[str, Any],
@@ -3127,14 +3198,7 @@ class TrinityStockAnalyzer:
             family = 'unfinished'
 
         trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
-        boundaries = {
-            'upper': None,
-            'lower': None,
-            'mid': None,
-            'breakout_trigger': None,
-            'breakdown_trigger': None,
-            'stop_loss': None,
-        }
+        boundaries = self._extract_trinity_boundaries(structure_payload)
         return {
             'background_origin': background_anchor,
             'focus_origin': focus_anchor,
@@ -3274,7 +3338,9 @@ class TrinityStockAnalyzer:
     ) -> Dict[str, Any]:
         execution_payload = execution_payload if isinstance(execution_payload, dict) else {}
         action = execution_payload.get('action')
-        is_short_intent = action in ('sell', 'short', 'reduce')
+        direction = execution_payload.get('direction')
+        is_short_intent = direction == 'short'
+        is_long_intent = direction == 'long'
         ma_gate = moving_average_decision.get('ma_gate') or {}
         if action == 'wait':
             trade_mode = 'wait_confirmation'
@@ -3283,14 +3349,17 @@ class TrinityStockAnalyzer:
             structure_decision.get('can_trade_by_structure_nodes')
             and (
                 (is_short_intent and ma_gate.get('allow_short'))
-                or (not is_short_intent and ma_gate.get('allow_long'))
+                or (is_long_intent and ma_gate.get('allow_long'))
             )
         ):
             trade_mode = 'standard_node_trade'
             position_permission = 'half_position'
-        else:
+        elif structure_decision.get('can_trade_by_boundaries'):
             trade_mode = 'conditional_boundary_trade'
             position_permission = 'light_probe'
+        else:
+            trade_mode = 'no_trade'
+            position_permission = 'no_position'
         return {
             'trade_mode': trade_mode,
             'position_permission': position_permission,
@@ -3311,12 +3380,18 @@ class TrinityStockAnalyzer:
         if not isinstance(position_sizing, dict):
             position_sizing = {}
         position_sizing = dict(position_sizing)
-        position_sizing.update({
-            'max_ratio': execution_payload.get('timeframe_cap_ratio'),
-            'reason': execution_payload.get('rationale') or execution_payload.get('wait_reason') or '沿用现有执行摘要',
-            'upgrade_condition': execution_payload.get('upgrade_condition'),
-            'downgrade_condition': execution_payload.get('wait_reason'),
-        })
+        if position_sizing.get('max_ratio') is None:
+            position_sizing['max_ratio'] = execution_payload.get('timeframe_cap_ratio')
+        if position_sizing.get('reason') is None:
+            position_sizing['reason'] = (
+                execution_payload.get('rationale')
+                or execution_payload.get('wait_reason')
+                or '沿用现有执行摘要'
+            )
+        if position_sizing.get('upgrade_condition') is None:
+            position_sizing['upgrade_condition'] = execution_payload.get('upgrade_condition')
+        if position_sizing.get('downgrade_condition') is None:
+            position_sizing['downgrade_condition'] = execution_payload.get('wait_reason')
         return {
             'entry_style': execution_payload.get('entry_style') or 'none',
             'triggers': execution_payload.get('trigger') or [],

@@ -304,3 +304,304 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
         self.assertEqual(decision['execution']['position_sizing']['reason'], '沿用上游执行细则')
         self.assertIsNone(decision['execution']['position_sizing']['upgrade_condition'])
         self.assertEqual(decision['execution']['position_sizing']['downgrade_condition'], '边界尚未给出')
+
+    def test_build_trinity_decision_extracts_prediction_boundaries(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'C单平台式',
+                'structure_stage': '平台震荡区间',
+                'trend_direction': '震荡',
+                'description': 'C单平台式，平台边界已给出',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'C',
+                        'standard_qualification': 'extended',
+                        'summary': '平台延伸，按边界等待突破',
+                    },
+                    'spacetime_gate': {
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'required_confirmation': '等待平台边界突破',
+                    },
+                },
+                'structure_details': {
+                    'prediction': {
+                        'key_price_levels': [
+                            {'price': 18.8, 'type': '上沿参考', 'note': '延伸平台上沿'},
+                            {'price': 16.2, 'type': '下沿参考', 'note': '延伸平台下沿'},
+                            {'price': 15.9, 'type': 'stop', 'note': '止损位'},
+                        ],
+                    },
+                },
+            },
+            macd_payload={'status': '中性'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'boundary',
+                'trigger': ['突破平台上沿'],
+                'invalidation': ['跌破平台下沿'],
+                'confirmation': ['量能确认'],
+                'position_sizing': {'initial': 'light_probe'},
+                'risk_flags': [],
+                'rationale': '边界交易候选',
+            },
+            level_nesting_payload=None,
+        )
+
+        self.assertTrue(decision['structure']['can_trade_by_boundaries'])
+        self.assertEqual(decision['structure']['boundaries']['upper'], 18.8)
+        self.assertEqual(decision['structure']['boundaries']['lower'], 16.2)
+        self.assertEqual(decision['structure']['boundaries']['breakout_trigger'], 18.8)
+        self.assertEqual(decision['structure']['boundaries']['breakdown_trigger'], 16.2)
+        self.assertEqual(decision['structure']['boundaries']['stop_loss'], 15.9)
+        self.assertEqual(decision['structure']['boundaries']['mid'], 17.5)
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'conditional_boundary_trade')
+
+    def test_build_trinity_decision_does_not_use_boundary_trade_without_boundaries(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': '大平台震荡',
+                'structure_stage': '平台震荡区间',
+                'trend_direction': '震荡',
+                'description': '边界尚未给出的大平台',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'C',
+                        'standard_qualification': 'failed',
+                        'summary': '边界不足，不能按边界交易',
+                    },
+                    'spacetime_gate': {
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'required_confirmation': '等待边界数据',
+                    },
+                },
+                'structure_details': {},
+            },
+            macd_payload={'status': '中性'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'boundary',
+                'trigger': ['等待边界触发'],
+                'invalidation': ['边界失效'],
+                'confirmation': ['等待确认'],
+                'position_sizing': {'initial': 'light_probe'},
+                'risk_flags': [],
+                'rationale': '没有实际边界数据',
+            },
+            level_nesting_payload=None,
+        )
+
+        self.assertFalse(decision['structure']['can_trade_by_boundaries'])
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'no_trade')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+
+    def test_build_trinity_decision_reduce_uses_direction_not_action_for_ma_gate(self) -> None:
+        long_reduce_decision = self.analyzer._build_trinity_decision(
+            level='daily',
+            structure_payload={
+                'structure_type': 'A五段式',
+                'structure_stage': '上涨衰竭风险',
+                'trend_direction': '上涨',
+                'description': '多头结构进入减仓风险区',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                        'summary': '标准多头结构',
+                    },
+                    'spacetime_gate': {'child_structure_match': True, 'resonance_enabled': True},
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'standard_qualification': 'standard',
+                    },
+                },
+            },
+            macd_payload={'status': '中偏强'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': True,
+                'action': 'reduce',
+                'direction': 'long',
+                'entry_style': 'trend_hold',
+                'trigger': ['顶背离减仓'],
+                'invalidation': ['重新转强'],
+                'confirmation': ['上涨衰竭'],
+                'position_sizing': {'initial': '20%-30%'},
+                'risk_flags': ['exhaustion'],
+                'rationale': '多头结构减仓，不是空头开仓',
+            },
+            level_nesting_payload=None,
+        )
+        short_reduce_decision = self.analyzer._build_trinity_decision(
+            level='daily',
+            structure_payload={
+                'structure_type': 'D三段式',
+                'structure_stage': '下跌衰竭风险',
+                'trend_direction': '下跌',
+                'description': '空头结构进入减仓风险区',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'D',
+                        'standard_qualification': 'standard',
+                        'summary': '标准空头结构',
+                    },
+                    'spacetime_gate': {'child_structure_match': True, 'resonance_enabled': True},
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'D三段式',
+                        'standard_qualification': 'standard',
+                    },
+                },
+            },
+            macd_payload={'status': '中偏弱'},
+            moving_averages={
+                'price_vs_ma55': 'below',
+                'price_vs_ma233': 'below',
+                'ma_status': '空头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': True,
+                'action': 'reduce',
+                'direction': 'short',
+                'entry_style': 'trend_hold',
+                'trigger': ['底背离减仓'],
+                'invalidation': ['继续走弱'],
+                'confirmation': ['下跌衰竭'],
+                'position_sizing': {'initial': '20%-30%'},
+                'risk_flags': ['exhaustion'],
+                'rationale': '空头结构减仓，按空头门控处理',
+            },
+            level_nesting_payload=None,
+        )
+
+        self.assertEqual(long_reduce_decision['trade_qualification']['trade_mode'], 'standard_node_trade')
+        self.assertEqual(short_reduce_decision['trade_qualification']['trade_mode'], 'standard_node_trade')
+
+    def test_build_trinity_decision_reduce_long_does_not_fall_through_short_gate(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='daily',
+            structure_payload={
+                'structure_type': 'A五段式',
+                'structure_stage': '上涨衰竭风险',
+                'trend_direction': '上涨',
+                'description': '多头减仓场景不应被当成空头开仓',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                        'summary': '标准多头结构',
+                    },
+                    'spacetime_gate': {'child_structure_match': True, 'resonance_enabled': True},
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'standard_qualification': 'standard',
+                    },
+                },
+            },
+            macd_payload={'status': '中偏强'},
+            moving_averages={
+                'price_vs_ma55': 'below',
+                'price_vs_ma233': 'below',
+                'ma_status': '空头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': True,
+                'action': 'reduce',
+                'direction': 'long',
+                'entry_style': 'trend_hold',
+                'trigger': ['顶背离减仓'],
+                'invalidation': ['重新站上 MA55'],
+                'confirmation': ['上涨衰竭'],
+                'position_sizing': {'initial': '20%-30%'},
+                'risk_flags': ['exhaustion'],
+                'rationale': '仅表达多头减仓，不允许按空头门控放行',
+            },
+            level_nesting_payload=None,
+        )
+
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'no_trade')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+
+    def test_build_trinity_decision_keeps_existing_position_sizing_contract_fields(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour60',
+            structure_payload={
+                'structure_type': 'C单平台式',
+                'structure_stage': '平台震荡区间',
+                'trend_direction': '震荡',
+                'description': '上游已经给出仓位字段说明',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'C',
+                        'standard_qualification': 'standard',
+                        'summary': '平台等待确认',
+                    },
+                    'spacetime_gate': {'child_structure_match': True, 'resonance_enabled': True},
+                },
+                'structure_details': {},
+            },
+            macd_payload={'status': '中性'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={},
+            execution_payload={
+                'can_trade': False,
+                'action': 'wait',
+                'direction': 'long',
+                'entry_style': 'pullback_confirm',
+                'trigger': ['等待确认'],
+                'invalidation': ['跌破确认位'],
+                'confirmation': ['放量确认'],
+                'position_sizing': {
+                    'initial': '10%-15%',
+                    'reason': '上游仓位原因',
+                    'upgrade_condition': '上游升级条件',
+                    'downgrade_condition': '上游降级条件',
+                },
+                'risk_flags': [],
+                'timeframe_cap_ratio': 0.5,
+                'wait_reason': '等待确认',
+                'rationale': '下游兜底原因',
+            },
+            level_nesting_payload=None,
+        )
+
+        position_sizing = decision['execution']['position_sizing']
+        self.assertEqual(position_sizing['reason'], '上游仓位原因')
+        self.assertEqual(position_sizing['upgrade_condition'], '上游升级条件')
+        self.assertEqual(position_sizing['downgrade_condition'], '上游降级条件')
+        self.assertEqual(position_sizing['max_ratio'], 0.5)
