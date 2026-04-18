@@ -28,7 +28,15 @@ class TrinityDecisionOriginsTest(unittest.TestCase):
                         'explainability_status': 'passed',
                         'explainability_reason': '主峰切片优先',
                     },
-                    'raw_classification': {'type': '延伸C类'},
+                    'raw_classification': {
+                        'type': '延伸C类',
+                        'macro_origin': {
+                            'price': 168.7,
+                            'date': '2025-09-29',
+                            'point_index': 0,
+                            'outside_window': False,
+                        },
+                    },
                     'focus_classification': {'type': 'C单平台式', 'standard_qualification': 'standard'},
                     'explainability': {
                         'structure_start_point_id': 'p7',

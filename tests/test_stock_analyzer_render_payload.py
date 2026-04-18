@@ -496,6 +496,7 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
 
         self.assertEqual(focus_origin_analysis["selected_origin_kind"], "macro_origin")
         self.assertIsNone(focus_origin_analysis["selected_point_index"])
+        self.assertTrue(focus_origin_analysis["macro_origin"]["outside_window"])
         self.assertIn("当前窗口未包含该原点", focus_origin_analysis["explainability_reason"])
 
     def test_build_focus_origin_analysis_prefers_recent_component_boundary_when_no_peak(self) -> None:
@@ -976,6 +977,10 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertEqual(raw_classification["stage"], "a1-a6拐点区间")
         self.assertEqual(raw_classification["description"], "旧的标准结构结果")
         self.assertEqual(raw_classification["component_summary"], ["上涨结构(3笔)", "延伸下跌(13笔)"])
+        self.assertIn("macro_origin", raw_classification)
+        self.assertEqual(raw_classification["macro_origin"]["price"], 168.7)
+        self.assertEqual(raw_classification["macro_origin"]["date"], "2024-03-01")
+        self.assertFalse(raw_classification["macro_origin"]["outside_window"])
         self.assertIn("focus_classification", result["structure_details"])
 
     def test_detect_structure_reports_peak_extreme_focus_origin_selection(self) -> None:
@@ -1046,6 +1051,71 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             result["interpretation"]["focus_structure"]["start_anchor_source"],
             "peak_extreme",
         )
+
+    def test_detect_structure_marks_macro_origin_as_outside_window_and_omits_background_origin_when_unavailable(self) -> None:
+        recent, full_strokes, valid_fractals, stroke_list, _ = (
+            build_focus_origin_peak_regression_fixture()
+        )
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes_count: int) -> None:
+                self.component_type = component_type
+                self.strokes_count = strokes_count
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": [{} for _ in range(self.strokes_count)],
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "下跌",
+            "valid_range_info": {
+                "start_date": "2023-12-01",
+                "end_date": "2024-04-30",
+                "start_price": 88.8,
+                "origin_type": "low",
+            },
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": stroke_list,
+        }
+        macro_components = [
+            StubMacroComponent("上涨结构", 3),
+            StubMacroComponent("延伸下跌", 13),
+        ]
+        non_peak_analysis = {
+            "is_peak_structure": False,
+            "peak_type": None,
+            "peak_price": None,
+            "right_structure": None,
+        }
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("延伸C类", "等待确认", "窗口外宏观原点", ["mocked classification"]),
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=non_peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中偏弱")
+
+        raw_classification = result["structure_details"]["raw_classification"]
+        self.assertTrue(raw_classification["macro_origin"]["outside_window"])
+        self.assertEqual(
+            result["structure_details"]["focus_origin_analysis"]["selected_origin_kind"],
+            "macro_origin",
+        )
+        trinity_structure = self.analyzer._build_trinity_structure_decision(result)
+        self.assertIsNone(trinity_structure["background_origin"])
 
 
 if __name__ == "__main__":

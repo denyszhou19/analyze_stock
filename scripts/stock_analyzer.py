@@ -3095,18 +3095,7 @@ class TrinityStockAnalyzer:
             source='macro_origin',
             semantic='background_origin',
         )
-        if normalized_origin is not None:
-            return normalized_origin
-
-        if origin or raw_classification:
-            return {
-                'point_id': None,
-                'price': None,
-                'date': None,
-                'source': 'macro_origin',
-                'semantic': 'background_origin',
-            }
-        return None
+        return normalized_origin
 
     def _build_focus_origin_anchor(
         self,
@@ -4131,6 +4120,7 @@ class TrinityStockAnalyzer:
                 'price': valid_range.get('start_price'),
                 'date': valid_range.get('start_date'),
                 'source': 'valid_range',
+                'outside_window': macro_point_index is None,
             }
             candidates.append({
                 'kind': 'macro_origin',
@@ -4138,6 +4128,7 @@ class TrinityStockAnalyzer:
                 'price': valid_range.get('start_price'),
                 'date': valid_range.get('start_date'),
                 'reason': '使用 valid_range 原点作为宏观起点',
+                'outside_window': macro_point_index is None,
                 'selected': False,
             })
 
@@ -4622,6 +4613,9 @@ class TrinityStockAnalyzer:
             line_geometry=line_geometry,
             peak_analysis=peak_analysis,
             macro_components=macro_components,
+        )
+        result['structure_details']['raw_classification']['macro_origin'] = (
+            focus_origin_analysis.get('macro_origin')
         )
         result['structure_details']['focus_origin_analysis'] = focus_origin_analysis
         if peak_analysis['is_peak_structure']:
