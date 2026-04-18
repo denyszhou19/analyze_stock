@@ -104,4 +104,4 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
 
         self.assertEqual(decision['parent_bias'], 'neutral')
         self.assertEqual(decision['child_signal'], 'long')
-        self.assertNotEqual(decision['resonance'], 'child_countertrend')
+        self.assertEqual(decision['resonance'], 'parent_unclear')

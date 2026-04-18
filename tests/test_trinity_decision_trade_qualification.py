@@ -239,3 +239,87 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertTrue(decision['structure']['can_trade_by_boundaries'])
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
         self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+
+    def test_extended_boundary_trade_requires_volume_support(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='daily',
+            structure_payload={
+                'structure_type': '延伸C',
+                'trend_direction': '震荡',
+                'description': '延伸C 边界有效但量能不支持',
+                'interpretation': {'focus_structure': {'archetype_family': 'C', 'standard_qualification': 'extended'}},
+                'structure_details': {
+                    'focus_classification': {
+                        'type': '延伸C',
+                        'standard_qualification': 'extended',
+                    },
+                    'prediction': {
+                        'key_price_levels': [
+                            {'price': 18.8, 'type': '上沿参考', 'note': '延伸平台上沿'},
+                            {'price': 16.2, 'type': '下沿参考', 'note': '延伸平台下沿'},
+                        ],
+                    },
+                },
+            },
+            macd_payload={'status': '中偏强'},
+            moving_averages={'price_vs_ma55': 'above', 'price_vs_ma233': 'above', 'ma_status': '多头排列'},
+            breakthrough_payload={'direction': 'up', 'is_valid': True, 'pattern_type': 'breakout'},
+            execution_payload={
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'boundary',
+                'trigger': ['放量突破平台上沿'],
+                'invalidation': ['跌回平台下沿'],
+                'confirmation': ['回踩不破'],
+                'position_sizing': {'initial': 'light_probe'},
+                'risk_flags': [],
+            },
+            level_nesting_payload=None,
+            period_payload={'volume_ratio_5': 0.95, 'volume_ratio_20': 0.98, 'amount_ratio_20': 0.97},
+        )
+
+        self.assertTrue(decision['structure']['can_trade_by_boundaries'])
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+
+    def test_extended_boundary_trade_requires_ma_and_direction_gate(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='daily',
+            structure_payload={
+                'structure_type': '延伸C',
+                'trend_direction': '震荡',
+                'description': '延伸C 边界有效但方向与均线门控不支持',
+                'interpretation': {'focus_structure': {'archetype_family': 'C', 'standard_qualification': 'extended'}},
+                'structure_details': {
+                    'focus_classification': {
+                        'type': '延伸C',
+                        'standard_qualification': 'extended',
+                    },
+                    'prediction': {
+                        'key_price_levels': [
+                            {'price': 18.8, 'type': '上沿参考', 'note': '延伸平台上沿'},
+                            {'price': 16.2, 'type': '下沿参考', 'note': '延伸平台下沿'},
+                        ],
+                    },
+                },
+            },
+            macd_payload={'status': '中偏强'},
+            moving_averages={'price_vs_ma55': 'below', 'price_vs_ma233': 'below', 'ma_status': '空头排列'},
+            breakthrough_payload={'direction': 'up', 'is_valid': True, 'pattern_type': 'breakout'},
+            execution_payload={
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'boundary',
+                'trigger': ['突破平台上沿'],
+                'invalidation': ['跌回平台下沿'],
+                'confirmation': ['量能确认'],
+                'position_sizing': {'initial': 'light_probe'},
+                'risk_flags': [],
+            },
+            level_nesting_payload=None,
+            period_payload={'volume_ratio_5': 1.3, 'volume_ratio_20': 1.2, 'amount_ratio_20': 1.2},
+        )
+
+        self.assertTrue(decision['structure']['can_trade_by_boundaries'])
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')

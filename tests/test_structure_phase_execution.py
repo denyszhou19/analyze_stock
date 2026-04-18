@@ -237,9 +237,11 @@ class StructurePhaseExecutionTest(unittest.TestCase):
             },
         )
 
+        self.assertFalse(decision['volume_gate']['supports_breakout'])
         self.assertTrue(decision['volume_gate']['supports_breakdown'])
         self.assertEqual(decision['breakdown_volume'], 'confirmed')
         self.assertEqual(decision['volume_gate']['confidence_adjustment'], 'upgrade')
+        self.assertIn('跌破', decision['volume_gate']['reason'])
 
     def test_build_trinity_volume_confirmation_marks_pullback_gate_with_shrinking_volume(self) -> None:
         decision = self.analyzer._build_trinity_volume_confirmation_decision(
@@ -258,6 +260,24 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         self.assertTrue(decision['volume_gate']['supports_pullback_confirmation'])
         self.assertEqual(decision['pullback_volume'], 'healthy_shrink')
         self.assertEqual(decision['volume_gate']['confidence_adjustment'], 'upgrade')
+
+    def test_build_trinity_volume_confirmation_keeps_existing_contract_when_volume_data_missing(self) -> None:
+        decision = self.analyzer._build_trinity_volume_confirmation_decision(
+            period_payload={},
+            breakthrough_payload={
+                'direction': 'up',
+                'is_valid': False,
+                'pattern_type': 'breakout',
+            },
+        )
+
+        self.assertEqual(decision['volume_state'], 'normal')
+        self.assertEqual(decision['breakout_volume'], 'weak')
+        self.assertEqual(decision['breakdown_volume'], 'not_applicable')
+        self.assertEqual(decision['pullback_volume'], 'normal')
+        self.assertFalse(decision['volume_gate']['supports_breakout'])
+        self.assertFalse(decision['volume_gate']['supports_breakdown'])
+        self.assertFalse(decision['volume_gate']['supports_pullback_confirmation'])
 
     def test_build_trinity_structure_decision_uses_standard_node_map_only_for_standard_family(self) -> None:
         line_geometry = {

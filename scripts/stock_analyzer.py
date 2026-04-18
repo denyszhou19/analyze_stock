@@ -3536,15 +3536,24 @@ class TrinityStockAnalyzer:
             or (ratio_20 is not None and ratio_20 <= 0.9)
             or (amount_ratio is not None and amount_ratio <= 0.9)
         )
+        direction = breakthrough_payload.get('direction')
+        supports_breakout = direction == 'up' and breakout_confirmed
+        supports_breakdown = direction == 'down' and breakout_confirmed
+        volume_reason = (
+            '放量确认突破，缩量回踩更健康'
+            if supports_breakout
+            else '放量确认跌破，反抽仍需谨慎'
+            if supports_breakdown
+            else '量能数据不足，暂不作为确认信号'
+            if not has_volume_data
+            else '量能未充分确认，需等待二次验证'
+        )
         return {
             'volume_ratio_5': ratio_5,
             'volume_ratio_20': ratio_20,
             'amount_ratio_20': amount_ratio,
             'turnover_rate': None,
             'volume_state': (
-                'unknown'
-                if not has_volume_data
-                else
                 'expanding'
                 if breakout_confirmed
                 else 'shrinking'
@@ -3552,40 +3561,28 @@ class TrinityStockAnalyzer:
                 else 'normal'
             ),
             'breakout_volume': (
-                'unknown'
-                if not has_volume_data
-                else
                 'confirmed'
-                if breakthrough_payload.get('direction') == 'up' and breakout_confirmed
+                if supports_breakout
                 else 'weak'
             ),
             'breakdown_volume': (
-                'unknown'
-                if not has_volume_data
-                else
                 'confirmed'
-                if breakthrough_payload.get('direction') == 'down' and breakout_confirmed
+                if supports_breakdown
                 else 'not_applicable'
             ),
-            'pullback_volume': 'unknown' if not has_volume_data else 'healthy_shrink' if pullback_healthy else 'normal',
+            'pullback_volume': 'healthy_shrink' if pullback_healthy else 'normal',
             'volume_gate': {
-                'supports_breakout': breakout_confirmed if has_volume_data else None,
-                'supports_breakdown': (breakthrough_payload.get('direction') == 'down' and breakout_confirmed) if has_volume_data else None,
-                'supports_pullback_confirmation': pullback_healthy if has_volume_data else None,
+                'supports_breakout': supports_breakout,
+                'supports_breakdown': supports_breakdown,
+                'supports_pullback_confirmation': pullback_healthy,
                 'confidence_adjustment': (
                     'upgrade'
-                    if breakout_confirmed or pullback_healthy
+                    if supports_breakout or supports_breakdown or pullback_healthy
                     else 'neutral'
                     if not has_volume_data
                     else 'downgrade'
                 ),
-                'reason': (
-                    '放量确认突破，缩量回踩更健康'
-                    if breakout_confirmed
-                    else '量能数据缺失，暂不作为否决项'
-                    if not has_volume_data
-                    else '量能未充分确认，需等待二次验证'
-                ),
+                'reason': volume_reason,
             },
         }
 
@@ -3626,13 +3623,15 @@ class TrinityStockAnalyzer:
         )
         if is_long_intent:
             volume_gate_passed = (
-                supports_breakout is None
+                confidence_adjustment == 'neutral'
+                or supports_breakout is None
                 or bool(supports_breakout)
                 or bool(supports_pullback_confirmation)
             )
         elif is_short_intent:
             volume_gate_passed = (
-                supports_breakdown is None
+                confidence_adjustment == 'neutral'
+                or supports_breakdown is None
                 or bool(supports_breakdown)
                 or bool(supports_pullback_confirmation)
             )
@@ -3667,7 +3666,14 @@ class TrinityStockAnalyzer:
                 'reason': ['未完成结构仅等待', *reasons],
             }
         if structure_family in {'extended', 'channel', 'range'} or qualification in {'extended', 'over_limit'}:
-            if can_trade_by_boundaries:
+            if not can_trade_by_boundaries:
+                return {
+                    'trade_mode': 'no_trade',
+                    'position_permission': 'no_position',
+                    'confidence': apply_confidence('low'),
+                    'reason': ['非标准结构边界无效，禁止交易', *reasons],
+                }
+            if direction_gate_passed and volume_gate_passed:
                 return {
                     'trade_mode': 'conditional_boundary_trade',
                     'position_permission': 'light_probe',
@@ -3675,10 +3681,10 @@ class TrinityStockAnalyzer:
                     'reason': ['非标准结构只允许边界条件交易', *reasons],
                 }
             return {
-                'trade_mode': 'no_trade',
+                'trade_mode': 'wait_confirmation',
                 'position_permission': 'no_position',
                 'confidence': apply_confidence('low'),
-                'reason': ['非标准结构边界无效，禁止交易', *reasons],
+                'reason': ['非标准结构边界或门控未满足，继续等待', *reasons],
             }
         if action == 'avoid':
             return {
@@ -3857,7 +3863,7 @@ class TrinityStockAnalyzer:
         )
         aligned = parent_status in ('极强', '强', '中偏强') and child_structure in ('A五段式', 'B双平台式', 'C单平台式')
         conflict = parent_status in ('极弱', '弱', '中偏弱') and child_structure in ('A五段式', 'B双平台式')
-        resonance = 'aligned' if aligned else 'conflict' if conflict else 'mixed'
+        resonance = 'aligned' if aligned else 'conflict' if conflict else 'parent_unclear'
         permission = {
             'allow_position_increase': aligned,
             'allow_t_trade': level in ('hour30', 'hour15'),
@@ -3867,7 +3873,7 @@ class TrinityStockAnalyzer:
                 if isinstance(raw_level_nesting, dict) and raw_level_nesting.get('summary')
                 else '父子级别共振'
                 if aligned
-                else '父子级别未形成明确共振，降级执行'
+                else '父级别信号不明确，降级执行'
             ),
         }
         if parent_bias == 'bearish' and child_signal == 'long':
