@@ -3289,6 +3289,8 @@ class TrinityStockAnalyzer:
             family = 'range'
         elif structure_type == '未完成结构':
             family = 'unfinished'
+        elif structure_type == '复杂结构':
+            family = 'complex'
 
         trend_direction = structure_payload.get('trend_direction') if isinstance(structure_payload, dict) else None
         boundaries = self._extract_trinity_boundaries(structure_payload)
@@ -4251,6 +4253,20 @@ class TrinityStockAnalyzer:
     ) -> Dict[str, Any]:
         """Decide whether the public structure label is still explainable."""
         analysis = focus_origin_analysis if isinstance(focus_origin_analysis, dict) else {}
+        macro_origin = analysis.get('macro_origin') or {}
+        if (
+            analysis.get('selected_origin_kind') == 'macro_origin'
+            and analysis.get('selected_point_index') is None
+            and macro_origin.get('outside_window')
+        ):
+            return {
+                'passed': False,
+                'status': 'downgraded',
+                'reason': (
+                    analysis.get('explainability_reason')
+                    or '真实宏观原点位于当前窗口外，不能将窗口首点包装成标准起点'
+                ),
+            }
         if analysis.get('selected_origin_kind') == 'none':
             return {
                 'passed': False,

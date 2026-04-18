@@ -1117,6 +1117,86 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         trinity_structure = self.analyzer._build_trinity_structure_decision(result)
         self.assertIsNone(trinity_structure["background_origin"])
 
+    def test_detect_structure_downgrades_outside_window_macro_origin_even_when_visible_range_looks_standard(self) -> None:
+        recent, full_strokes, valid_fractals, stroke_list, _ = (
+            build_focus_origin_peak_regression_fixture()
+        )
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes_count: int) -> None:
+                self.component_type = component_type
+                self.strokes_count = strokes_count
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": [{} for _ in range(self.strokes_count)],
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "震荡",
+            "valid_range_info": {
+                "start_date": "2023-12-01",
+                "end_date": "2024-04-30",
+                "start_price": 88.8,
+                "origin_type": "low",
+            },
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": stroke_list,
+        }
+        macro_components = [StubMacroComponent("Directional", 13)]
+        non_peak_analysis = {
+            "is_peak_structure": False,
+            "peak_type": None,
+            "peak_price": None,
+            "right_structure": None,
+        }
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("延伸C类", "等待确认", "窗口外宏观原点", ["mocked classification"]),
+             ), \
+             patch.object(
+                 self.analyzer,
+                 "_build_focus_structure_classification",
+                 return_value={
+                     "type": "A五段式",
+                     "stage": "a1-a6拐点区间",
+                     "description": "可见区间看似标准结构",
+                     "archetype_family": "A",
+                     "standard_qualification": "standard",
+                     "qualification_reason": "mocked visible range",
+                     "trend_direction": "上涨",
+                     "component_summary": ["上涨结构(5笔)"],
+                     "criteria": ["mocked focus classification"],
+                 },
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=non_peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中性")
+
+        trinity_structure = self.analyzer._build_trinity_structure_decision(result)
+        self.assertEqual(
+            result["structure_details"]["focus_origin_analysis"]["selected_origin_kind"],
+            "macro_origin",
+        )
+        self.assertIsNone(result["structure_details"]["focus_origin_analysis"]["selected_point_index"])
+        self.assertEqual(result["structure_type"], "复杂结构")
+        self.assertIsNone(result["structure_details"]["explainability"]["structure_start_point_id"])
+        first_point_id = result["structure_details"]["line_geometry"]["points"][0]["point_id"]
+        self.assertEqual(first_point_id, "p1")
+        self.assertFalse(trinity_structure["can_trade_by_structure_nodes"])
+
 
 if __name__ == "__main__":
     unittest.main()
