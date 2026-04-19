@@ -713,3 +713,32 @@ test('english reasons are cleaned across summary global strategy and combination
   assert.notEqual(vm.globalStrategy.guardrail, 'Wait for daily breakout');
   assert.doesNotMatch(shortline.parentConstraint, /Wait for daily breakout|English trade qualification|Position sizing pending/);
 });
+
+test('mixed language reason chain prefers later chinese candidate instead of generic fallback', () => {
+  const result = createResult();
+  if (!result.periods.daily.trinity_decision) {
+    throw new Error('missing daily decision');
+  }
+
+  result.periods.daily.trinity_decision.conclusion.wait_reason = 'wait for confirmation';
+  result.periods.daily.trinity_decision.trade_qualification.reason = ['parent not ready'];
+  result.periods.daily.trinity_decision.execution.position_sizing.reason = '只允许轻仓等待确认';
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const guardrailGate = vm.summary.hardGates.find((gate) => gate.label === '结论约束');
+  const shortline = vm.tradingCombinations.find((item) => item.label === '短线执行组合｜日线 → 30分钟');
+  assert.ok(guardrailGate);
+  assert.ok(shortline);
+  assert.equal(vm.summary.primaryReason, '只允许轻仓等待确认');
+  assert.equal(vm.summary.guardrail, '只允许轻仓等待确认');
+  assert.equal(guardrailGate.value, '只允许轻仓等待确认');
+  assert.equal(vm.globalStrategy.primaryReason, '只允许轻仓等待确认');
+  assert.equal(vm.globalStrategy.guardrail, '只允许轻仓等待确认');
+  assert.match(shortline.parentConstraint, /只允许轻仓等待确认/);
+  assert.doesNotMatch(shortline.parentConstraint, /暂无额外约束/);
+});

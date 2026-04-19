@@ -418,9 +418,24 @@ function gateDescription(
   };
 }
 
-function resolveChineseReason(candidate?: string | null, fallback = '暂无明确结论约束'): string {
-  const resolved = preferChineseText(candidate, fallback).trim();
-  return /[\u4e00-\u9fff]/.test(resolved) ? resolved : fallback;
+function resolveChineseReason(
+  candidates: Array<string | null | undefined>,
+  fallback = '暂无明确结论约束'
+): string {
+  const chineseCandidate = candidates.find((candidate) => {
+    const value = preferChineseText(candidate, '').trim();
+    return /[\u4e00-\u9fff]/.test(value);
+  });
+  if (chineseCandidate) {
+    return preferChineseText(chineseCandidate, fallback).trim();
+  }
+
+  const firstNonEmpty = candidates.find((candidate) => typeof candidate === 'string' && candidate.trim());
+  if (firstNonEmpty) {
+    return fallback;
+  }
+
+  return fallback;
 }
 
 function primaryLevelSourceLabel(
@@ -442,8 +457,10 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
     decision.conclusion.action_label
   );
   const volumeValue = `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}`;
-  const rawGuardrailValue = decision.conclusion.wait_reason ?? decision.execution.position_sizing.reason;
-  const guardrailValue = resolveChineseReason(rawGuardrailValue, '暂无明确结论约束');
+  const guardrailValue = resolveChineseReason(
+    [decision.conclusion.wait_reason, decision.execution.position_sizing.reason],
+    '暂无明确结论约束'
+  );
 
   return [
     {
@@ -523,21 +540,21 @@ function buildSummary(
     decision.conclusion.action,
     decision.conclusion.action_label
   );
-  const backendReason = resolveChineseReason(
-    decision.conclusion.wait_reason ||
-      decision.trade_qualification.reason[0] ||
-      decision.execution.position_sizing.reason
-  );
+  const backendReason = resolveChineseReason([
+    decision.conclusion.wait_reason,
+    decision.trade_qualification.reason[0],
+    decision.execution.position_sizing.reason,
+  ]);
 
   return {
     mode: aiState.status,
     errorMessage,
     headline: preferChineseText(readySummary?.headline, actionLabel),
     primaryActionLabel: actionLabel,
-    primaryReason: resolveChineseReason(readySummary?.primary_reason, backendReason),
+    primaryReason: resolveChineseReason([readySummary?.primary_reason, backendReason], backendReason),
     triggerLabels: preferChineseList(readySummary?.triggers, decision.execution.triggers),
     riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
-    guardrail: resolveChineseReason(readySummary?.guardrail, backendReason),
+    guardrail: resolveChineseReason([readySummary?.guardrail, backendReason], backendReason),
     hardGateTitle: '主策略硬门控',
     hardGateSourceLabel: primaryLevelSourceLabel(
       hardGateDecision,
@@ -606,7 +623,11 @@ function buildCombination({
     actionLabel: statusMeta.label,
     parentConstraint: major
       ? `${majorLabel}：${resolveChineseReason(
-          major.conclusion.wait_reason ?? major.trade_qualification.reason[0],
+          [
+            major.conclusion.wait_reason,
+            major.trade_qualification.reason[0],
+            major.execution.position_sizing.reason,
+          ],
           '暂无额外约束'
         )}`
       : `${majorLabel}缺失`,
@@ -680,12 +701,14 @@ function buildGlobalStrategy({
   const explanation = buildStatusExplanation({
     status,
     direction: primaryCombination.direction,
-    reason: resolveChineseReason(
-      triggerDecision?.conclusion.wait_reason ??
-        triggerDecision?.trade_qualification.reason?.[0] ??
-        constraintDecision?.conclusion.wait_reason ??
-        constraintDecision?.trade_qualification.reason?.[0]
-    ),
+    reason: resolveChineseReason([
+      triggerDecision?.conclusion.wait_reason,
+      triggerDecision?.trade_qualification.reason?.[0],
+      triggerDecision?.execution.position_sizing.reason,
+      constraintDecision?.conclusion.wait_reason,
+      constraintDecision?.trade_qualification.reason?.[0],
+      constraintDecision?.execution.position_sizing.reason,
+    ]),
   });
   const structureMeta = getStructureTagMeta(
     triggerDecision?.structure.type ?? constraintDecision?.structure.type ?? ''
@@ -708,9 +731,12 @@ function buildGlobalStrategy({
     triggerLabels: triggerDecision?.execution.triggers ?? [],
     riskLabels: triggerDecision?.execution.risk_flags ?? constraintDecision?.execution.risk_flags ?? [],
     guardrail: resolveChineseReason(
-      constraintDecision?.conclusion.wait_reason ??
-        constraintDecision?.execution.position_sizing.reason ??
+      [
+        constraintDecision?.conclusion.wait_reason,
+        constraintDecision?.execution.position_sizing.reason,
+        triggerDecision?.conclusion.wait_reason,
         triggerDecision?.execution.position_sizing.reason,
+      ],
       explanation.reason
     ),
   };
