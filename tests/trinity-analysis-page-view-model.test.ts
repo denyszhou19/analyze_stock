@@ -510,3 +510,99 @@ test('hard gates expose source and hover explanation', () => {
   assert.match(positionGate.description.tradeImpact, /不能突破/);
   assert.match(positionGate.description.source, /trade_qualification.position_permission/);
 });
+
+test('missing parent constraint downgrades combination and prevents false executable selection', () => {
+  const result = createResult();
+  delete result.periods.daily.trinity_decision;
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'buy',
+        action_label: '轻仓试探',
+        bias: 'bullish',
+        confidence: 'medium',
+        can_trade: true,
+      },
+      execution: {
+        entry_style: 'pullback_confirm' as never,
+        triggers: ['30分钟放量突破平台上沿'],
+        invalidation: ['30分钟跌回突破位'],
+        confirmation: ['回踩不破突破位'],
+        position_sizing: { max_ratio: 0.2, reason: '日线缺失，仅能观察' },
+        risk_flags: ['父级约束缺失'],
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const shortline = vm.tradingCombinations.find((item) => item.label === '短线执行组合｜日线 → 30分钟');
+  assert.ok(shortline);
+  assert.equal(shortline.actionLabel, '观察中');
+  assert.equal(shortline.parentConstraint, '日线缺失');
+  assert.notEqual(vm.globalStrategy.primaryCombinationLabel, '短线执行组合｜日线 → 30分钟');
+});
+
+test('summary hard gates bind to primary combination constraint level before fallback', () => {
+  const result = createResult();
+  result.periods.daily.trinity_decision = createDecision({
+    level: 'daily',
+    conclusion: {
+      action: 'hold',
+      action_label: '持有观察',
+      bias: 'bullish',
+      confidence: 'medium',
+      can_trade: true,
+      wait_reason: '日线跟随周线持有观察',
+    },
+    trade_qualification: {
+      trade_mode: 'wait_confirmation',
+      position_permission: 'no_position',
+      confidence: 'medium',
+      reason: ['日线未确认'],
+    },
+  });
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.equal(vm.globalStrategy.primaryCombinationLabel, '中线主策略组合｜周线 → 日线');
+  assert.equal(vm.globalStrategy.primaryConstraintLevel, 'weekly');
+  assert.match(vm.summary.hardGateSourceLabel, /当前硬门控来自主判定级别：周线/);
+  assert.doesNotMatch(vm.summary.hardGateSourceLabel, /当前硬门控来自主判定级别：日线/);
+  const levelGate = vm.summary.hardGates.find((gate) => gate.label === '执行级别');
+  assert.ok(levelGate);
+  assert.equal(levelGate.value, '周线');
+});
+
+test('hard gate guardrail falls back to chinese copy when backend reason is english', () => {
+  const result = createResult();
+  if (!result.periods.daily.trinity_decision) {
+    throw new Error('missing daily decision');
+  }
+
+  result.periods.daily.trinity_decision.conclusion.wait_reason = 'Wait for daily breakout';
+  result.periods.daily.trinity_decision.execution.position_sizing.reason = 'Position sizing pending';
+  result.periods.daily.trinity_decision.trade_qualification.reason = ['English trade qualification'];
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const guardrailGate = vm.summary.hardGates.find((gate) => gate.label === '结论约束');
+  assert.ok(guardrailGate);
+  assert.notEqual(guardrailGate.value, 'Wait for daily breakout');
+  assert.notEqual(guardrailGate.value, 'Position sizing pending');
+  assert.equal(guardrailGate.value, '暂无明确结论约束');
+});

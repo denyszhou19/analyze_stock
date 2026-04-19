@@ -119,6 +119,10 @@ export interface AnalysisPageTradingCombinationViewModel {
   explanation: string;
 }
 
+interface BuiltTradingCombination extends AnalysisPageTradingCombinationViewModel {
+  status: TrinityJudgmentCriterion['status'];
+}
+
 export interface AnalysisPageRuleChainItem {
   title: string;
   status: 'passed' | 'failed' | 'warning' | 'info';
@@ -416,16 +420,15 @@ function gateDescription(
 
 function primaryLevelSourceLabel(
   decision: TrinityDecision,
-  primaryCombination?: AnalysisPageTradingCombinationViewModel
+  primaryCombination: AnalysisPageTradingCombinationViewModel,
+  preferredLevel: TrinityLevel
 ): string {
-  const levelIndex = PRIMARY_DECISION_ORDER.indexOf(decision.level);
-  const combinationLabel = primaryCombination ? `；当前优先组合：${primaryCombination.label}` : '';
-  if (levelIndex <= 0) {
+  const combinationLabel = `；当前优先组合：${primaryCombination.label}`;
+  if (decision.level === preferredLevel) {
     return `当前硬门控来自主判定级别：${LEVEL_LABELS[decision.level]}${combinationLabel}`;
   }
 
-  const missingLevels = PRIMARY_DECISION_ORDER.slice(0, levelIndex).map((level) => LEVEL_LABELS[level]);
-  return `当前硬门控来自主判定级别：${LEVEL_LABELS[decision.level]}${combinationLabel}；因${missingLevels.join('、')}主判定缺失，已自动降级。`;
+  return `当前硬门控来自主判定级别：${LEVEL_LABELS[decision.level]}${combinationLabel}；因${LEVEL_LABELS[preferredLevel]}主判定缺失，已自动降级。`;
 }
 
 function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
@@ -434,8 +437,8 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
     decision.conclusion.action_label
   );
   const volumeValue = `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}`;
-  const guardrailValue =
-    decision.conclusion.wait_reason ?? decision.execution.position_sizing.reason ?? '暂无明确约束';
+  const rawGuardrailValue = decision.conclusion.wait_reason ?? decision.execution.position_sizing.reason;
+  const guardrailValue = preferChineseText(rawGuardrailValue, '暂无明确结论约束');
 
   return [
     {
@@ -505,6 +508,7 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
 
 function buildSummary(
   decision: TrinityDecision,
+  hardGateDecision: TrinityDecision,
   aiState: AnalysisPageAiState,
   primaryCombination: AnalysisPageTradingCombinationViewModel
 ): AnalysisPageSummaryViewModel {
@@ -529,8 +533,12 @@ function buildSummary(
     riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
     guardrail: preferChineseText(readySummary?.guardrail, backendReason),
     hardGateTitle: '主策略硬门控',
-    hardGateSourceLabel: primaryLevelSourceLabel(decision, primaryCombination),
-    hardGates: buildHardGates(decision),
+    hardGateSourceLabel: primaryLevelSourceLabel(
+      hardGateDecision,
+      primaryCombination,
+      primaryCombination.levels[0]
+    ),
+    hardGates: buildHardGates(hardGateDecision),
   };
 }
 
@@ -549,7 +557,10 @@ function resolveCombinationStatus(
   if (!major && !minor) {
     return 'failed';
   }
-  if (minor?.conclusion.can_trade && major?.conclusion.bias !== 'bearish') {
+  if (!major) {
+    return 'info';
+  }
+  if (minor?.conclusion.can_trade && major.conclusion.bias !== 'bearish') {
     return 'passed';
   }
   if (major?.trade_qualification.position_permission === 'no_position') {
@@ -568,7 +579,7 @@ function buildCombination({
   label: string;
   levels: [TrinityLevel, TrinityLevel];
   result: AnalysisResultData;
-}): AnalysisPageTradingCombinationViewModel {
+}): BuiltTradingCombination {
   const [majorLevel, minorLevel] = levels;
   const major = findLevelDecision(result, majorLevel);
   const minor = findLevelDecision(result, minorLevel);
@@ -583,6 +594,7 @@ function buildCombination({
     key,
     label,
     levels,
+    status,
     direction,
     directionLabel,
     actionLabel: statusMeta.label,
@@ -598,7 +610,7 @@ function buildCombination({
   };
 }
 
-function buildTradingCombinations(result: AnalysisResultData): AnalysisPageTradingCombinationViewModel[] {
+function buildTradingCombinations(result: AnalysisResultData): BuiltTradingCombination[] {
   return [
     buildCombination({
       key: 'midline',
@@ -622,13 +634,13 @@ function buildTradingCombinations(result: AnalysisResultData): AnalysisPageTradi
 }
 
 function pickPrimaryCombination(
-  combinations: AnalysisPageTradingCombinationViewModel[]
-): AnalysisPageTradingCombinationViewModel {
-  const score: Record<string, number> = {
-    可执行: 4,
-    谨慎看: 3,
-    观察中: 2,
-    暂不做: 1,
+  combinations: BuiltTradingCombination[]
+): BuiltTradingCombination {
+  const score: Record<TrinityJudgmentCriterion['status'], number> = {
+    passed: 4,
+    warning: 3,
+    info: 2,
+    failed: 1,
   };
   const tieBreak: Record<TradingCombinationKey, number> = {
     shortline: 3,
@@ -637,7 +649,7 @@ function pickPrimaryCombination(
   };
 
   return [...combinations].sort((left, right) => {
-    const scoreDiff = score[right.actionLabel] - score[left.actionLabel];
+    const scoreDiff = score[right.status] - score[left.status];
     if (scoreDiff !== 0) {
       return scoreDiff;
     }
@@ -841,12 +853,14 @@ export function buildAnalysisPageViewModel({
   const primaryDecision = pickPrimaryDecision(result);
   const tradingCombinations = buildTradingCombinations(result);
   const primaryCombination = pickPrimaryCombination(tradingCombinations);
+  const hardGateDecision =
+    findLevelDecision(result, primaryCombination.levels[0]) ?? primaryDecision;
 
   return {
     statusBar: buildStatusBar(result, integrity, aiState),
     globalStrategy: buildGlobalStrategy({ result, primaryCombination }),
-    summary: buildSummary(primaryDecision, aiState, primaryCombination),
-    tradingCombinations,
+    summary: buildSummary(primaryDecision, hardGateDecision, aiState, primaryCombination),
+    tradingCombinations: tradingCombinations.map(({ status: _status, ...item }) => item),
     bus: buildBus(result),
     ruleChain: buildRuleChain(primaryDecision),
   };
