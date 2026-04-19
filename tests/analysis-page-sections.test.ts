@@ -5,42 +5,71 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 
-type LevelDecisionBusModule = typeof import('../src/components/stock/LevelDecisionBus.tsx');
+type TradingCycleBusModule = typeof import('../src/components/stock/TradingCycleBus.tsx');
 type TrinityRuleChainModule = typeof import('../src/components/stock/TrinityRuleChain.tsx');
 type AnalysisSummaryPanelModule = typeof import('../src/components/stock/AnalysisSummaryPanel.tsx');
 
 const periodDetailsSource = await fs.readFile('src/components/stock/AnalysisPeriodDetails.tsx', 'utf8');
 
-test('LevelDecisionBus renders three fixed dimension titles', async () => {
-  const { LevelDecisionBus } = await importTsxModule<LevelDecisionBusModule>(
-    'src/components/stock/LevelDecisionBus.tsx'
+test('TradingCycleBus renders three trading combinations with direction and trigger level', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
   );
 
   const html = renderQuietly(
-    React.createElement(LevelDecisionBus, {
-      dimensions: [
+    React.createElement(TradingCycleBus, {
+      combinations: [
         {
-          title: '维度一｜周线 → 日线',
-          primary: '周线偏多，日线等待回踩确认',
-          detail: '先看周线方向，再看日线是否给出执行窗口。',
+          key: 'midline',
+          label: '中线主策略组合｜周线 → 日线',
+          levels: ['weekly', 'daily'],
+          direction: 'bullish',
+          directionLabel: '偏多',
+          actionLabel: '观察中',
+          parentConstraint: '周线：大方向偏多',
+          triggerLevelLabel: '日线',
+          suitableAction: '等待日线确认',
+          majorRisk: '日线仍未突破平台上沿',
+          explanation: '周线定约束，日线给触发；已有方向或预案，但还差确认，不急着动作',
         },
         {
-          title: '维度二｜日线 → 30分钟',
-          primary: '日线确认后，30分钟等待触发',
-          detail: '30分钟只负责执行，不重做上级判断。',
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          direction: 'neutral',
+          directionLabel: '中性',
+          actionLabel: '谨慎看',
+          parentConstraint: '日线：等待确认',
+          triggerLevelLabel: '30分钟',
+          suitableAction: '轻仓试探',
+          majorRisk: '日线硬门控未放开',
+          explanation: '日线定约束，30分钟给触发；存在约束，不能直接放大动作',
         },
         {
-          title: '维度三｜60分钟 → 15分钟',
-          primary: '60分钟定节奏，15分钟看进出场',
-          detail: '短周期只补充入场节奏与风控。',
+          key: 'intraday_t',
+          label: '超短线 / T 组合｜60分钟 → 15分钟',
+          levels: ['hour60', 'hour15'],
+          direction: 'bearish',
+          directionLabel: '偏空',
+          actionLabel: '暂不做',
+          parentConstraint: '60分钟：偏弱',
+          triggerLevelLabel: '15分钟',
+          suitableAction: '只观察',
+          majorRisk: '15分钟反弹不能推翻上级',
+          explanation: '60分钟定约束，15分钟给触发；当前不支持按这条规则交易',
         },
       ],
     })
   );
 
-  assert.equal(html.match(/维度一｜周线 → 日线/g)?.length, 1);
-  assert.equal(html.match(/维度二｜日线 → 30分钟/g)?.length, 1);
-  assert.equal(html.match(/维度三｜60分钟 → 15分钟/g)?.length, 1);
+  assert.match(html, /交易周期总线/);
+  assert.match(html, /中线主策略组合｜周线 → 日线/);
+  assert.match(html, /短线执行组合｜日线 → 30分钟/);
+  assert.match(html, /超短线 \/ T 组合｜60分钟 → 15分钟/);
+  assert.match(html, /触发级别/);
+  assert.match(html, /适合动作/);
+  assert.match(html, /主要风险/);
+  assert.doesNotMatch(html, /维度一/);
 });
 
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {

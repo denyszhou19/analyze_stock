@@ -11,7 +11,7 @@ import type { AnalysisPeriodSection } from '@/components/stock/AnalysisPeriodDet
 import { AnalysisSummaryPanel } from '@/components/stock/AnalysisSummaryPanel';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
-import { LevelDecisionBus } from '@/components/stock/LevelDecisionBus';
+import { TradingCycleBus } from '@/components/stock/TradingCycleBus';
 import { TrinityRuleChain } from '@/components/stock/TrinityRuleChain';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
@@ -581,7 +581,7 @@ export default function StockAnalysisPage() {
             canGenerate={Boolean(result) && !isLoading}
           />
 
-          <LevelDecisionBus dimensions={pageViewModel.bus.dimensions} />
+          <TradingCycleBus combinations={pageViewModel.tradingCombinations} />
 
           {aiMarkdown && aiState.status === 'ready' ? (
             <Card className="border-border/70 bg-card/95 shadow-sm">
