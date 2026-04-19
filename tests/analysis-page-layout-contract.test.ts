@@ -6,17 +6,19 @@ const pageSource = await fs.readFile('src/app/stock/[code]/analysis/page.tsx', '
 
 test('analysis page composes the confirmed IA sections', () => {
   assert.match(pageSource, /AnalysisSummaryPanel/);
-  assert.match(pageSource, /LevelDecisionBus/);
+  assert.match(pageSource, /TradingCycleBus/);
   assert.match(pageSource, /TrinityRuleChain/);
   assert.match(pageSource, /AnalysisPeriodDetails/);
   assert.match(pageSource, /parseAiReportContract/);
+  assert.match(pageSource, /pageViewModel\.tradingCombinations/);
+  assert.doesNotMatch(pageSource, /LevelDecisionBus/);
   assert.doesNotMatch(pageSource, /StructureExplainabilityPanel/);
   assert.doesNotMatch(pageSource, /<AnalysisStatusBar/);
 });
 
-test('analysis page keeps decision bus directly after summary panel', () => {
+test('analysis page keeps trading cycle bus directly after summary panel', () => {
   const summaryIndex = pageSource.indexOf('<AnalysisSummaryPanel');
-  const busIndex = pageSource.indexOf('<LevelDecisionBus');
+  const busIndex = pageSource.indexOf('<TradingCycleBus');
   const markdownIndex = pageSource.indexOf('AI 正文');
 
   assert.notEqual(summaryIndex, -1);

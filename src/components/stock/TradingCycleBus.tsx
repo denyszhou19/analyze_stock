@@ -38,7 +38,7 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                     <Badge variant="outline" className={directionMeta.badgeClassName}>
                       {combination.directionLabel}
                     </Badge>
-                    <Badge variant="outline">{combination.actionLabel}</Badge>
+                    <Badge variant="outline">状态：{combination.actionLabel}</Badge>
                   </div>
                 </div>
               </CardHeader>

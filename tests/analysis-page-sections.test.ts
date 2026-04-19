@@ -67,6 +67,7 @@ test('TradingCycleBus renders three trading combinations with direction and trig
   assert.match(html, /短线执行组合｜日线 → 30分钟/);
   assert.match(html, /超短线 \/ T 组合｜60分钟 → 15分钟/);
   assert.match(html, /触发级别/);
+  assert.match(html, /状态：观察中/);
   assert.match(html, /适合动作/);
   assert.match(html, /主要风险/);
   assert.doesNotMatch(html, /维度一/);
