@@ -1,16 +1,22 @@
-import {
-  Accordion,
-  AccordionContent,
-  AccordionItem,
-  AccordionTrigger,
-} from '@/components/ui/accordion';
 import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
 import { Badge } from '@/components/ui/badge';
-import { Card, CardContent } from '@/components/ui/card';
+import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipProvider,
+  TooltipTrigger,
+} from '@/components/ui/tooltip';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
-import { normalizeStructureDisplayText } from '@/lib/structure-explainability-view-model';
-import { formatDecisionActionLabel } from '@/lib/trinity-decision-labels';
 import type { PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
+import { normalizeStructureDisplayText } from '@/lib/structure-explainability-view-model';
+import {
+  directionFromBias,
+  getActionStatusMeta,
+  getDirectionMeta,
+  getStructureTagMeta,
+} from '@/lib/trinity-display-vocabulary';
+import { cn } from '@/lib/utils';
 
 export interface AnalysisPeriodSection {
   key: string;
@@ -24,6 +30,7 @@ export interface AnalysisPeriodSection {
 
 interface AnalysisPeriodDetailsProps {
   sections: AnalysisPeriodSection[];
+  defaultLevelKey?: string | null;
 }
 
 const STRUCTURE_COLORS: Record<string, string> = {
@@ -36,17 +43,17 @@ const STRUCTURE_COLORS: Record<string, string> = {
   山谷形态: 'bg-gradient-to-r from-green-100 to-red-100 text-gray-800 border border-gray-300',
 };
 
+const PERIOD_LEVEL_LABELS: Record<string, string> = {
+  weekly: '周线',
+  daily: '日线',
+  hour60: '60分钟',
+  hour30: '30分钟',
+  hour15: '15分钟',
+};
+
 function formatList(items?: Array<string | null | undefined> | null, fallback = '未提供') {
   const value = items?.filter(Boolean).join('、');
   return value || fallback;
-}
-
-function formatActionLabel(action?: string | null) {
-  if (!action) {
-    return null;
-  }
-
-  return formatDecisionActionLabel(action);
 }
 
 function resolveSummary(section: AnalysisPeriodSection) {
@@ -85,15 +92,17 @@ function resolveSpacetimeStatus(section: AnalysisPeriodSection) {
   const interpretation = section.period?.structure?.interpretation;
   const macd = section.period?.macd;
 
-  return [
-    interpretation?.spacetime_gate?.parent_status,
-    macd?.status,
-    interpretation?.spacetime_gate?.wait_reason,
-    interpretation?.spacetime_gate?.required_confirmation,
-    macd?.divergence_note,
-  ]
-    .filter(Boolean)
-    .join('｜') || '当前周期暂无时空状态。';
+  return (
+    [
+      interpretation?.spacetime_gate?.parent_status,
+      macd?.status,
+      interpretation?.spacetime_gate?.wait_reason,
+      interpretation?.spacetime_gate?.required_confirmation,
+      macd?.divergence_note,
+    ]
+      .filter(Boolean)
+      .join('｜') || '当前周期暂无时空状态。'
+  );
 }
 
 function resolveMovingAverageStatus(section: AnalysisPeriodSection) {
@@ -101,34 +110,110 @@ function resolveMovingAverageStatus(section: AnalysisPeriodSection) {
   const physics = section.period?.ma_physics;
   const breakthrough = section.period?.breakthrough;
 
-  return [
-    ma?.ma_status,
-    physics?.support_pressure?.status,
-    physics?.traction?.traction_force,
-    breakthrough?.pattern_type,
-    formatList(physics?.key_signals, ''),
-  ]
-    .filter(Boolean)
-    .join('｜') || '当前周期暂无均线关系。';
+  return (
+    [
+      ma?.ma_status,
+      physics?.support_pressure?.status,
+      physics?.traction?.traction_force,
+      breakthrough?.pattern_type,
+      formatList(physics?.key_signals, ''),
+    ]
+      .filter(Boolean)
+      .join('｜') || '当前周期暂无均线关系。'
+  );
 }
 
-function resolveTradeAction(section: AnalysisPeriodSection) {
-  const structure = section.period?.structure;
-  const execution = structure?.execution;
+function resolvePeriodDecisionSource(section: AnalysisPeriodSection) {
+  return section.period?.trinity_decision
+    ? `来源：${section.label}三位一体判定`
+    : '来源：结构解释链路回退';
+}
+
+function resolveLevelLabel(level?: string | null) {
+  return level ? PERIOD_LEVEL_LABELS[level] ?? level : '未知级别';
+}
+
+function resolvePeriodDirection(section: AnalysisPeriodSection) {
+  return directionFromBias(section.period?.trinity_decision?.conclusion.bias ?? null);
+}
+
+function resolvePeriodActionStatus(section: AnalysisPeriodSection) {
   const decision = section.period?.trinity_decision;
+  if (!decision) {
+    return getActionStatusMeta('info');
+  }
+  if (decision.conclusion.can_trade) {
+    return getActionStatusMeta('passed');
+  }
+  if (decision.trade_qualification.position_permission === 'no_position') {
+    return getActionStatusMeta('warning');
+  }
+  return getActionStatusMeta('info');
+}
+
+function resolvePeriodTriggers(section: AnalysisPeriodSection) {
+  const decision = section.period?.trinity_decision;
+  if (decision?.execution.triggers?.length) {
+    return decision.execution.triggers;
+  }
+
+  const executionTriggers = section.period?.structure?.execution?.trigger;
+  if (executionTriggers?.length) {
+    return executionTriggers;
+  }
 
   return [
-    structure?.execution_phase?.label,
-    decision
-      ? formatDecisionActionLabel(decision.conclusion.action, decision.conclusion.action_label)
-      : null,
-    !decision?.conclusion.action_label ? formatActionLabel(execution?.action) : null,
-    execution?.wait_reason,
-    execution?.rationale,
-    formatList(execution?.trigger, ''),
-  ]
-    .filter(Boolean)
-    .join('｜') || '当前周期暂无交易动作结论。';
+    section.period?.structure?.interpretation?.spacetime_gate?.required_confirmation ?? null,
+  ].filter((item): item is string => Boolean(item));
+}
+
+function resolvePeriodRisks(section: AnalysisPeriodSection) {
+  const decision = section.period?.trinity_decision;
+  if (decision?.execution.risk_flags?.length) {
+    return decision.execution.risk_flags;
+  }
+
+  const invalidation = section.period?.structure?.execution?.invalidation;
+  if (invalidation?.length) {
+    return invalidation;
+  }
+
+  return section.period?.structure?.execution?.risk_flags ?? [];
+}
+
+function resolvePeriodGuardrail(section: AnalysisPeriodSection) {
+  return (
+    section.period?.trinity_decision?.execution.position_sizing.reason ??
+    section.period?.structure?.execution?.wait_reason ??
+    '暂无明确风控约束'
+  );
+}
+
+function resolveResonanceEvidence(section: AnalysisPeriodSection) {
+  const nesting = section.period?.trinity_decision?.level_nesting;
+  if (!nesting?.parent_level || !nesting.child_level) {
+    return '级别共振：暂无父子级别共振数据。';
+  }
+
+  return [
+    `共振对象：${resolveLevelLabel(nesting.parent_level)} → ${resolveLevelLabel(nesting.child_level)}`,
+    `成立依据：${nesting.permission.reason}`,
+    `仍需确认：${section.period?.trinity_decision?.conclusion.wait_reason ?? '等待触发级别确认'}`,
+  ].join('｜');
+}
+
+function resolveBackgroundEvidence(section: AnalysisPeriodSection) {
+  const nesting = section.period?.trinity_decision?.level_nesting;
+  const gate = section.period?.structure?.interpretation?.spacetime_gate;
+  const parentLabel = resolveLevelLabel(nesting?.parent_level);
+  const currentLabel = resolveLevelLabel(nesting?.child_level ?? section.key);
+
+  return [
+    `上一级：${parentLabel}`,
+    `当前级别：${currentLabel}`,
+    `背景来源：${gate?.parent_status ?? '上一级时空状态 + 结构方向'}`,
+    `交易含义：${gate?.wait_reason ?? nesting?.permission.reason ?? '等待当前级别确认'}`,
+  ].join('｜');
 }
 
 function buildExplainabilityStructure(period?: PeriodAnalysisData | null) {
@@ -147,97 +232,186 @@ function buildExplainabilityStructure(period?: PeriodAnalysisData | null) {
   };
 }
 
-export function AnalysisPeriodDetails({ sections }: AnalysisPeriodDetailsProps) {
+function LabelList({
+  fallback,
+  items,
+}: {
+  fallback: string;
+  items: Array<string | null | undefined>;
+}) {
+  const visibleItems = items.filter((item): item is string => Boolean(item));
+  if (!visibleItems.length) {
+    return <p className="text-sm text-muted-foreground">{fallback}</p>;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-2">
+      {visibleItems.map((item) => (
+        <Badge key={item} variant="secondary" className="whitespace-normal text-left">
+          {item}
+        </Badge>
+      ))}
+    </div>
+  );
+}
+
+function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
+  const direction = resolvePeriodDirection(section);
+  const directionMeta = getDirectionMeta(direction);
+  const actionMeta = resolvePeriodActionStatus(section);
+  const structureTag = getStructureTagMeta(
+    section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null
+  );
+
+  return (
+    <section className={cn('rounded-xl border p-4 shadow-none', directionMeta.cardClassName)}>
+      <div className="flex flex-wrap items-start justify-between gap-3">
+        <div className="space-y-1">
+          <h3 className="text-sm font-semibold text-foreground">该级别简明决策</h3>
+          <p className="text-xs text-muted-foreground">{resolvePeriodDecisionSource(section)}</p>
+        </div>
+        <div className="flex flex-wrap gap-2">
+          <Badge variant="outline" className={directionMeta.badgeClassName}>
+            {directionMeta.label}
+          </Badge>
+          <Badge variant="outline">{actionMeta.label}</Badge>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Badge variant="outline" className={cn('cursor-help', structureTag.className)}>
+                  {structureTag.label}
+                </Badge>
+              </TooltipTrigger>
+              <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                <div className="space-y-1">
+                  <div className="font-medium">结构类型：{structureTag.label}</div>
+                  <p>{structureTag.explanation}</p>
+                  <p>交易含义：{structureTag.tradeMeaning}</p>
+                </div>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
+        </div>
+      </div>
+
+      <p className="mt-4 text-sm leading-6 text-muted-foreground">{resolveSummary(section)}</p>
+
+      <div className="mt-4 grid gap-3 lg:grid-cols-3">
+        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
+          <div className="text-xs font-medium text-muted-foreground">触发条件</div>
+          <LabelList fallback="暂无明确触发条件" items={resolvePeriodTriggers(section)} />
+        </div>
+        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
+          <div className="text-xs font-medium text-muted-foreground">风险条件</div>
+          <LabelList fallback="暂无明确风险条件" items={resolvePeriodRisks(section)} />
+        </div>
+        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
+          <div className="text-xs font-medium text-muted-foreground">风控约束</div>
+          <p className="text-sm leading-6 text-foreground">{resolvePeriodGuardrail(section)}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+function PeriodRuleSummary({ section }: { section: AnalysisPeriodSection }) {
+  return (
+    <section className="space-y-3 rounded-xl border bg-background/70 p-4 shadow-none">
+      <h3 className="text-sm font-semibold text-foreground">规则摘要</h3>
+      <div className="grid gap-3 lg:grid-cols-2">
+        <div className="rounded-lg border bg-background p-3">
+          <div className="text-xs text-muted-foreground">结构</div>
+          <p className="mt-1 text-sm leading-6 text-foreground">{resolveStructureEvidence(section)}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <div className="text-xs text-muted-foreground">时空</div>
+          <p className="mt-1 text-sm leading-6 text-foreground">{resolveSpacetimeStatus(section)}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <div className="text-xs text-muted-foreground">均线 / 量能</div>
+          <p className="mt-1 text-sm leading-6 text-foreground">{resolveMovingAverageStatus(section)}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3">
+          <div className="text-xs text-muted-foreground">级别共振</div>
+          <p className="mt-1 text-sm leading-6 text-foreground">{resolveResonanceEvidence(section)}</p>
+        </div>
+        <div className="rounded-lg border bg-background p-3 lg:col-span-2">
+          <div className="text-xs text-muted-foreground">大背景</div>
+          <p className="mt-1 text-sm leading-6 text-foreground">{resolveBackgroundEvidence(section)}</p>
+        </div>
+      </div>
+    </section>
+  );
+}
+
+export function AnalysisPeriodDetails({
+  sections,
+  defaultLevelKey,
+}: AnalysisPeriodDetailsProps) {
   if (!sections.length) {
     return null;
   }
 
   const defaultValue =
-    sections.find((section) => section.key === 'daily' || section.label === '日线')?.key ??
+    sections.find((section) => section.key === defaultLevelKey)?.key ??
     sections.find((section) => section.defaultOpen)?.key ??
+    sections.find((section) => section.key === 'daily' || section.label === '日线')?.key ??
     sections[0]?.key;
 
   return (
     <section className="space-y-3" aria-label="周期详情">
       <div className="space-y-1">
         <h2 className="text-base font-semibold text-foreground">周期详情</h2>
-        <p className="text-sm text-muted-foreground">用于承载周期摘要、结构证据与复盘排错信息。</p>
+        <p className="text-sm text-muted-foreground">
+          按级别切换查看该级别自己的简明决策、规则摘要和证据。
+        </p>
       </div>
 
-      <Accordion type="single" defaultValue={defaultValue} className="rounded-xl border px-4">
+      <Tabs defaultValue={defaultValue} className="space-y-4">
+        <TabsList className="h-auto flex-wrap justify-start gap-2 rounded-xl bg-muted/50 p-1">
+          {sections.map((section) => (
+            <TabsTrigger key={section.key} value={section.key} className="rounded-lg px-3">
+              {section.label}
+            </TabsTrigger>
+          ))}
+        </TabsList>
+
         {sections.map((section) => {
           const explainabilityStructure = buildExplainabilityStructure(section.period);
 
           return (
-            <AccordionItem key={section.key} value={section.key}>
-            <AccordionTrigger className="gap-4 py-4 hover:no-underline">
-              <div className="space-y-1 text-left">
-                <div className="flex flex-wrap items-center gap-2 text-sm font-semibold text-foreground">
-                  <span>{section.label}</span>
-                  {section.key === defaultValue && (
-                    <Badge variant="outline" className="text-[11px]">
-                      默认展开
-                    </Badge>
-                  )}
-                </div>
-                <div className="text-xs text-muted-foreground">
-                  {[section.rangeLabel, resolveSummary(section)].filter(Boolean).join(' · ')}
-                </div>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="space-y-4 pb-5">
-              <Card className="gap-3 bg-muted/20 py-4 shadow-none">
-                <CardContent className="space-y-4 px-4 text-sm">
-                  <div className="space-y-1">
-                    <div className="font-medium text-foreground">周期摘要</div>
-                    <p className="leading-6 text-muted-foreground">{resolveSummary(section)}</p>
-                  </div>
+            <TabsContent key={section.key} value={section.key} className="space-y-4">
+              <PeriodDecisionCard section={section} />
+              <PeriodRuleSummary section={section} />
 
-                  <div className="space-y-2 rounded-lg border bg-background p-3">
-                    <div className="font-medium text-foreground">结构证据</div>
-                    <div className="rounded-md border border-dashed bg-muted/30 px-3 py-3 text-sm text-muted-foreground">
-                      <div className="font-medium text-foreground">{resolveTopologyTitle(section)}</div>
-                      <div className="mt-1">{resolveStructureEvidence(section)}</div>
-                    </div>
-                    {explainabilityStructure ? (
-                      <div className="space-y-2 pt-1">
-                        <div className="font-medium text-foreground">结构说明</div>
-                        <StructureExplainabilityPanel
-                          structure={explainabilityStructure}
-                          executionSummary={buildExecutionSummary(section.period)}
-                          structureColors={STRUCTURE_COLORS}
-                        />
-                      </div>
-                    ) : null}
-                  </div>
+              <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
+                <div className="space-y-1">
+                  <h3 className="text-sm font-semibold text-foreground">证据区</h3>
+                  <p className="text-xs text-muted-foreground">
+                    {[section.rangeLabel, resolveSummary(section)].filter(Boolean).join(' · ')}
+                  </p>
+                </div>
 
-                  <div className="grid gap-3 lg:grid-cols-3">
-                    <div className="rounded-lg border bg-background p-3">
-                      <div className="font-medium text-foreground">时空状态</div>
-                      <div className="mt-2 leading-6 text-muted-foreground">
-                        {resolveSpacetimeStatus(section)}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border bg-background p-3">
-                      <div className="font-medium text-foreground">均线关系</div>
-                      <div className="mt-2 leading-6 text-muted-foreground">
-                        {resolveMovingAverageStatus(section)}
-                      </div>
-                    </div>
-                    <div className="rounded-lg border bg-background p-3">
-                      <div className="font-medium text-foreground">交易动作</div>
-                      <div className="mt-2 leading-6 text-muted-foreground">
-                        {resolveTradeAction(section)}
-                      </div>
-                    </div>
+                <div className="rounded-md border border-dashed bg-background/70 px-3 py-3 text-sm text-muted-foreground">
+                  <div className="font-medium text-foreground">{resolveTopologyTitle(section)}</div>
+                  <div className="mt-1 leading-6">{resolveStructureEvidence(section)}</div>
+                </div>
+
+                {explainabilityStructure ? (
+                  <div className="space-y-2">
+                    <div className="text-sm font-medium text-foreground">结构说明</div>
+                    <StructureExplainabilityPanel
+                      structure={explainabilityStructure}
+                      executionSummary={buildExecutionSummary(section.period)}
+                      structureColors={STRUCTURE_COLORS}
+                    />
                   </div>
-                </CardContent>
-              </Card>
-            </AccordionContent>
-            </AccordionItem>
+                ) : null}
+              </section>
+            </TabsContent>
           );
         })}
-      </Accordion>
+      </Tabs>
     </section>
   );
 }

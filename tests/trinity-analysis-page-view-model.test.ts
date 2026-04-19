@@ -742,3 +742,22 @@ test('mixed language reason chain prefers later chinese candidate instead of gen
   assert.match(shortline.parentConstraint, /只允许轻仓等待确认/);
   assert.doesNotMatch(shortline.parentConstraint, /暂无额外约束/);
 });
+
+test('rule chain items expose trading labels, direction and status explanation', () => {
+  const vm = buildAnalysisPageViewModel({
+    result: createResult(),
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const structureRule = vm.ruleChain.items.find((item) => item.title === '结构资格');
+  const spacetimeRule = vm.ruleChain.items.find((item) => item.title === 'MACD 时空');
+
+  assert.ok(structureRule);
+  assert.ok(spacetimeRule);
+  assert.equal(structureRule.displayStatusLabel, '可执行');
+  assert.equal(spacetimeRule.displayStatusLabel, '谨慎看');
+  assert.equal(spacetimeRule.directionLabel, '偏多');
+  assert.equal(spacetimeRule.statusExplanation.ruleState, '有约束');
+  assert.match(spacetimeRule.statusExplanation.reason, /MACD 时空|等待时空/);
+});

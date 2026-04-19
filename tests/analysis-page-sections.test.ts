@@ -8,6 +8,7 @@ import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 type TradingCycleBusModule = typeof import('../src/components/stock/TradingCycleBus.tsx');
 type TrinityRuleChainModule = typeof import('../src/components/stock/TrinityRuleChain.tsx');
 type AnalysisSummaryPanelModule = typeof import('../src/components/stock/AnalysisSummaryPanel.tsx');
+type AnalysisPeriodDetailsModule = typeof import('../src/components/stock/AnalysisPeriodDetails.tsx');
 
 const periodDetailsSource = await fs.readFile('src/components/stock/AnalysisPeriodDetails.tsx', 'utf8');
 
@@ -83,12 +84,102 @@ test('TrinityRuleChain renders six rule items and keeps failed status plus reaso
       sourceLabel:
         '本规则链默认按日线主判定展示；若日线缺失，则依次降级为周线、60分钟、30分钟、15分钟。',
       items: [
-        { title: '结构资格', status: 'passed', detail: '周线方向允许向下钻取。', reason: '父级方向一致' },
-        { title: 'MACD 时空', status: 'passed', detail: '日线级别处于可执行结构。', reason: '结构资格达标' },
-        { title: '55 / 233 线关系', status: 'warning', detail: '30分钟触发尚需量能确认。', reason: '量能未同步放大' },
-        { title: '量能确认', status: 'info', detail: '60分钟节奏进入观察区。', reason: '等待下一段确认' },
-        { title: '级别权限', status: 'failed', detail: '15分钟入场点尚未成立。', reason: '入场触发条件缺失' },
-        { title: '执行计划', status: 'passed', detail: '风险回撤边界已定义。', reason: '止损与失效位明确' },
+        {
+          title: '结构资格',
+          status: 'passed',
+          displayStatusLabel: '可执行',
+          displayStatusIcon: '✓',
+          direction: 'bullish',
+          directionLabel: '偏多',
+          detail: '周线方向允许向下钻取。',
+          reason: '父级方向一致',
+          statusExplanation: {
+            tradeMeaning: '这条规则已满足，可纳入当前执行判断',
+            ruleState: '已满足',
+            directionLabel: '偏多',
+            reason: '父级方向一致',
+          },
+        },
+        {
+          title: 'MACD 时空',
+          status: 'info',
+          displayStatusLabel: '观察中',
+          displayStatusIcon: '○',
+          direction: 'neutral',
+          directionLabel: '中性',
+          detail: '日线级别处于等待确认状态。',
+          reason: '等待时空确认',
+          statusExplanation: {
+            tradeMeaning: '已有方向或预案，但还差确认，不急着动作',
+            ruleState: '待确认',
+            directionLabel: '中性',
+            reason: '等待时空确认',
+          },
+        },
+        {
+          title: '55 / 233 线关系',
+          status: 'warning',
+          displayStatusLabel: '谨慎看',
+          displayStatusIcon: '!',
+          direction: 'bearish',
+          directionLabel: '偏空',
+          detail: '30分钟触发尚需量能确认。',
+          reason: '量能未同步放大',
+          statusExplanation: {
+            tradeMeaning: '存在约束，不能直接放大动作',
+            ruleState: '有约束',
+            directionLabel: '偏空',
+            reason: '量能未同步放大',
+          },
+        },
+        {
+          title: '量能确认',
+          status: 'info',
+          displayStatusLabel: '观察中',
+          displayStatusIcon: '○',
+          direction: 'neutral',
+          directionLabel: '中性',
+          detail: '60分钟节奏进入观察区。',
+          reason: '等待下一段确认',
+          statusExplanation: {
+            tradeMeaning: '已有方向或预案，但还差确认，不急着动作',
+            ruleState: '待确认',
+            directionLabel: '中性',
+            reason: '等待下一段确认',
+          },
+        },
+        {
+          title: '级别权限',
+          status: 'failed',
+          displayStatusLabel: '暂不做',
+          displayStatusIcon: '×',
+          direction: 'bearish',
+          directionLabel: '偏空',
+          detail: '15分钟入场点尚未成立。',
+          reason: '入场触发条件缺失',
+          statusExplanation: {
+            tradeMeaning: '当前不支持按这条规则交易',
+            ruleState: '不成立',
+            directionLabel: '偏空',
+            reason: '入场触发条件缺失',
+          },
+        },
+        {
+          title: '执行计划',
+          status: 'passed',
+          displayStatusLabel: '可执行',
+          displayStatusIcon: '✓',
+          direction: 'bullish',
+          directionLabel: '偏多',
+          detail: '风险回撤边界已定义。',
+          reason: '止损与失效位明确',
+          statusExplanation: {
+            tradeMeaning: '这条规则已满足，可纳入当前执行判断',
+            ruleState: '已满足',
+            directionLabel: '偏多',
+            reason: '止损与失效位明确',
+          },
+        },
       ],
     })
   );
@@ -100,10 +191,20 @@ test('TrinityRuleChain renders six rule items and keeps failed status plus reaso
   assert.match(html, /级别权限/);
   assert.match(html, /执行计划/);
   assert.match(html, /本规则链默认按日线主判定展示/);
-  assert.match(html, /失败/);
+  assert.match(html, /可执行/);
+  assert.match(html, /观察中/);
+  assert.match(html, /谨慎看/);
+  assert.match(html, /暂不做/);
+  assert.match(html, /交易含义/);
+  assert.match(html, /规则状态/);
+  assert.match(html, /当前方向/);
   assert.match(html, /15分钟入场点尚未成立/);
   assert.match(html, /入场触发条件缺失/);
   assert.match(html, /等待触发：已有预案，但触发条件尚未满足/);
+  assert.doesNotMatch(html, />通过</);
+  assert.doesNotMatch(html, />警示</);
+  assert.doesNotMatch(html, />提示</);
+  assert.doesNotMatch(html, />失败</);
 });
 
 test('AnalysisPeriodDetails keeps a pure data contract and renders structure explanation internally', () => {
@@ -112,7 +213,11 @@ test('AnalysisPeriodDetails keeps a pure data contract and renders structure exp
   assert.match(periodDetailsSource, /StructureExplainabilityPanel/);
   assert.match(periodDetailsSource, /buildExecutionSummary/);
   assert.match(periodDetailsSource, /结构说明/);
-  assert.match(periodDetailsSource, /defaultValue/);
+  assert.match(periodDetailsSource, /defaultLevelKey/);
+  assert.match(periodDetailsSource, /TabsList/);
+  assert.match(periodDetailsSource, /TabsTrigger/);
+  assert.match(periodDetailsSource, /TabsContent/);
+  assert.doesNotMatch(periodDetailsSource, /AccordionTrigger/);
   assert.match(periodDetailsSource, /section\.period/);
 });
 
@@ -186,4 +291,108 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
   assert.match(html, /仓位权限/);
   assert.match(html, /后端允许的最大仓位动作范围/);
   assert.doesNotMatch(html, /后端硬门控/);
+});
+
+test('AnalysisPeriodDetails renders level tabs with decision card, rule summary and evidence', async () => {
+  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
+    'src/components/stock/AnalysisPeriodDetails.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisPeriodDetails, {
+      defaultLevelKey: 'daily',
+      sections: [
+        {
+          key: 'daily',
+          label: '日线',
+          defaultOpen: true,
+          rangeLabel: '近 240 根',
+          summary: '日线等待确认',
+          topologyTitle: '日线结构证据',
+          period: {
+            period: 'daily',
+            trinity_decision: {
+              level: 'daily',
+              conclusion: {
+                action: 'wait',
+                action_label: '等待',
+                bias: 'neutral',
+                confidence: 'medium',
+                can_trade: false,
+                wait_reason: '等待30分钟触发',
+              },
+              structure: {
+                type: 'C单平台式',
+                qualification: 'standard',
+                direction: 'flat',
+                explainability: { status: 'passed', reason: 'C平台成立', evidence: [] },
+              },
+              execution: {
+                triggers: ['30分钟放量突破'],
+                risk_flags: ['跌回平台下沿'],
+                position_sizing: { reason: '不超过轻仓' },
+              },
+              trade_qualification: {
+                position_permission: 'light_probe',
+                trade_mode: 'wait_confirmation',
+                reason: ['等待确认'],
+              },
+              level_nesting: {
+                parent_level: 'weekly',
+                child_level: 'daily',
+                parent_bias: 'bullish',
+                child_signal: 'wait',
+                resonance: 'aligned',
+                permission: {
+                  allow_position_increase: false,
+                  allow_t_trade: false,
+                  allow_only_light_probe: true,
+                  reason: '周线偏多，日线等待触发',
+                },
+              },
+              judgment_criteria: [],
+            },
+            structure: {
+              structure_type: 'C单平台式',
+              inflection_points: 6,
+              description: 'C单平台式，等待突破',
+              interpretation: {
+                spacetime_gate: {
+                  parent_status: '周线偏多',
+                  resonance_enabled: true,
+                  wait_reason: '日线等待30分钟放量突破',
+                  required_confirmation: '30分钟放量突破',
+                },
+              },
+              structure_details: {
+                prediction: {
+                  current_stage: 'c5拐点',
+                  next_stage: 'c6确认',
+                  prediction_alert: '等待平台边界确认',
+                  key_price_levels: [],
+                  confidence: 'medium',
+                },
+              },
+            },
+          } as any,
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /周期详情/);
+  assert.match(html, /日线/);
+  assert.match(html, /该级别简明决策/);
+  assert.match(html, /规则摘要/);
+  assert.match(html, /证据区/);
+  assert.match(html, /来源：日线三位一体判定/);
+  assert.match(html, /触发条件/);
+  assert.match(html, /风险条件/);
+  assert.match(html, /风控约束/);
+  assert.match(html, /结构类型/);
+  assert.match(html, /标准C类结构/);
+  assert.match(html, /共振对象：周线 → 日线/);
+  assert.match(html, /上一级：周线/);
+  assert.match(html, /当前级别：日线/);
+  assert.doesNotMatch(html, /周期摘要/);
 });

@@ -7,6 +7,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
+import { getDirectionMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
 import type { AnalysisPageRuleChainItem } from '@/lib/trinity-analysis-page-view-model';
 
@@ -65,44 +66,14 @@ const RULE_HINTS: Record<string, { title: string; body: string[] }> = {
   },
 };
 
-const STATUS_META: Record<
-  AnalysisPageRuleChainItem['status'],
-  {
-    label: string;
-    badgeClassName: string;
-    cardClassName: string;
-  }
-> = {
-  passed: {
-    label: '通过',
-    badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    cardClassName: 'border-emerald-200/70 bg-emerald-50/40',
-  },
-  failed: {
-    label: '失败',
-    badgeClassName: 'border-red-200 bg-red-50 text-red-700',
-    cardClassName: 'border-red-200/80 bg-red-50/50',
-  },
-  warning: {
-    label: '警示',
-    badgeClassName: 'border-amber-200 bg-amber-50 text-amber-800',
-    cardClassName: 'border-amber-200/80 bg-amber-50/50',
-  },
-  info: {
-    label: '提示',
-    badgeClassName: 'border-sky-200 bg-sky-50 text-sky-700',
-    cardClassName: 'border-sky-200/80 bg-sky-50/50',
-  },
-};
-
 export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) {
   if (!items.length) {
     return null;
   }
 
   const description = sourceLabel
-    ? `${sourceLabel}${sourceLabel.endsWith('。') ? '' : '。'}六段规则逐项展示当前状态，失败与警示会被明确保留。`
-    : '六段规则逐项展示当前状态，失败与警示会被明确保留。';
+    ? `${sourceLabel}${sourceLabel.endsWith('。') ? '' : '。'}每张卡展示方向、可执行度、判定依据和当前原因。`
+    : '每张卡展示方向、可执行度、判定依据和当前原因。';
 
   return (
     <section className="space-y-3" aria-label="三位一体规则链">
@@ -113,14 +84,14 @@ export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) 
 
       <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-3">
         {items.map((item) => {
-          const meta = STATUS_META[item.status];
+          const directionMeta = getDirectionMeta(item.direction);
 
           return (
             <Card
               key={`${item.title}-${item.status}`}
-              className={cn('gap-3 py-4 shadow-none', meta.cardClassName)}
+              className={cn('gap-3 py-4 shadow-none', directionMeta.cardClassName)}
             >
-                <CardHeader className="flex flex-row items-start justify-between gap-3 px-4">
+              <CardHeader className="flex flex-row items-start justify-between gap-3 px-4">
                 <div className="flex items-center gap-1.5">
                   <CardTitle className="text-sm leading-6">{item.title}</CardTitle>
                   {RULE_HINTS[item.title] ? (
@@ -147,9 +118,28 @@ export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) 
                     </TooltipProvider>
                   ) : null}
                 </div>
-                <Badge variant="outline" className={meta.badgeClassName}>
-                  {meta.label}
-                </Badge>
+                <TooltipProvider>
+                  <Tooltip>
+                    <TooltipTrigger asChild>
+                      <Badge
+                        variant="outline"
+                        className={cn('cursor-help', directionMeta.badgeClassName)}
+                      >
+                        <span className="mr-1">{item.displayStatusIcon}</span>
+                        {item.displayStatusLabel}
+                      </Badge>
+                    </TooltipTrigger>
+                    <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                      <div className="space-y-1">
+                        <div className="font-medium">{item.displayStatusLabel}</div>
+                        <p>交易含义：{item.statusExplanation.tradeMeaning}</p>
+                        <p>规则状态：{item.statusExplanation.ruleState}</p>
+                        <p>当前方向：{item.statusExplanation.directionLabel}</p>
+                        <p>当前原因：{item.statusExplanation.reason}</p>
+                      </div>
+                    </TooltipContent>
+                  </Tooltip>
+                </TooltipProvider>
               </CardHeader>
               <CardContent className="space-y-2 px-4 text-sm leading-6 text-muted-foreground">
                 <p>{item.detail}</p>

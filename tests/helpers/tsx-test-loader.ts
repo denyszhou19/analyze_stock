@@ -44,6 +44,11 @@ const uiStubUrl = asDataModule(`
   export const AccordionContent = slot('div', 'accordion-content');
   export const AccordionItem = slot('div', 'accordion-item');
   export const AccordionTrigger = slot('button', 'accordion-trigger');
+  export const Tabs = ({ children, className, ...props }) =>
+    React.createElement('div', { ...props, className, 'data-slot': 'tabs' }, children);
+  export const TabsList = slot('div', 'tabs-list');
+  export const TabsTrigger = slot('button', 'tabs-trigger');
+  export const TabsContent = slot('div', 'tabs-content');
   export const Badge = slot('span', 'badge');
   export const Button = slot('button', 'button');
   export const Card = slot('section', 'card');
@@ -74,7 +79,54 @@ const utilsStubUrl = asDataModule(`
   }
 `);
 
+const structureExplainabilityPanelStubUrl = asDataModule(`
+  import React from '${reactUrl}';
+  export function StructureExplainabilityPanel({ structure }) {
+    const type = structure?.structure_type ?? '未识别结构';
+    return React.createElement(
+      'div',
+      { 'data-slot': 'structure-explainability-panel' },
+      React.createElement('div', null, '结构类型：' + type),
+      React.createElement('div', null, '标准C类结构')
+    );
+  }
+`);
+
+const stockExecutionViewModelStubUrl = asDataModule(`
+  export function buildExecutionSummary() {
+    return {
+      actionLabel: '等待',
+      rationale: '等待触发',
+    };
+  }
+`);
+
+const structureExplainabilityViewModelStubUrl = asDataModule(`
+  export function normalizeStructureDisplayText(value) {
+    return value ?? '';
+  }
+`);
+
+const trinityDecisionLabelsStubUrl = asDataModule(`
+  export function formatDecisionActionLabel(action, actionLabel) {
+    return actionLabel ?? action ?? '等待';
+  }
+`);
+
 const displayVocabularyStubUrl = asDataModule(`
+  export function getActionStatusMeta(status) {
+    if (status === 'passed') {
+      return { label: '可执行', icon: '✓' };
+    }
+    if (status === 'warning') {
+      return { label: '谨慎看', icon: '!' };
+    }
+    if (status === 'failed') {
+      return { label: '暂不做', icon: '×' };
+    }
+    return { label: '观察中', icon: '○' };
+  }
+
   export function getDirectionMeta(direction) {
     if (direction === 'bullish') {
       return {
@@ -99,6 +151,33 @@ const displayVocabularyStubUrl = asDataModule(`
       textClassName: 'text-slate-700',
     };
   }
+
+  export function directionFromBias(bias) {
+    if (bias === 'bullish') {
+      return 'bullish';
+    }
+    if (bias === 'bearish') {
+      return 'bearish';
+    }
+    return 'neutral';
+  }
+
+  export function getStructureTagMeta(tag) {
+    if (tag === 'C单平台式') {
+      return {
+        label: 'C单平台式',
+        className: 'border-blue-200 bg-blue-50 text-blue-700',
+        explanation: '标准C类结构中的单平台形态。',
+        tradeMeaning: '适合围绕平台边界、突破与跌破回抽来组织交易语言。',
+      };
+    }
+    return {
+      label: tag || '未知结构',
+      className: 'border-slate-200 bg-slate-50 text-slate-700',
+      explanation: '当前结构标签暂无补充释义。',
+      tradeMeaning: '等待更多结构证据后再决定。',
+    };
+  }
 `);
 
 function rewriteImports(code: string): string {
@@ -107,6 +186,8 @@ function rewriteImports(code: string): string {
     .replaceAll("'react/jsx-runtime'", `'${jsxRuntimeStubUrl}'`)
     .replaceAll('"@/components/ui/accordion"', `'${uiStubUrl}'`)
     .replaceAll("'@/components/ui/accordion'", `'${uiStubUrl}'`)
+    .replaceAll('"@/components/ui/tabs"', `'${uiStubUrl}'`)
+    .replaceAll("'@/components/ui/tabs'", `'${uiStubUrl}'`)
     .replaceAll('"@/components/ui/badge"', `'${uiStubUrl}'`)
     .replaceAll("'@/components/ui/badge'", `'${uiStubUrl}'`)
     .replaceAll('"@/components/ui/button"', `'${uiStubUrl}'`)
@@ -123,8 +204,18 @@ function rewriteImports(code: string): string {
     .replaceAll("'@/lib/utils'", `'${utilsStubUrl}'`)
     .replaceAll('"@/lib/trinity-display-vocabulary"', `'${displayVocabularyStubUrl}'`)
     .replaceAll("'@/lib/trinity-display-vocabulary'", `'${displayVocabularyStubUrl}'`)
+    .replaceAll('"@/components/stock/StructureExplainabilityPanel"', `'${structureExplainabilityPanelStubUrl}'`)
+    .replaceAll("'@/components/stock/StructureExplainabilityPanel'", `'${structureExplainabilityPanelStubUrl}'`)
+    .replaceAll('"@/lib/stock-execution-view-model"', `'${stockExecutionViewModelStubUrl}'`)
+    .replaceAll("'@/lib/stock-execution-view-model'", `'${stockExecutionViewModelStubUrl}'`)
+    .replaceAll('"@/lib/structure-explainability-view-model"', `'${structureExplainabilityViewModelStubUrl}'`)
+    .replaceAll("'@/lib/structure-explainability-view-model'", `'${structureExplainabilityViewModelStubUrl}'`)
+    .replaceAll('"@/lib/trinity-decision-labels"', `'${trinityDecisionLabelsStubUrl}'`)
+    .replaceAll("'@/lib/trinity-decision-labels'", `'${trinityDecisionLabelsStubUrl}'`)
     .replaceAll('"../ui/accordion"', `'${uiStubUrl}'`)
     .replaceAll("'../ui/accordion'", `'${uiStubUrl}'`)
+    .replaceAll('"../ui/tabs"', `'${uiStubUrl}'`)
+    .replaceAll("'../ui/tabs'", `'${uiStubUrl}'`)
     .replaceAll('"../ui/badge"', `'${uiStubUrl}'`)
     .replaceAll("'../ui/badge'", `'${uiStubUrl}'`)
     .replaceAll('"../ui/button"', `'${uiStubUrl}'`)

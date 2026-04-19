@@ -14,6 +14,7 @@ import {
 import {
   buildStatusExplanation,
   directionFromBias,
+  directionFromStructure,
   getActionStatusMeta,
   getDirectionMeta,
   getStructureTagMeta,
@@ -126,8 +127,13 @@ interface BuiltTradingCombination extends AnalysisPageTradingCombinationViewMode
 export interface AnalysisPageRuleChainItem {
   title: string;
   status: 'passed' | 'failed' | 'warning' | 'info';
+  displayStatusLabel: string;
+  displayStatusIcon: string;
+  direction: DirectionTone;
+  directionLabel: string;
   detail: string;
   reason: string;
+  statusExplanation: ReturnType<typeof buildStatusExplanation>;
 }
 
 export interface AnalysisPageViewModel {
@@ -328,6 +334,34 @@ function buildRuleChainSourceLabel(level: TrinityLevel): string {
 
   const missingLevels = PRIMARY_DECISION_ORDER.slice(0, levelIndex).map((item) => LEVEL_LABELS[item]);
   return `本规则链当前按${LEVEL_LABELS[level]}主判定展示；因${missingLevels.join('、')}主判定缺失，已自动降级。`;
+}
+
+function decorateRuleChainItem({
+  title,
+  status,
+  direction,
+  detail,
+  reason,
+}: {
+  title: string;
+  status: TrinityJudgmentCriterion['status'];
+  direction: DirectionTone;
+  detail: string;
+  reason: string;
+}): AnalysisPageRuleChainItem {
+  const statusMeta = getActionStatusMeta(status);
+
+  return {
+    title,
+    status,
+    displayStatusLabel: statusMeta.label,
+    displayStatusIcon: statusMeta.icon,
+    direction,
+    directionLabel: getDirectionMeta(direction).label,
+    detail,
+    reason,
+    statusExplanation: buildStatusExplanation({ status, direction, reason }),
+  };
 }
 
 function formatCoverage(startDate?: string | null, endDate?: string | null): string {
@@ -791,89 +825,104 @@ function findCriterion(
 
 function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleChain'] {
   const nesting = decision.level_nesting;
+  const decisionDirection = directionFromBias(decision.conclusion.bias);
 
   return {
     sourceLabel: buildRuleChainSourceLabel(decision.level),
     items: RULE_CHAIN_CATEGORY_ORDER.map(({ title, category }) => {
+      const categoryDirection =
+        category === 'spacetime'
+          ? directionFromBias(decision.spacetime.direction_bias)
+          : category === 'structure'
+            ? directionFromStructure(decision.structure.direction)
+            : decisionDirection;
+
       const criterion = findCriterion(decision, category);
       if (criterion) {
-        return {
+        return decorateRuleChainItem({
           title,
           status: criterion.status,
+          direction: categoryDirection,
           detail:
             category === 'execution'
               ? normalizeExecutionDetail(criterion.detail)
               : normalizeRuleChainText(criterion.detail),
           reason: normalizeRuleChainText(criterion.label),
-        };
+        });
       }
 
       if (category === 'structure') {
-        return {
+        return decorateRuleChainItem({
           title,
           status: decision.structure.explainability.status === 'failed' ? 'failed' : decision.structure.explainability.status === 'passed' ? 'passed' : 'warning',
+          direction: categoryDirection,
           detail: normalizeRuleChainText(
             `${STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification]}｜${decision.structure.explainability.reason}`
           ),
           reason: normalizeRuleChainText(decision.structure.explainability.reason),
-        };
+        });
       }
       if (category === 'spacetime') {
-        return {
+        return decorateRuleChainItem({
           title,
           status: decision.spacetime.structure_match ? 'passed' : 'warning',
+          direction: categoryDirection,
           detail: normalizeRuleChainText(
             `${decision.spacetime.status}｜${BIAS_LABELS[decision.spacetime.direction_bias]}｜${decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason}`
           ),
           reason: normalizeRuleChainText(
             decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason
           ),
-        };
+        });
       }
       if (category === 'moving_average') {
-        return {
+        return decorateRuleChainItem({
           title,
           status:
             decision.moving_average.ma_gate.allow_long || decision.moving_average.ma_gate.allow_short
               ? 'passed'
               : 'warning',
+          direction: categoryDirection,
           detail: normalizeRuleChainText(
             `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`
           ),
           reason: normalizeRuleChainText(decision.moving_average.ma_gate.reason),
-        };
+        });
       }
       if (category === 'volume') {
-        return {
+        return decorateRuleChainItem({
           title,
           status: decision.volume_confirmation.volume_gate.confidence_adjustment === 'downgrade' ? 'warning' : 'info',
+          direction: categoryDirection,
           detail: normalizeRuleChainText(
             `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`
           ),
           reason: normalizeRuleChainText(decision.volume_confirmation.volume_gate.reason),
-        };
+        });
       }
       if (category === 'level_nesting') {
-        return {
+        return decorateRuleChainItem({
           title,
           status: nesting?.resonance === 'aligned' ? 'passed' : 'warning',
+          direction: categoryDirection,
           detail: normalizeRuleChainText(
             nesting
               ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}`
               : '暂无父子级别权限约束'
           ),
           reason: normalizeRuleChainText(nesting?.permission.reason ?? '暂无父子级别权限约束'),
-        };
+        });
       }
 
-      return {
+      return decorateRuleChainItem({
         title,
         status: decision.conclusion.can_trade ? 'passed' : 'info',
+        direction: categoryDirection,
         detail: normalizeExecutionDetail(
           `${decision.execution.entry_style}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
         ),
         reason: normalizeRuleChainText(decision.execution.position_sizing.reason),
-      };
+      });
     }),
   };
 }

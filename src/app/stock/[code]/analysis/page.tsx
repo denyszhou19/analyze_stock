@@ -599,7 +599,10 @@ export default function StockAnalysisPage() {
             items={pageViewModel.ruleChain.items}
           />
 
-          <AnalysisPeriodDetails sections={periodSections} />
+            <AnalysisPeriodDetails
+              sections={periodSections}
+              defaultLevelKey={pageViewModel.globalStrategy.primaryConstraintLevel}
+            />
         </div>
       ) : null}
     </div>
