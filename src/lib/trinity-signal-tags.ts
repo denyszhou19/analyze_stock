@@ -215,7 +215,14 @@ function breakthroughPeriodTone(patternType?: string | null, direction?: string 
   }
 
   if (isValid) {
-    return cleanText(direction).toLowerCase() === 'down' ? 'bearish' : 'bullish';
+    const normalizedDirection = cleanText(direction).toLowerCase();
+    if (normalizedDirection === 'up') {
+      return 'bullish';
+    }
+    if (normalizedDirection === 'down') {
+      return 'bearish';
+    }
+    return 'neutral';
   }
 
   return 'neutral';

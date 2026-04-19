@@ -158,3 +158,70 @@ test('buildPeriodSignalTags combines period signals into capped tags', () => {
   assert.equal(tags[1]?.key, 'breakthrough');
   assert.deepEqual(tags[1]?.hover.items, [{ label: '信号', value: '冲高后回落' }]);
 });
+
+test('buildDecisionSignalTags obeys options.max when natural output is longer', () => {
+  const tags = signalTags.buildDecisionSignalTags(createDecision(), { max: 3 });
+
+  assert.deepEqual(tags.map((tag) => tag.label), ['时空｜中偏强', '突破/跌破｜突破候选', '量能｜突破量弱']);
+  assert.equal(tags.length, 3);
+});
+
+test('buildPeriodSignalTags falls back to neutral tone when valid breakthrough direction is missing or unknown', () => {
+  const missingDirectionTags = signalTags.buildPeriodSignalTags(
+    createPeriod({
+      breakthrough: {
+        pattern_type: '放量突破',
+        is_valid: true,
+        direction: '',
+        key_signals: ['突破成立'],
+      },
+    }),
+    { max: 4 }
+  );
+
+  const unknownDirectionTags = signalTags.buildPeriodSignalTags(
+    createPeriod({
+      breakthrough: {
+        pattern_type: '放量突破',
+        is_valid: true,
+        direction: 'sideways',
+        key_signals: ['突破成立'],
+      },
+    }),
+    { max: 4 }
+  );
+
+  assert.equal(missingDirectionTags[1]?.tone, 'neutral');
+  assert.equal(unknownDirectionTags[1]?.tone, 'neutral');
+});
+
+test('buildPeriodSignalTags falls back hover items to conclusion when no structured items remain', () => {
+  const tags = signalTags.buildPeriodSignalTags(
+    createPeriod({
+      macd: {
+        status: '中偏弱',
+        description: '   ',
+        divergence_note: '',
+      },
+      breakthrough: undefined,
+      trinity_decision: createDecision({
+        spacetime: {
+          status: '中偏弱',
+          direction_bias: 'bearish',
+          expected_structures: { up: ['C单平台式'], down: ['D三段式'] },
+          structure_match: true,
+          mismatch_reason: null,
+          divergence_policy: {
+            top_divergence_valid: false,
+            bottom_divergence_valid: false,
+            reason: '',
+          },
+        },
+      }),
+    }),
+    { max: 4 }
+  );
+
+  assert.deepEqual(tags.map((tag) => tag.label), ['时空｜中偏弱']);
+  assert.deepEqual(tags[0]?.hover.items, [{ label: '结论', value: '中偏弱' }]);
+});
