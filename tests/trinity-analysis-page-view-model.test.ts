@@ -452,6 +452,23 @@ test('loading and error states use unified Chinese labels', () => {
 
 test('global strategy is derived from three trading combinations, not a single daily label', () => {
   const result = createResult();
+  if (!result.periods.daily.trinity_decision) {
+    throw new Error('missing daily decision');
+  }
+  result.periods.daily.trinity_decision.trade_qualification = {
+    trade_mode: 'standard_node_trade',
+    position_permission: 'light_probe',
+    confidence: 'medium',
+    reason: ['日线允许轻仓试探'],
+  };
+  result.periods.daily.trinity_decision.conclusion = {
+    action: 'wait',
+    action_label: '等待',
+    bias: 'bullish',
+    confidence: 'medium',
+    can_trade: true,
+    wait_reason: '日线允许轻仓跟踪',
+  };
   result.periods.hour30 = {
     period: 'hour30',
     trinity_decision: createDecision({
@@ -551,6 +568,15 @@ test('missing parent constraint downgrades combination and prevents false execut
 
 test('summary hard gates bind to primary combination constraint level before fallback', () => {
   const result = createResult();
+  if (!result.periods.weekly.trinity_decision) {
+    throw new Error('missing weekly decision');
+  }
+  result.periods.weekly.trinity_decision.trade_qualification = {
+    trade_mode: 'standard_node_trade',
+    position_permission: 'half_position',
+    confidence: 'medium',
+    reason: ['周线允许按主趋势持有'],
+  };
   result.periods.daily.trinity_decision = createDecision({
     level: 'daily',
     conclusion: {
@@ -605,4 +631,85 @@ test('hard gate guardrail falls back to chinese copy when backend reason is engl
   assert.notEqual(guardrailGate.value, 'Wait for daily breakout');
   assert.notEqual(guardrailGate.value, 'Position sizing pending');
   assert.equal(guardrailGate.value, '暂无明确结论约束');
+});
+
+test('parent no_position blocks executable shortline even if child can trade', () => {
+  const result = createResult();
+  if (!result.periods.daily.trinity_decision) {
+    throw new Error('missing daily decision');
+  }
+
+  result.periods.daily.trinity_decision.trade_qualification = {
+    trade_mode: 'wait_confirmation',
+    position_permission: 'no_position',
+    confidence: 'medium',
+    reason: ['日线禁止开仓'],
+  };
+  result.periods.daily.trinity_decision.conclusion = {
+    action: 'wait',
+    action_label: '等待',
+    bias: 'bullish',
+    confidence: 'medium',
+    can_trade: false,
+    wait_reason: '日线主约束禁止开仓',
+  };
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'buy',
+        action_label: '轻仓试探',
+        bias: 'bullish',
+        confidence: 'medium',
+        can_trade: true,
+      },
+      execution: {
+        entry_style: 'pullback_confirm' as never,
+        triggers: ['30分钟放量突破平台上沿'],
+        invalidation: ['30分钟跌回突破位'],
+        confirmation: ['回踩不破突破位'],
+        position_sizing: { max_ratio: 0.2, reason: '30分钟已有触发' },
+        risk_flags: ['服从日线主约束'],
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const shortline = vm.tradingCombinations.find((item) => item.label === '短线执行组合｜日线 → 30分钟');
+  assert.ok(shortline);
+  assert.equal(shortline.actionLabel, '谨慎看');
+  assert.notEqual(shortline.actionLabel, '可执行');
+  assert.notEqual(vm.globalStrategy.actionLabel, '可执行');
+});
+
+test('english reasons are cleaned across summary global strategy and combinations', () => {
+  const result = createResult();
+  if (!result.periods.daily.trinity_decision) {
+    throw new Error('missing daily decision');
+  }
+
+  result.periods.daily.trinity_decision.conclusion.wait_reason = 'Wait for daily breakout';
+  result.periods.daily.trinity_decision.execution.position_sizing.reason = 'Position sizing pending';
+  result.periods.daily.trinity_decision.trade_qualification.reason = ['English trade qualification'];
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const guardrailGate = vm.summary.hardGates.find((gate) => gate.label === '结论约束');
+  const shortline = vm.tradingCombinations.find((item) => item.label === '短线执行组合｜日线 → 30分钟');
+  assert.ok(guardrailGate);
+  assert.ok(shortline);
+  assert.notEqual(guardrailGate.value, 'Wait for daily breakout');
+  assert.notEqual(vm.globalStrategy.primaryReason, 'Wait for daily breakout');
+  assert.notEqual(vm.globalStrategy.guardrail, 'Wait for daily breakout');
+  assert.doesNotMatch(shortline.parentConstraint, /Wait for daily breakout|English trade qualification|Position sizing pending/);
 });

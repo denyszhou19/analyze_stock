@@ -418,6 +418,11 @@ function gateDescription(
   };
 }
 
+function resolveChineseReason(candidate?: string | null, fallback = '暂无明确结论约束'): string {
+  const resolved = preferChineseText(candidate, fallback).trim();
+  return /[\u4e00-\u9fff]/.test(resolved) ? resolved : fallback;
+}
+
 function primaryLevelSourceLabel(
   decision: TrinityDecision,
   primaryCombination: AnalysisPageTradingCombinationViewModel,
@@ -438,7 +443,7 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
   );
   const volumeValue = `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}`;
   const rawGuardrailValue = decision.conclusion.wait_reason ?? decision.execution.position_sizing.reason;
-  const guardrailValue = preferChineseText(rawGuardrailValue, '暂无明确结论约束');
+  const guardrailValue = resolveChineseReason(rawGuardrailValue, '暂无明确结论约束');
 
   return [
     {
@@ -518,20 +523,21 @@ function buildSummary(
     decision.conclusion.action,
     decision.conclusion.action_label
   );
-  const backendReason =
+  const backendReason = resolveChineseReason(
     decision.conclusion.wait_reason ||
-    decision.trade_qualification.reason[0] ||
-    decision.execution.position_sizing.reason;
+      decision.trade_qualification.reason[0] ||
+      decision.execution.position_sizing.reason
+  );
 
   return {
     mode: aiState.status,
     errorMessage,
     headline: preferChineseText(readySummary?.headline, actionLabel),
     primaryActionLabel: actionLabel,
-    primaryReason: preferChineseText(readySummary?.primary_reason, backendReason),
+    primaryReason: resolveChineseReason(readySummary?.primary_reason, backendReason),
     triggerLabels: preferChineseList(readySummary?.triggers, decision.execution.triggers),
     riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
-    guardrail: preferChineseText(readySummary?.guardrail, backendReason),
+    guardrail: resolveChineseReason(readySummary?.guardrail, backendReason),
     hardGateTitle: '主策略硬门控',
     hardGateSourceLabel: primaryLevelSourceLabel(
       hardGateDecision,
@@ -560,11 +566,11 @@ function resolveCombinationStatus(
   if (!major) {
     return 'info';
   }
-  if (minor?.conclusion.can_trade && major.conclusion.bias !== 'bearish') {
-    return 'passed';
-  }
   if (major?.trade_qualification.position_permission === 'no_position') {
     return 'warning';
+  }
+  if (minor?.conclusion.can_trade && major.conclusion.bias !== 'bearish') {
+    return 'passed';
   }
   return 'info';
 }
@@ -599,7 +605,10 @@ function buildCombination({
     directionLabel,
     actionLabel: statusMeta.label,
     parentConstraint: major
-      ? `${majorLabel}：${major.conclusion.wait_reason ?? major.trade_qualification.reason[0] ?? '暂无额外约束'}`
+      ? `${majorLabel}：${resolveChineseReason(
+          major.conclusion.wait_reason ?? major.trade_qualification.reason[0],
+          '暂无额外约束'
+        )}`
       : `${majorLabel}缺失`,
     triggerLevelLabel: minorLabel,
     suitableAction: minor
@@ -671,11 +680,12 @@ function buildGlobalStrategy({
   const explanation = buildStatusExplanation({
     status,
     direction: primaryCombination.direction,
-    reason:
+    reason: resolveChineseReason(
       triggerDecision?.conclusion.wait_reason ??
-      triggerDecision?.trade_qualification.reason?.[0] ??
-      constraintDecision?.conclusion.wait_reason ??
-      constraintDecision?.trade_qualification.reason?.[0],
+        triggerDecision?.trade_qualification.reason?.[0] ??
+        constraintDecision?.conclusion.wait_reason ??
+        constraintDecision?.trade_qualification.reason?.[0]
+    ),
   });
   const structureMeta = getStructureTagMeta(
     triggerDecision?.structure.type ?? constraintDecision?.structure.type ?? ''
@@ -697,11 +707,12 @@ function buildGlobalStrategy({
     primaryReason: explanation.reason,
     triggerLabels: triggerDecision?.execution.triggers ?? [],
     riskLabels: triggerDecision?.execution.risk_flags ?? constraintDecision?.execution.risk_flags ?? [],
-    guardrail:
+    guardrail: resolveChineseReason(
       constraintDecision?.conclusion.wait_reason ??
-      constraintDecision?.execution.position_sizing.reason ??
-      triggerDecision?.execution.position_sizing.reason ??
-      explanation.tradeMeaning,
+        constraintDecision?.execution.position_sizing.reason ??
+        triggerDecision?.execution.position_sizing.reason,
+      explanation.reason
+    ),
   };
 }
 
