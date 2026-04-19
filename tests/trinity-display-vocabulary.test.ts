@@ -87,6 +87,12 @@ test('maps structure direction enum into direction tone', () => {
 
   assert.equal(vocabulary.directionFromStructure('up'), 'bullish');
   assert.equal(vocabulary.directionFromStructure('down'), 'bearish');
+  assert.equal(vocabulary.directionFromStructure('bullish'), 'neutral');
+  assert.equal(vocabulary.directionFromStructure('bearish'), 'neutral');
+  assert.equal(vocabulary.directionFromStructure('偏多'), 'neutral');
+  assert.equal(vocabulary.directionFromStructure('偏空'), 'neutral');
+  assert.equal(vocabulary.directionFromStructure('向上'), 'neutral');
+  assert.equal(vocabulary.directionFromStructure('向下'), 'neutral');
   assert.equal(vocabulary.directionFromStructure('neutral'), 'neutral');
   assert.equal(vocabulary.directionFromStructure(''), 'neutral');
   assert.equal(vocabulary.directionFromStructure('sideways'), 'neutral');

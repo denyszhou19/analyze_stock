@@ -2,9 +2,7 @@ export type ActionStatus = 'passed' | 'info' | 'warning' | 'failed';
 export type DirectionTone = 'bullish' | 'bearish' | 'neutral';
 export type ActionStatusLabel = '可执行' | '观察中' | '谨慎看' | '暂不做';
 export type ActionRuleState = '已满足' | '待确认' | '有约束' | '不成立';
-export type TrinityActionStatus = ActionStatus;
-export type TrinityDirection = DirectionTone;
-export type TrinityStructureFamily =
+type StructureFamily =
   | 'A'
   | 'B'
   | 'C'
@@ -34,13 +32,13 @@ export interface DirectionMeta {
 
 export interface StructureTagMeta {
   label: string;
-  family: TrinityStructureFamily;
+  family: StructureFamily;
   className: string;
   explanation: string;
   tradeMeaning: string;
 }
 
-export interface StatusExplanationInput {
+interface StatusExplanationInput {
   status?: ActionStatus | string | null;
   direction?: DirectionTone | string | null;
   reason?: string | null;
@@ -300,7 +298,16 @@ export function directionFromBias(bias?: string | null): DirectionTone {
 }
 
 export function directionFromStructure(direction?: string | null): DirectionTone {
-  return normalizeDirection(direction);
+  const cleaned = cleanText(direction).toLowerCase();
+  if (cleaned === 'up') {
+    return 'bullish';
+  }
+
+  if (cleaned === 'down') {
+    return 'bearish';
+  }
+
+  return 'neutral';
 }
 
 export function buildStatusExplanation(input: StatusExplanationInput): StatusExplanation {
