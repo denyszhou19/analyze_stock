@@ -502,11 +502,10 @@ test('hard gates expose source and hover explanation', () => {
   });
 
   assert.equal(vm.summary.hardGateTitle, '主策略硬门控');
-  assert.match(vm.summary.hardGateSourceLabel!, /当前硬门控来自主判定级别：日线/);
-  assert.match(vm.summary.hardGateSourceLabel!, /当前优先组合：短线执行组合｜日线 → 30分钟/);
+  assert.match(vm.summary.hardGateSourceLabel, /当前硬门控来自主判定级别：日线/);
+  assert.match(vm.summary.hardGateSourceLabel, /当前优先组合：短线执行组合｜日线 → 30分钟/);
   const positionGate = vm.summary.hardGates.find((gate) => gate.label === '仓位权限');
   assert.ok(positionGate);
-  assert.ok(positionGate.description);
   assert.equal(positionGate.description.title, '仓位权限');
   assert.match(positionGate.description.tradeImpact, /不能突破/);
   assert.match(positionGate.description.source, /trade_qualification.position_permission/);

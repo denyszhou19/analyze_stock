@@ -11,6 +11,19 @@ import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 type AnalysisSummaryPanelModule = typeof import('../src/components/stock/AnalysisSummaryPanel.tsx');
 type AnalysisStatusBarModule = typeof import('../src/components/stock/AnalysisStatusBar.tsx');
 
+function gate(label: string, value: string, source: string) {
+  return {
+    label,
+    value,
+    description: {
+      title: label,
+      meaning: `${label}说明`,
+      tradeImpact: `当前值为「${value}」，AI 和页面结论不能突破这个限制。`,
+      source,
+    },
+  };
+}
+
 const summaryViewModel: AnalysisPageSummaryViewModel = {
   mode: 'idle',
   headline: '等待',
@@ -19,10 +32,12 @@ const summaryViewModel: AnalysisPageSummaryViewModel = {
   triggerLabels: ['重新站上平台上沿'],
   riskLabels: ['不追高'],
   guardrail: '等待 C 结构边界确认',
+  hardGateTitle: '主策略硬门控',
+  hardGateSourceLabel: '当前硬门控来自主判定级别：日线；当前优先组合：短线执行组合｜日线 → 30分钟',
   hardGates: [
-    { label: '后端最终动作', value: '等待' },
-    { label: '交易模式', value: '等待确认' },
-    { label: '仓位权限', value: '空仓等待' },
+    gate('后端最终动作', '等待', 'trinity_decision.conclusion.action'),
+    gate('交易模式', '等待确认', 'trinity_decision.trade_qualification.trade_mode'),
+    gate('仓位权限', '空仓等待', 'trinity_decision.trade_qualification.position_permission'),
   ],
 };
 
@@ -77,8 +92,8 @@ test('AnalysisSummaryPanel ready renders AI headline without backend enum leakag
         mode: 'ready',
         headline: 'AI 判断：等待缩量回踩后的二次确认',
         hardGates: [
-          { label: '后端最终动作', value: '等待' },
-          { label: '交易模式', value: '等待确认' },
+          gate('后端最终动作', '等待', 'trinity_decision.conclusion.action'),
+          gate('交易模式', '等待确认', 'trinity_decision.trade_qualification.trade_mode'),
         ],
       },
       onGenerate: () => {},

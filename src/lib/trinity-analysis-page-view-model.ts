@@ -62,7 +62,7 @@ export interface AnalysisPageHardGateDescription {
 export interface AnalysisPageSummaryGate {
   label: string;
   value: string;
-  description?: AnalysisPageHardGateDescription;
+  description: AnalysisPageHardGateDescription;
 }
 
 export interface AnalysisPageSummaryViewModel {
@@ -74,8 +74,8 @@ export interface AnalysisPageSummaryViewModel {
   triggerLabels: string[];
   riskLabels: string[];
   guardrail: string;
-  hardGateTitle?: string;
-  hardGateSourceLabel?: string;
+  hardGateTitle: string;
+  hardGateSourceLabel: string;
   hardGates: AnalysisPageSummaryGate[];
 }
 
