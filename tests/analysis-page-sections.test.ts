@@ -3,8 +3,6 @@ import test from 'node:test';
 import assert from 'node:assert/strict';
 
 import React from 'react';
-
-// @ts-expect-error Node test runtime needs the explicit .ts extension here.
 import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 
 type LevelDecisionBusModule = typeof import('../src/components/stock/LevelDecisionBus.tsx');

@@ -34,6 +34,10 @@ test('ai-analysis route prompt enforces deterministic_decision hard boundary for
   assert.match(routeSource, /摘要 action 不能升级为 buy\s*\/\s*add/);
   assert.match(routeSource, /headline\s*\/\s*action\s*\/\s*bias\s*\/\s*primary_reason/);
   assert.match(routeSource, /periods\.\*\.deterministic_decision\.conclusion\.action/);
+  assert.match(routeSource, /action[^\n]*buy\s*\/\s*add\s*\/\s*hold\s*\/\s*reduce\s*\/\s*sell\s*\/\s*t_trade\s*\/\s*wait\s*\/\s*avoid/);
+  assert.match(routeSource, /bias[^\n]*bullish\s*\/\s*bearish\s*\/\s*neutral/);
+  assert.match(routeSource, /禁止输出中文值/);
+  assert.match(routeSource, /所有自然语言内容必须使用简体中文/);
   assert.doesNotMatch(routeSource, /deterministic_decision\.action/);
   assert.match(routeSource, /不得突破后端硬边界/);
   assert.match(routeSource, /trade_qualification/);

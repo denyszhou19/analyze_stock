@@ -1,11 +1,4 @@
-const ACTION_LABELS: Record<string, string> = {
-  buy: '买入',
-  add: '加仓',
-  hold: '持有',
-  wait: '等待',
-  reduce: '减仓',
-  sell: '卖出',
-};
+import { formatDecisionActionLabel } from './trinity-decision-labels.ts';
 
 const KNOWN_CAP_LABELS: Array<[number, string]> = [
   [0.25, '1/4'],
@@ -84,7 +77,7 @@ export function buildExecutionSummary(periodData?: ExecutionSummaryInput | null)
   return {
     phaseLabel: structure?.execution_phase?.label ?? null,
     phaseReason: structure?.execution_phase?.reason ?? null,
-    actionLabel: execution?.action ? (ACTION_LABELS[execution.action] ?? execution.action) : null,
+    actionLabel: execution?.action ? formatDecisionActionLabel(execution.action) : null,
     setupQuality: execution?.setup_quality ?? null,
     timeframeCapLabel: formatTimeframeCap(execution?.timeframe_cap_ratio),
     executionReason: gateWaitReason ?? execution?.wait_reason ?? execution?.rationale ?? null,

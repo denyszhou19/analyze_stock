@@ -6,8 +6,6 @@ import type {
   AnalysisPageStatusBarViewModel,
   AnalysisPageSummaryViewModel,
 } from '../src/lib/trinity-analysis-page-view-model';
-
-// @ts-expect-error Node test runtime needs the explicit .ts extension here.
 import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 
 type AnalysisSummaryPanelModule = typeof import('../src/components/stock/AnalysisSummaryPanel.tsx');

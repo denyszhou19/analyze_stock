@@ -42,3 +42,32 @@ test('parseAiReportContract throws clear error when JSON summary block is missin
     /AI 报告缺少 JSON 摘要/
   );
 });
+
+test('parseAiReportContract normalizes Chinese action and bias aliases from AI output', () => {
+  const report = [
+    '```json',
+    JSON.stringify(
+      {
+        headline: '当前先观望，偏谨慎',
+        action: '观望',
+        bias: '中性偏空',
+        primary_reason: '父级别未放行',
+        triggers: ['站上关键压力位'],
+        risks: ['再度跌破平台下沿'],
+        guardrail: '未确认前不升级为买入',
+      },
+      null,
+      2
+    ),
+    '```',
+    '',
+    '# 综合判断',
+    '',
+    '- 当前先观望',
+  ].join('\n');
+
+  const parsed = parseAiReportContract(report);
+
+  assert.equal(parsed.summary.action, 'wait');
+  assert.equal(parsed.summary.bias, 'bearish');
+});

@@ -8,6 +8,7 @@ import { StructureExplainabilityPanel } from '@/components/stock/StructureExplai
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
+import { formatDecisionActionLabel } from '@/lib/trinity-decision-labels';
 import type { PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
 
 export interface AnalysisPeriodSection {
@@ -34,17 +35,6 @@ const STRUCTURE_COLORS: Record<string, string> = {
   山谷形态: 'bg-gradient-to-r from-green-100 to-red-100 text-gray-800 border border-gray-300',
 };
 
-const ACTION_LABELS: Record<string, string> = {
-  buy: '买入',
-  add: '加仓',
-  hold: '持有',
-  wait: '等待',
-  reduce: '减仓',
-  sell: '卖出',
-  t_trade: '做 T',
-  avoid: '规避',
-};
-
 function formatList(items?: Array<string | null | undefined> | null, fallback = '未提供') {
   const value = items?.filter(Boolean).join('、');
   return value || fallback;
@@ -55,7 +45,7 @@ function formatActionLabel(action?: string | null) {
     return null;
   }
 
-  return ACTION_LABELS[action] ?? action;
+  return formatDecisionActionLabel(action);
 }
 
 function resolveSummary(section: AnalysisPeriodSection) {
@@ -126,7 +116,9 @@ function resolveTradeAction(section: AnalysisPeriodSection) {
 
   return [
     structure?.execution_phase?.label,
-    decision?.conclusion.action_label,
+    decision
+      ? formatDecisionActionLabel(decision.conclusion.action, decision.conclusion.action_label)
+      : null,
     !decision?.conclusion.action_label ? formatActionLabel(execution?.action) : null,
     execution?.wait_reason,
     execution?.rationale,

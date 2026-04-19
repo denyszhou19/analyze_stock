@@ -1,0 +1,128 @@
+<h2>三位一体分析页：信息架构对比</h2>
+<p class="subtitle">我把当前问题收敛成 3 个版式方向。推荐先看 A：最符合你刚才确认的“AI 一句话结论优先”。</p>
+
+<div class="section">
+  <div class="options">
+    <div class="option" data-choice="a" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>AI主标题 + 硬门控侧栏</h3>
+        <p>综合判断区放最上面，左侧 AI 一句话结论，右侧后端硬门控；下面是规则链，再下面是支撑细节。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="b" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>AI主标题 + Tab 切换</h3>
+        <p>顶部仍是 AI 结论，但中部改成 Tab：规则链 / 周期详情 / Debug。信息更干净，但切换成本更高。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="c" onclick="toggleSelect(this)">
+      <div class="letter">C</div>
+      <div class="content">
+        <h3>保留多卡片，弱化重排</h3>
+        <p>只做轻度整理，改动最少，但很难真正解决“信息重复、主结论被淹没”的问题。</p>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="split">
+    <div class="mockup">
+      <div class="mockup-header">推荐方案 A：三层阅读路径</div>
+      <div class="mockup-body">
+        <div style="display:grid; gap:12px;">
+          <div style="border:2px solid #8b5cf6; border-radius:14px; padding:14px; background:#faf5ff;">
+            <div class="label">第一屏 / 最高优先级</div>
+            <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:12px; margin-top:8px;">
+              <div style="border:1px solid #d8b4fe; border-radius:12px; padding:12px; background:white;">
+                <div style="font-size:12px; color:#6b7280;">AI 最终一句话策略结论</div>
+                <div style="font-size:18px; font-weight:700; margin-top:6px;">等待放量突破后轻仓试探</div>
+                <div style="margin-top:10px; font-size:13px; color:#4b5563;">主因 / 触发条件 / 风险条件</div>
+              </div>
+              <div style="border:1px solid #ddd6fe; border-radius:12px; padding:12px; background:white;">
+                <div style="font-size:12px; color:#6b7280;">后端硬门控</div>
+                <div style="margin-top:6px; font-size:13px;">action = wait</div>
+                <div style="font-size:13px;">trade_mode = wait_confirmation</div>
+                <div style="font-size:13px;">position = no_position</div>
+              </div>
+            </div>
+          </div>
+
+          <div style="border:2px solid #93c5fd; border-radius:14px; padding:14px; background:#eff6ff;">
+            <div class="label">第二层 / 关键规则链</div>
+            <div style="display:grid; grid-template-columns:repeat(6,1fr); gap:8px; margin-top:10px;">
+              <div class="placeholder">结构</div>
+              <div class="placeholder">时空</div>
+              <div class="placeholder">均线</div>
+              <div class="placeholder">量能</div>
+              <div class="placeholder">级别</div>
+              <div class="placeholder">执行</div>
+            </div>
+          </div>
+
+          <div style="border:2px solid #d1d5db; border-radius:14px; padding:14px; background:#f9fafb;">
+            <div class="label">第三层 / 支撑细节与 Debug</div>
+            <div style="display:grid; grid-template-columns:repeat(4,1fr); gap:8px; margin-top:10px;">
+              <div class="placeholder">三类起点</div>
+              <div class="placeholder">原始分类</div>
+              <div class="placeholder">节点与边界</div>
+              <div class="placeholder">Scenario Paths</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div class="mockup">
+      <div class="mockup-header">对比方案 B：中层改成 Tab</div>
+      <div class="mockup-body">
+        <div style="display:grid; gap:12px;">
+          <div style="border:2px solid #8b5cf6; border-radius:14px; padding:14px; background:#faf5ff;">
+            <div class="label">第一屏 / 综合判断区</div>
+            <div style="margin-top:8px; font-size:18px; font-weight:700;">等待放量突破后轻仓试探</div>
+            <div style="margin-top:8px; font-size:13px; color:#4b5563;">AI 摘要 + 后端硬门控</div>
+          </div>
+
+          <div style="border:2px solid #93c5fd; border-radius:14px; padding:14px; background:#eff6ff;">
+            <div class="label">第二层 / Tab 切换</div>
+            <div style="display:flex; gap:8px; margin-top:10px;">
+              <button class="mock-button">规则链</button>
+              <button class="mock-button">周期详情</button>
+              <button class="mock-button">Debug</button>
+            </div>
+            <div style="margin-top:12px;" class="placeholder">当前只展示一个 Tab 内容</div>
+          </div>
+
+          <div style="border:2px solid #d1d5db; border-radius:14px; padding:14px; background:#f9fafb;">
+            <div class="label">优点 / 代价</div>
+            <div style="margin-top:10px; font-size:13px; color:#4b5563;">更干净，但规则链不再一眼全看见。</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>我推荐 A 的原因</h4>
+      <ul>
+        <li>最符合“AI 最终一句话策略结论优先”</li>
+        <li>硬门控能和 AI 结论并排出现，边界关系最清楚</li>
+        <li>规则链可以完整露出，不需要切换</li>
+        <li>最容易把旧页面的重复信息降级到 Debug</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>我担心的点</h4>
+      <ul>
+        <li>A 需要更强的信息收敛，否则第一屏仍可能拥挤</li>
+        <li>B 更整洁，但用户容易忽略关键规则链</li>
+        <li>C 改动最小，但基本解决不了当前问题</li>
+      </ul>
+    </div>
+  </div>
+</div>

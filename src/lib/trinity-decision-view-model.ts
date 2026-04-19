@@ -1,4 +1,5 @@
 import type { TrinityAnchor, TrinityDecision } from '@/lib/stock-structure-types';
+import { formatDecisionActionLabel } from './trinity-decision-labels.ts';
 
 export interface TrinityDecisionViewModel {
   title: string;
@@ -120,7 +121,10 @@ export function buildTrinityDecisionViewModel(
   return {
     title: '三位一体判定',
     levelLabel: LEVEL_LABELS[decision.level],
-    actionLabel: decision.conclusion.action_label,
+    actionLabel: formatDecisionActionLabel(
+      decision.conclusion.action,
+      decision.conclusion.action_label
+    ),
     structureLabel: `${decision.structure.type} / ${FAMILY_LABELS[decision.structure.family]}`,
     spacetimeLabel: `${decision.spacetime.status} / ${BIAS_LABELS[decision.spacetime.direction_bias]}`,
     maLabel: `MA55${MA55_ROLE_LABELS[decision.moving_average.ma55_role]} / ${BREAKTHROUGH_LABELS[decision.moving_average.breakthrough_state]}`,

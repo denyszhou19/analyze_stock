@@ -10,6 +10,10 @@ const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守）
 - 先输出 JSON 摘要，再输出 Markdown 正文
 - JSON 摘要必须放在 \`\`\`json\`\`\` 代码块内，且只能输出一个摘要对象
 - JSON 摘要字段必须包含 headline / action / bias / primary_reason / triggers / risks / guardrail
+- JSON 摘要中的 action 只能使用英文枚举：buy / add / hold / reduce / sell / t_trade / wait / avoid
+- JSON 摘要中的 bias 只能使用英文枚举：bullish / bearish / neutral
+- JSON 摘要中的 action / bias 禁止输出中文值，如“观望”“等待”“中性偏空”“中性偏多”
+- 所有自然语言内容必须使用简体中文；仅 JSON 摘要中的 action / bias 保持英文枚举值
 - “操作策略参考”必须以 periods.*.deterministic_decision.conclusion.action 为硬边界
 - 如果 periods.*.deterministic_decision.conclusion.action = wait / avoid，摘要 action 不能升级为 buy / add
 - Markdown 正文再展开跨级别依据、仓位与执行方案、风险与应对
@@ -363,6 +367,7 @@ ${AI_REPORT_OUTPUT_CONTRACT}
 - 当前操作方向：买入 / 卖出 / 持有 / 观望
 - 一句话理由：先说最核心的因果链
 - JSON 摘要中的 \`action\`、\`bias\` 必须与 \`periods.*.deterministic_decision.conclusion.action\` 保持同向，不得擅自升级风险偏好
+- 注意：上面“买入 / 卖出 / 持有 / 观望”仅用于 Markdown 正文中文表述；JSON 摘要中的 \`action\`、\`bias\` 必须严格使用英文枚举
 
 ### 二、跨级别决策依据
 - 用周线→日线→30分钟/15分钟的顺序解释
@@ -389,6 +394,7 @@ ${AI_REPORT_OUTPUT_CONTRACT}
 
 ## 额外要求
 
+- 所有自然语言内容必须使用简体中文；只有 JSON 摘要中的 \`action\` / \`bias\` 使用英文枚举
 - 不使用“必定”“一定”“百分之百”等绝对表达
 - 不要复述 JSON 字段名，重点做解读和决策落地
 - 如果信息不足以支持激进操作，请明确倾向保守应对

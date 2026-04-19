@@ -19,6 +19,45 @@ const SUMMARY_ACTIONS = new Set<TrinityDecisionAction>([
 
 const SUMMARY_BIASES = new Set<TrinityDecisionBias>(['bullish', 'bearish', 'neutral']);
 
+const ACTION_ALIASES: Record<string, TrinityDecisionAction> = {
+  buy: 'buy',
+  买入: 'buy',
+  add: 'add',
+  加仓: 'add',
+  hold: 'hold',
+  持有: 'hold',
+  reduce: 'reduce',
+  减仓: 'reduce',
+  sell: 'sell',
+  卖出: 'sell',
+  t_trade: 't_trade',
+  '做t': 't_trade',
+  '做T': 't_trade',
+  wait: 'wait',
+  等待: 'wait',
+  观望: 'wait',
+  avoid: 'avoid',
+  规避: 'avoid',
+  回避: 'avoid',
+};
+
+const BIAS_ALIASES: Record<string, TrinityDecisionBias> = {
+  bullish: 'bullish',
+  偏多: 'bullish',
+  看多: 'bullish',
+  中性偏多: 'bullish',
+  neutral_to_bullish: 'bullish',
+  'neutral-to-bullish': 'bullish',
+  bearish: 'bearish',
+  偏空: 'bearish',
+  看空: 'bearish',
+  中性偏空: 'bearish',
+  neutral_to_bearish: 'bearish',
+  'neutral-to-bearish': 'bearish',
+  neutral: 'neutral',
+  中性: 'neutral',
+};
+
 function parseStringField(
   value: unknown,
   fieldName: keyof AiSummaryCard
@@ -41,20 +80,38 @@ function parseStringListField(
   return value.map((item) => item.trim()).filter(Boolean);
 }
 
+function normalizeAction(value: unknown): TrinityDecisionAction | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return ACTION_ALIASES[normalized] ?? null;
+}
+
+function normalizeBias(value: unknown): TrinityDecisionBias | null {
+  if (typeof value !== 'string') {
+    return null;
+  }
+
+  const normalized = value.trim();
+  return BIAS_ALIASES[normalized] ?? null;
+}
+
 function parseAiSummaryCard(value: unknown): AiSummaryCard {
   if (!value || typeof value !== 'object' || Array.isArray(value)) {
     throw new Error('AI 报告 JSON 摘要必须是对象');
   }
 
   const candidate = value as Record<string, unknown>;
-  const action = parseStringField(candidate.action, 'action') as TrinityDecisionAction;
-  const bias = parseStringField(candidate.bias, 'bias') as TrinityDecisionBias;
+  const action = normalizeAction(candidate.action);
+  const bias = normalizeBias(candidate.bias);
 
-  if (!SUMMARY_ACTIONS.has(action)) {
+  if (!action || !SUMMARY_ACTIONS.has(action)) {
     throw new Error('AI 报告 JSON 摘要字段无效: action');
   }
 
-  if (!SUMMARY_BIASES.has(bias)) {
+  if (!bias || !SUMMARY_BIASES.has(bias)) {
     throw new Error('AI 报告 JSON 摘要字段无效: bias');
   }
 

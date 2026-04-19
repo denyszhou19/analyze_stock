@@ -1,0 +1,207 @@
+<h2>三位一体分析页：方案 A 第四版</h2>
+<p class="subtitle">本版新增两项：1）AI 综合判断改为进入页面后手动点击触发；2）补回旧版“数据同步信息”，但保持次级展示，不抢主判断。</p>
+
+<div class="section">
+  <div class="mockup">
+    <div class="mockup-header">推荐交互：先展示确定性信息，再由用户点击生成 AI 综合判断</div>
+    <div class="mockup-body">
+      <div style="display:grid; gap:14px;">
+
+        <div style="border:1px solid #e5e7eb; border-radius:14px; padding:12px; background:#fafafa;">
+          <div class="label">页面状态条｜数据同步信息（次级但保留）</div>
+          <div style="display:grid; grid-template-columns:repeat(5,1fr); gap:10px; margin-top:10px;">
+            <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+              <div style="font-size:12px; color:#6b7280;">行情数据</div>
+              <div style="font-size:13px; font-weight:700; margin-top:4px;">已同步 09:35</div>
+            </div>
+            <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+              <div style="font-size:12px; color:#6b7280;">结构计算</div>
+              <div style="font-size:13px; font-weight:700; margin-top:4px;">基于最新收盘</div>
+            </div>
+            <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+              <div style="font-size:12px; color:#6b7280;">多级别同步</div>
+              <div style="font-size:13px; font-weight:700; margin-top:4px;">周 / 日 / 分钟已对齐</div>
+            </div>
+            <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+              <div style="font-size:12px; color:#6b7280;">AI 综合判断</div>
+              <div style="font-size:13px; font-weight:700; margin-top:4px;">未生成</div>
+            </div>
+            <div style="background:white; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+              <div style="font-size:12px; color:#6b7280;">当前分析窗口</div>
+              <div style="font-size:13px; font-weight:700; margin-top:4px;">近 240 根 K 线</div>
+            </div>
+          </div>
+          <div style="margin-top:8px; font-size:12px; color:#6b7280;">作用：告诉用户当前判断建立在什么时间、什么数据窗口、什么同步状态上；不抢主结论，但必须看得见。</div>
+        </div>
+
+        <div class="split">
+          <div class="mockup">
+            <div class="mockup-header">状态 A｜进入页面默认态（未触发 AI）</div>
+            <div class="mockup-body">
+              <div style="border:2px solid #8b5cf6; border-radius:16px; padding:16px; background:#faf5ff;">
+                <div class="label">综合判断区</div>
+                <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:14px; margin-top:10px;">
+                  <div style="background:white; border:1px solid #d8b4fe; border-radius:14px; padding:14px;">
+                    <div style="font-size:12px; color:#6b7280;">AI 综合判断</div>
+                    <div style="font-size:20px; font-weight:800; margin-top:6px; color:#6b7280;">尚未生成</div>
+                    <div style="margin-top:10px; font-size:13px; color:#4b5563;">
+                      页面先展示后端确定性信息、级别决策总线、关键规则链和结构证据。<br/>
+                      当你需要“最终一句话策略结论”时，再手动触发 AI 总结。
+                    </div>
+
+                    <div style="margin-top:12px; display:flex; gap:10px; align-items:center;">
+                      <button class="mock-button">生成 AI 综合判断</button>
+                      <div style="font-size:12px; color:#6b7280;">点击后异步分析，不阻塞页面首屏加载</div>
+                    </div>
+
+                    <div style="margin-top:14px; border-top:1px solid #eee; padding-top:12px;">
+                      <div style="font-size:12px; color:#6b7280;">当前后端结论（先行展示）</div>
+                      <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:10px; margin-top:8px;">
+                        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+                          <div style="font-size:12px; color:#6b7280;">当前动作</div>
+                          <div style="font-size:15px; font-weight:700; margin-top:4px;">等待</div>
+                        </div>
+                        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+                          <div style="font-size:12px; color:#6b7280;">仓位权限</div>
+                          <div style="font-size:15px; font-weight:700; margin-top:4px;">空仓等待</div>
+                        </div>
+                        <div style="background:#f9fafb; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+                          <div style="font-size:12px; color:#6b7280;">执行级别</div>
+                          <div style="font-size:15px; font-weight:700; margin-top:4px;">日线</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="background:white; border:1px solid #ddd6fe; border-radius:14px; padding:14px;">
+                    <div style="font-size:12px; color:#6b7280;">后端硬门控</div>
+                    <div style="display:grid; gap:8px; margin-top:10px;">
+                      <div style="display:flex; justify-content:space-between;"><span>后端最终动作</span><strong>等待</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>交易模式</span><strong>等待确认</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>仓位权限</span><strong>空仓等待</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>结构资格</span><strong>延伸 C</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>执行级别</span><strong>日线</strong></div>
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+
+          <div class="mockup">
+            <div class="mockup-header">状态 B｜点击后返回 AI 结果</div>
+            <div class="mockup-body">
+              <div style="border:2px solid #8b5cf6; border-radius:16px; padding:16px; background:#faf5ff;">
+                <div class="label">综合判断区</div>
+                <div style="display:grid; grid-template-columns:1.5fr 1fr; gap:14px; margin-top:10px;">
+                  <div style="background:white; border:1px solid #d8b4fe; border-radius:14px; padding:14px;">
+                    <div style="font-size:12px; color:#6b7280;">AI 最终一句话策略结论</div>
+                    <div style="font-size:22px; font-weight:800; margin-top:6px;">等待放量突破后轻仓试探</div>
+
+                    <div style="display:grid; gap:10px; margin-top:12px;">
+                      <div style="background:#fafafa; border:1px solid #e5e7eb; border-radius:10px; padding:10px;">
+                        <div style="font-size:12px; color:#6b7280;">主要原因</div>
+                        <div style="font-size:13px; margin-top:4px;">日线延伸 C 未确认结束，小级别只能辅助验证，不能把局部信号升级为日线主升买点。</div>
+                      </div>
+                      <div style="display:grid; grid-template-columns:1fr 1fr; gap:10px;">
+                        <div style="background:#f0fdf4; border:1px solid #bbf7d0; border-radius:10px; padding:10px;">
+                          <div style="font-size:12px; color:#6b7280;">触发条件</div>
+                          <div style="font-size:13px; margin-top:4px;">放量突破平台上沿</div>
+                          <div style="font-size:13px;">回踩确认不破</div>
+                        </div>
+                        <div style="background:#fef2f2; border:1px solid #fecaca; border-radius:10px; padding:10px;">
+                          <div style="font-size:12px; color:#6b7280;">风险条件</div>
+                          <div style="font-size:13px; margin-top:4px;">跌回平台下沿</div>
+                          <div style="font-size:13px;">量能确认失效</div>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
+                  <div style="background:white; border:1px solid #ddd6fe; border-radius:14px; padding:14px;">
+                    <div style="font-size:12px; color:#6b7280;">后端硬门控</div>
+                    <div style="display:grid; gap:8px; margin-top:10px;">
+                      <div style="display:flex; justify-content:space-between;"><span>后端最终动作</span><strong>等待</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>交易模式</span><strong>等待确认</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>仓位权限</span><strong>空仓等待</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>结构资格</span><strong>延伸 C</strong></div>
+                      <div style="display:flex; justify-content:space-between;"><span>结论约束</span><strong>AI 不能升级为标准买入</strong></div>
+                    </div>
+                    <div style="margin-top:10px; border-top:1px solid #eee; padding-top:10px; font-size:12px; color:#6b7280;">
+                      AI 是在这里做“翻译和综合”，不是绕开后端重做判定。
+                    </div>
+                  </div>
+                </div>
+              </div>
+            </div>
+          </div>
+        </div>
+
+        <div style="border:2px solid #22c55e; border-radius:16px; padding:16px; background:#f0fdf4;">
+          <div class="label">级别决策总线（位置确认）</div>
+          <div style="font-size:13px; color:#4b5563; margin-top:6px;">
+            仍固定放在综合判断区下方。无论 AI 是否已生成，这一层都先由后端确定性结果直接展示。
+          </div>
+          <div style="display:grid; grid-template-columns:repeat(3,1fr); gap:12px; margin-top:12px;">
+            <div class="placeholder">周线 → 日线：先定方向</div>
+            <div class="placeholder">日线 → 30分钟：找买卖点</div>
+            <div class="placeholder">60分钟 → 15分钟：做执行优化</div>
+          </div>
+        </div>
+
+        <div style="border:2px solid #d1d5db; border-radius:16px; padding:16px; background:#f9fafb;">
+          <div class="label">旧版信息回补</div>
+          <div style="display:grid; grid-template-columns:1fr 1fr; gap:12px; margin-top:10px;">
+            <div style="background:white; border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+              <div style="font-weight:700;">保留但降级</div>
+              <div style="font-size:13px; color:#4b5563; margin-top:6px;">数据同步信息、结构图、详细周期卡片仍保留，但不与综合判断抢第一屏。</div>
+            </div>
+            <div style="background:white; border:1px solid #e5e7eb; border-radius:12px; padding:12px;">
+              <div style="font-weight:700;">删除或弱化</div>
+              <div style="font-size:13px; color:#4b5563; margin-top:6px;">重复的操作建议、重复 badge、由旧 MACD 文案硬编码的策略提示继续删除。</div>
+            </div>
+          </div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="pros-cons">
+    <div class="pros">
+      <h4>我建议这样改的原因</h4>
+      <ul>
+        <li>首屏先快：不等 AI，先把确定性规则和跨级别结构展示出来</li>
+        <li>AI 再深：由你决定什么时候要“最终一句话策略结论”</li>
+        <li>数据同步信息补回：让用户知道当前判断基于什么时点的数据</li>
+      </ul>
+    </div>
+    <div class="cons">
+      <h4>需要你确认的点</h4>
+      <ul>
+        <li>未触发 AI 时，综合判断区主位是否接受显示“AI 尚未生成 + 按钮 + 后端当前结论”</li>
+      </ul>
+    </div>
+  </div>
+</div>
+
+<div class="section">
+  <div class="options">
+    <div class="option" data-choice="confirm-manual-ai" onclick="toggleSelect(this)">
+      <div class="letter">A</div>
+      <div class="content">
+        <h3>确认：AI 改成手动触发</h3>
+        <p>进入页面先看后端确定性内容，需要时再点击生成 AI 综合判断。</p>
+      </div>
+    </div>
+    <div class="option" data-choice="prefer-auto-ai" onclick="toggleSelect(this)">
+      <div class="letter">B</div>
+      <div class="content">
+        <h3>不同意：仍自动触发 AI</h3>
+        <p>如果你还是希望自动跑，我下一轮就改成“自动分析 + 手动刷新”。</p>
+      </div>
+    </div>
+  </div>
+</div>

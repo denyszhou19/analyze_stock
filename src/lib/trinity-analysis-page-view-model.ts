@@ -6,6 +6,11 @@ import type {
   TrinityJudgmentCriterion,
   TrinityDecision,
 } from '@/lib/stock-structure-types';
+import {
+  formatDecisionActionLabel,
+  preferChineseList,
+  preferChineseText,
+} from './trinity-decision-labels.ts';
 
 type TrinityLevel = TrinityDecision['level'];
 
@@ -286,8 +291,13 @@ function buildStatusBar(
 }
 
 function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
+  const actionLabel = formatDecisionActionLabel(
+    decision.conclusion.action,
+    decision.conclusion.action_label
+  );
+
   return [
-    { label: '后端最终动作', value: decision.conclusion.action_label },
+    { label: '后端最终动作', value: actionLabel },
     { label: '交易模式', value: TRADE_MODE_LABELS[decision.trade_qualification.trade_mode] },
     {
       label: '仓位权限',
@@ -307,20 +317,24 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
 function buildSummary(decision: TrinityDecision, aiState: AnalysisPageAiState): AnalysisPageSummaryViewModel {
   const readySummary = aiState.status === 'ready' ? aiState.summary : null;
   const errorMessage = aiState.status === 'error' ? aiState.message : null;
+  const actionLabel = formatDecisionActionLabel(
+    decision.conclusion.action,
+    decision.conclusion.action_label
+  );
+  const backendReason =
+    decision.conclusion.wait_reason ||
+    decision.trade_qualification.reason[0] ||
+    decision.execution.position_sizing.reason;
 
   return {
     mode: aiState.status,
     errorMessage,
-    headline: readySummary?.headline || decision.conclusion.action_label,
-    primaryActionLabel: readySummary ? decision.conclusion.action_label : decision.conclusion.action_label,
-    primaryReason:
-      readySummary?.primary_reason ||
-      decision.conclusion.wait_reason ||
-      decision.trade_qualification.reason[0] ||
-      decision.execution.position_sizing.reason,
-    triggerLabels: readySummary?.triggers?.filter(Boolean) ?? decision.execution.triggers,
-    riskLabels: readySummary?.risks?.filter(Boolean) ?? decision.execution.risk_flags,
-    guardrail: readySummary?.guardrail || decision.execution.position_sizing.reason,
+    headline: preferChineseText(readySummary?.headline, actionLabel),
+    primaryActionLabel: actionLabel,
+    primaryReason: preferChineseText(readySummary?.primary_reason, backendReason),
+    triggerLabels: preferChineseList(readySummary?.triggers, decision.execution.triggers),
+    riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
+    guardrail: preferChineseText(readySummary?.guardrail, backendReason),
     hardGates: buildHardGates(decision),
   };
 }

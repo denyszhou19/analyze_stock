@@ -297,6 +297,49 @@ test('AI ready summary accepts AiSummaryCard shape directly', () => {
   assert.equal(vm.summary.guardrail, '仅接受缩量回踩后的二次确认');
 });
 
+test('AI ready summary falls back to backend Chinese copy when AI summary is English', () => {
+  const result = createResult();
+  if (!result.periods.daily.trinity_decision) {
+    throw new Error('missing daily decision');
+  }
+
+  result.periods.daily.trinity_decision.conclusion = {
+    action: 'wait',
+    action_label: 'wait',
+    bias: 'neutral',
+    confidence: 'medium',
+    can_trade: false,
+    wait_reason: '等待 C 结构边界确认',
+  };
+
+  const aiSummary: AiSummaryCard = {
+    headline: 'Signals remain unconfirmed; stay in observation mode.',
+    action: 'wait',
+    bias: 'neutral',
+    primary_reason: 'Execution stays capped at wait with no_position.',
+    triggers: ['Daily closes back above 135.78.'],
+    risks: ['Spacetime confirmation is not complete.'],
+    guardrail: 'Respect deterministic wait and no_position.',
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: {
+      status: 'ready',
+      summary: aiSummary,
+    },
+  });
+
+  assert.equal(vm.summary.headline, '等待');
+  assert.equal(vm.summary.primaryActionLabel, '等待');
+  assert.equal(vm.summary.primaryReason, '等待 C 结构边界确认');
+  assert.deepEqual(vm.summary.triggerLabels, ['重新站上平台上沿']);
+  assert.deepEqual(vm.summary.riskLabels, ['不追高']);
+  assert.equal(vm.summary.guardrail, '等待 C 结构边界确认');
+  assert.equal(vm.summary.hardGates[0].value, '等待');
+});
+
 test('rule chain preserves failed status from judgment criteria', () => {
   const result = createResult();
   if (!result.periods.daily.trinity_decision) {

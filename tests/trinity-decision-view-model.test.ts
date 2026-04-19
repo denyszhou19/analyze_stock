@@ -208,3 +208,79 @@ test('buildTrinityDecisionViewModel formats anchors and missing nesting safely',
   assert.equal(vm.executionOriginLabel, 'c4');
   assert.equal(vm.gateReason, null);
 });
+
+test('buildTrinityDecisionViewModel falls back to chinese action label when backend returns english label', () => {
+  const vm = buildTrinityDecisionViewModel({
+    version: 'v2',
+    level: 'daily',
+    conclusion: {
+      action: 'wait',
+      action_label: 'wait',
+      bias: 'neutral',
+      confidence: 'medium',
+      can_trade: false,
+      wait_reason: '等待确认',
+    },
+    structure: {
+      background_origin: null,
+      focus_origin: null,
+      execution_origin: null,
+      family: 'unfinished',
+      type: '未完成结构',
+      standard_candidate: null,
+      qualification: 'unfinished',
+      direction: 'neutral',
+      boundaries: {},
+      node_map: {},
+      can_trade_by_structure_nodes: false,
+      can_trade_by_boundaries: false,
+      explainability: { status: 'warning', reason: '结构未完成', evidence: ['等待确认'] },
+    },
+    spacetime: {
+      status: '中性',
+      direction_bias: 'neutral',
+      expected_structures: { up: ['A五段式'], down: ['D三段式'] },
+      structure_match: false,
+      mismatch_reason: '等待确认',
+      divergence_policy: { top_divergence_valid: false, bottom_divergence_valid: false, reason: 'none' },
+    },
+    moving_average: {
+      ma55_role: 'neutral',
+      ma233_role: 'neutral',
+      price_position: { above_ma55: false, above_ma233: false },
+      breakthrough_state: 'none',
+      ma_gate: { allow_long: false, allow_short: false, reason: '等待确认' },
+    },
+    volume_confirmation: {
+      volume_state: 'normal',
+      breakout_volume: 'not_applicable',
+      breakdown_volume: 'not_applicable',
+      pullback_volume: 'normal',
+      volume_gate: {
+        supports_breakout: false,
+        supports_breakdown: false,
+        supports_pullback_confirmation: false,
+        confidence_adjustment: 'neutral',
+        reason: '量能中性',
+      },
+    },
+    trade_qualification: {
+      trade_mode: 'wait_confirmation',
+      position_permission: 'no_position',
+      confidence: 'low',
+      reason: ['等待确认'],
+    },
+    execution: {
+      entry_style: 'none',
+      triggers: [],
+      invalidation: [],
+      confirmation: [],
+      position_sizing: { reason: '等待确认' },
+      risk_flags: [],
+    },
+    judgment_criteria: [],
+    ai_summary_facts: [],
+  });
+
+  assert.equal(vm.actionLabel, '等待');
+});
