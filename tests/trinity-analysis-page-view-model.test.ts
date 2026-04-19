@@ -817,3 +817,66 @@ test('view model exposes concise summaries and hover payloads for combinations a
   assert.equal(structureRule.detailHover.title, '结构资格说明');
   assert.equal(structureRule.detailHover.items[2].label, '当前限制');
 });
+
+test('failed structure rule uses blocking summary instead of observable wording', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.structure.explainability = {
+    status: 'failed',
+    reason: '关键结构条件不成立',
+    evidence: ['关键节点缺失'],
+  };
+  decision.judgment_criteria = decision.judgment_criteria.filter((criterion) => criterion.category !== 'structure');
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const structureRule = vm.ruleChain.items.find((item) => item.title === '结构资格');
+  assert.ok(structureRule);
+  assert.equal(structureRule.status, 'failed');
+  assert.doesNotMatch(structureRule.summary, /可观察/);
+  assert.match(structureRule.summary, /不成立|不放行|不能按结构交易/);
+});
+
+test('non-structure rule hover basis and signal tags stay category-safe', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+  if (!decision.level_nesting) {
+    throw new Error('missing level nesting');
+  }
+
+  decision.structure.explainability.evidence = ['结构证据：五段式成立'];
+  decision.level_nesting.permission.reason = '父级未放行，子级只能等待';
+  decision.execution.position_sizing.reason = '执行层先控制仓位';
+  decision.judgment_criteria = decision.judgment_criteria.filter(
+    (criterion) => criterion.category !== 'level_nesting' && criterion.category !== 'execution'
+  );
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const levelRule = vm.ruleChain.items.find((item) => item.title === '级别权限');
+  const executionRule = vm.ruleChain.items.find((item) => item.title === '执行计划');
+
+  assert.ok(levelRule);
+  assert.ok(executionRule);
+  assert.deepEqual(levelRule.signalTags, []);
+  assert.deepEqual(executionRule.signalTags, []);
+  assert.doesNotMatch(levelRule.detailHover.items[4].value, /结构证据：五段式成立/);
+  assert.doesNotMatch(executionRule.detailHover.items[4].value, /结构证据：五段式成立/);
+  assert.match(levelRule.detailHover.items[4].value, /父级未放行|级别权限|父子级别/);
+  assert.match(executionRule.detailHover.items[4].value, /执行层先控制仓位|触发|失效/);
+});

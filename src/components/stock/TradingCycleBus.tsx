@@ -1,11 +1,22 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import type { AnalysisPageTradingCombinationViewModel } from '@/lib/trinity-analysis-page-view-model';
+import type {
+  AnalysisPageExplainableField,
+  AnalysisPageTradingCombinationViewModel,
+} from '@/lib/trinity-analysis-page-view-model';
 import { getDirectionMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
 
 interface TradingCycleBusProps {
   combinations: AnalysisPageTradingCombinationViewModel[];
+}
+
+function renderExplainableField(field: AnalysisPageExplainableField) {
+  return (
+    <span title={field.hoverTitle}>
+      {field.value}
+    </span>
+  );
 }
 
 export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
@@ -49,19 +60,19 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                 <div className="grid gap-2 text-xs text-muted-foreground">
                   <div className="rounded-lg border bg-background/70 p-2">
                     <span className="font-medium text-foreground">父级约束：</span>
-                    {combination.parentConstraint}
+                    {renderExplainableField(combination.parentConstraint)}
                   </div>
                   <div className="rounded-lg border bg-background/70 p-2">
                     <span className="font-medium text-foreground">触发级别：</span>
-                    {combination.triggerLevelLabel}
+                    {renderExplainableField(combination.triggerLevel)}
                   </div>
                   <div className="rounded-lg border bg-background/70 p-2">
                     <span className="font-medium text-foreground">适合动作：</span>
-                    {combination.suitableAction}
+                    {renderExplainableField(combination.suitableAction)}
                   </div>
                   <div className="rounded-lg border bg-background/70 p-2">
                     <span className="font-medium text-foreground">主要风险：</span>
-                    {combination.majorRisk}
+                    {renderExplainableField(combination.majorRisk)}
                   </div>
                 </div>
               </CardContent>

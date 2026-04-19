@@ -457,17 +457,21 @@ function buildCategorySignalTags(
   };
   const keys = byCategory[category];
   if (!keys) {
-    return buildDecisionSignalTags(decision, { max: 1 });
+    return [];
   }
 
   const selected = tags.filter((tag) => keys.includes(tag.key));
-  return selected.length > 0 ? selected.slice(0, 2) : buildDecisionSignalTags(decision, { max: 1 });
+  return selected.slice(0, 2);
 }
 
 function buildStructureRuleSummary(decision: TrinityDecision): string {
-  return decision.structure.explainability.status === 'passed'
-    ? 'A原型成立，但仍需等待更明确确认'
-    : '延伸结构可观察，但不能按标准节点操作';
+  if (decision.structure.explainability.status === 'passed') {
+    return 'A原型成立，但仍需等待更明确确认';
+  }
+  if (decision.structure.explainability.status === 'failed') {
+    return '结构条件不成立，当前不能按结构交易';
+  }
+  return '延伸结构可观察，但不能按标准节点操作';
 }
 
 function buildStructureRuleRecommendation(decision: TrinityDecision): string {
@@ -482,7 +486,8 @@ function buildRuleDetailHover(
   summary: string,
   detail: string,
   reason: string,
-  decision: TrinityDecision
+  decision: TrinityDecision,
+  basis: string
 ): { title: string; items: AnalysisPageHoverItem[] } {
   return {
     title: `${title}说明`,
@@ -506,7 +511,7 @@ function buildRuleDetailHover(
       ),
       createHoverItem(
         '判定依据',
-        formatList(decision.structure.explainability.evidence, reason || '以后端判定链为准')
+        basis || reason || '以后端判定链为准'
       ),
     ],
   };
@@ -1121,6 +1126,10 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           category === 'structure'
             ? buildStructureRuleRecommendation(decision)
             : `先按${title}继续跟踪`;
+        const basis =
+          category === 'structure'
+            ? formatList(decision.structure.explainability.evidence, reason || detail)
+            : detail || reason;
 
         return decorateRuleChainItem({
           title,
@@ -1131,7 +1140,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           summary,
           recommendation,
           signalTags: buildCategorySignalTags(category, decision),
-          detailHover: buildRuleDetailHover(title, summary, detail, reason, decision),
+          detailHover: buildRuleDetailHover(title, summary, detail, reason, decision, basis),
         });
       }
 
@@ -1148,6 +1157,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
         const reason = normalizeRuleChainText(decision.structure.explainability.reason);
         const summary = buildStructureRuleSummary(decision);
         const recommendation = buildStructureRuleRecommendation(decision);
+        const basis = formatList(decision.structure.explainability.evidence, reason || detail);
         return decorateRuleChainItem({
           title,
           status,
@@ -1157,7 +1167,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           summary,
           recommendation,
           signalTags: buildCategorySignalTags(category, decision),
-          detailHover: buildRuleDetailHover(title, summary, detail, reason, decision),
+          detailHover: buildRuleDetailHover(title, summary, detail, reason, decision, basis),
         });
       }
       if (category === 'spacetime') {
@@ -1166,6 +1176,12 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
         );
         const reason = normalizeRuleChainText(
           decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason
+        );
+        const basis = normalizeRuleChainText(
+          `${decision.spacetime.mismatch_reason ?? ''}｜${decision.spacetime.divergence_policy.reason}`.replace(
+            /^｜|｜$/g,
+            ''
+          )
         );
         return decorateRuleChainItem({
           title,
@@ -1176,7 +1192,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           summary: detail,
           recommendation: '先等时空共振补齐后再推进动作',
           signalTags: buildCategorySignalTags(category, decision),
-          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision, basis),
         });
       }
       if (category === 'moving_average') {
@@ -1184,6 +1200,9 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`
         );
         const reason = normalizeRuleChainText(decision.moving_average.ma_gate.reason);
+        const basis = normalizeRuleChainText(
+          `${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`
+        );
         return decorateRuleChainItem({
           title,
           status:
@@ -1196,7 +1215,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           summary: detail,
           recommendation: '先按均线门槛继续观察突破质量',
           signalTags: buildCategorySignalTags(category, decision),
-          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision, basis),
         });
       }
       if (category === 'volume') {
@@ -1204,6 +1223,9 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`
         );
         const reason = normalizeRuleChainText(decision.volume_confirmation.volume_gate.reason);
+        const basis = normalizeRuleChainText(
+          `${decision.volume_confirmation.volume_gate.reason}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}`
+        );
         return decorateRuleChainItem({
           title,
           status: decision.volume_confirmation.volume_gate.confidence_adjustment === 'downgrade' ? 'warning' : 'info',
@@ -1213,7 +1235,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           summary: detail,
           recommendation: '先看量能是否补齐确认',
           signalTags: buildCategorySignalTags(category, decision),
-          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision, basis),
         });
       }
       if (category === 'level_nesting') {
@@ -1223,6 +1245,9 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
             : '暂无父子级别权限约束'
         );
         const reason = normalizeRuleChainText(nesting?.permission.reason ?? '暂无父子级别权限约束');
+        const basis = normalizeRuleChainText(
+          nesting ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}` : reason
+        );
         return decorateRuleChainItem({
           title,
           status: nesting?.resonance === 'aligned' ? 'passed' : 'warning',
@@ -1232,7 +1257,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
           summary: detail,
           recommendation: '先服从父子级别权限再决定动作',
           signalTags: buildCategorySignalTags(category, decision),
-          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision, basis),
         });
       }
 
@@ -1240,6 +1265,9 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
         `${decision.execution.entry_style}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
       );
       const reason = normalizeRuleChainText(decision.execution.position_sizing.reason);
+      const basis = normalizeRuleChainText(
+        `${decision.execution.position_sizing.reason}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
+      );
       return decorateRuleChainItem({
         title,
         status: decision.conclusion.can_trade ? 'passed' : 'info',
@@ -1249,7 +1277,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
         summary: detail,
         recommendation: `先等${compactTriggerText(decision.execution.triggers[0])}`,
         signalTags: buildCategorySignalTags(category, decision),
-        detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
+        detailHover: buildRuleDetailHover(title, detail, detail, reason, decision, basis),
       });
     }),
   };
