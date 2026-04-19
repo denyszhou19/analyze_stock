@@ -7,6 +7,7 @@ import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 
 type LevelDecisionBusModule = typeof import('../src/components/stock/LevelDecisionBus.tsx');
 type TrinityRuleChainModule = typeof import('../src/components/stock/TrinityRuleChain.tsx');
+type AnalysisSummaryPanelModule = typeof import('../src/components/stock/AnalysisSummaryPanel.tsx');
 
 const periodDetailsSource = await fs.readFile('src/components/stock/AnalysisPeriodDetails.tsx', 'utf8');
 
@@ -91,4 +92,68 @@ test('AnalysisPeriodDetails normalizes internal field labels before rendering st
     periodDetailsSource,
     /const evidence = \[[\s\S]*?prediction\?\.prediction_alert[\s\S]*?\]\s*\.filter\(Boolean\)\s*\.join\('｜'\);[\s\S]*?return normalizeStructureDisplayText\(evidence\)/
   );
+});
+
+test('AnalysisSummaryPanel renders global strategy scope and hard gate explanations', async () => {
+  const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
+    'src/components/stock/AnalysisSummaryPanel.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisSummaryPanel, {
+      viewModel: {
+        mode: 'idle',
+        headline: '等待放量突破后轻仓试探',
+        primaryActionLabel: '等待',
+        primaryReason: '日线仍需确认，只能等待30分钟触发',
+        triggerLabels: ['30分钟放量突破平台上沿'],
+        riskLabels: ['跌回日线平台下沿'],
+        guardrail: '仓位不超过 20%',
+        hardGateTitle: '主策略硬门控',
+        hardGateSourceLabel: '当前硬门控来自主判定级别：日线',
+        hardGates: [
+          {
+            label: '仓位权限',
+            value: '轻仓试探',
+            description: {
+              title: '仓位权限',
+              meaning: '后端允许的最大仓位动作范围。',
+              tradeImpact: '当前值为「轻仓试探」，AI 和页面结论不能突破这个限制。',
+              source: 'trinity_decision.trade_qualification.position_permission',
+            },
+          },
+        ],
+      },
+      globalStrategy: {
+        scopeLabel: '综合范围：中线主策略组合、短线执行组合、超短线 / T 组合',
+        primaryCombination: 'shortline',
+        primaryCombinationLabel: '短线执行组合｜日线 → 30分钟',
+        primaryConstraintLevel: 'daily',
+        primaryConstraintLevelLabel: '日线',
+        triggerLevel: 'hour30',
+        triggerLevelLabel: '30分钟',
+        direction: 'bullish',
+        directionLabel: '偏多',
+        actionLabel: '观察中',
+        headline: '等待放量突破后轻仓试探',
+        primaryReason: '日线仍需确认，只能等待30分钟触发',
+        triggerLabels: ['30分钟放量突破平台上沿'],
+        riskLabels: ['跌回日线平台下沿'],
+        guardrail: '仓位不超过 20%',
+      },
+      onGenerate: () => undefined,
+      canGenerate: true,
+    })
+  );
+
+  assert.match(html, /页面级综合结论/);
+  assert.match(html, /综合范围：中线主策略组合、短线执行组合、超短线 \/ T 组合/);
+  assert.match(html, /当前优先组合/);
+  assert.match(html, /短线执行组合｜日线 → 30分钟/);
+  assert.match(html, /主约束级别/);
+  assert.match(html, /触发级别/);
+  assert.match(html, /主策略硬门控/);
+  assert.match(html, /仓位权限/);
+  assert.match(html, /后端允许的最大仓位动作范围/);
+  assert.doesNotMatch(html, /后端硬门控/);
 });

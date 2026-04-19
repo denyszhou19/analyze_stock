@@ -576,6 +576,7 @@ export default function StockAnalysisPage() {
 
           <AnalysisSummaryPanel
             viewModel={pageViewModel.summary}
+            globalStrategy={pageViewModel.globalStrategy}
             onGenerate={handleGenerateAiSummary}
             canGenerate={Boolean(result) && !isLoading}
           />

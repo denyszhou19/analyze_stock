@@ -74,6 +74,33 @@ const utilsStubUrl = asDataModule(`
   }
 `);
 
+const displayVocabularyStubUrl = asDataModule(`
+  export function getDirectionMeta(direction) {
+    if (direction === 'bullish') {
+      return {
+        label: '偏多',
+        badgeClassName: 'border-red-200 bg-red-50 text-red-700',
+        cardClassName: 'border-red-200 bg-red-50 text-red-950',
+        textClassName: 'text-red-700',
+      };
+    }
+    if (direction === 'bearish') {
+      return {
+        label: '偏空',
+        badgeClassName: 'border-green-200 bg-green-50 text-green-700',
+        cardClassName: 'border-green-200 bg-green-50 text-green-950',
+        textClassName: 'text-green-700',
+      };
+    }
+    return {
+      label: '中性',
+      badgeClassName: 'border-slate-200 bg-slate-50 text-slate-700',
+      cardClassName: 'border-slate-200 bg-slate-50 text-slate-900',
+      textClassName: 'text-slate-700',
+    };
+  }
+`);
+
 function rewriteImports(code: string): string {
   return code
     .replaceAll('"react/jsx-runtime"', `'${jsxRuntimeStubUrl}'`)
@@ -94,6 +121,8 @@ function rewriteImports(code: string): string {
     .replaceAll("'lucide-react'", `'${lucideStubUrl}'`)
     .replaceAll('"@/lib/utils"', `'${utilsStubUrl}'`)
     .replaceAll("'@/lib/utils'", `'${utilsStubUrl}'`)
+    .replaceAll('"@/lib/trinity-display-vocabulary"', `'${displayVocabularyStubUrl}'`)
+    .replaceAll("'@/lib/trinity-display-vocabulary'", `'${displayVocabularyStubUrl}'`)
     .replaceAll('"../ui/accordion"', `'${uiStubUrl}'`)
     .replaceAll("'../ui/accordion'", `'${uiStubUrl}'`)
     .replaceAll('"../ui/badge"', `'${uiStubUrl}'`)
