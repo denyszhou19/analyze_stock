@@ -4,6 +4,7 @@ import assert from 'node:assert/strict';
 
 import React from 'react';
 import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
+import type { AnalysisPageRuleChainItem } from '../src/lib/trinity-analysis-page-view-model.ts';
 
 type TradingCycleBusModule = typeof import('../src/components/stock/TradingCycleBus.tsx');
 type TrinityRuleChainModule = typeof import('../src/components/stock/TrinityRuleChain.tsx');
@@ -25,8 +26,11 @@ function createExplainableField(label: string, value: string) {
 }
 
 function createSignalTag(label: string, tone: 'bullish' | 'bearish' | 'warning' | 'neutral') {
+  const [category = '结构', result = label] = label.split('｜');
   return {
-    key: label,
+    key: 'structure' as const,
+    category: category as AnalysisPageRuleChainItem['signalTags'][number]['category'],
+    result,
     label,
     tone,
     hover: {
@@ -51,6 +55,8 @@ function createRuleItem(
     reason: string;
     summary: string;
     recommendation: string;
+    signalTags: AnalysisPageRuleChainItem['signalTags'];
+    detailHover: AnalysisPageRuleChainItem['detailHover'];
     statusExplanation: {
       tradeMeaning: string;
       ruleState: '已满足' | '待确认' | '有约束' | '不成立';

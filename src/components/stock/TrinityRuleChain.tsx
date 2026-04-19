@@ -1,4 +1,5 @@
 import { Info } from 'lucide-react';
+import { SignalTagList } from '@/components/stock/SignalTagList';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -60,50 +61,6 @@ const RULE_HINTS: Record<string, { title: string; body: string[] }> = {
     ],
   },
 };
-
-const SIGNAL_TAG_TONE_CLASS_NAME = {
-  bullish: 'border-rose-200 bg-rose-50 text-rose-700',
-  bearish: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-  warning: 'border-amber-200 bg-amber-50 text-amber-800',
-  neutral: 'border-slate-200 bg-slate-50 text-slate-700',
-} as const;
-
-function InlineSignalTagList({ tags }: { tags: AnalysisPageRuleChainItem['signalTags'] }) {
-  if (!tags.length) {
-    return null;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-1.5">
-      {tags.map((tag) => {
-        const badgeClassName = SIGNAL_TAG_TONE_CLASS_NAME[tag.tone];
-
-        return (
-          <Tooltip key={tag.key}>
-            <TooltipTrigger asChild>
-              <Badge
-                variant="outline"
-                className={cn('cursor-help whitespace-nowrap', badgeClassName)}
-              >
-                {tag.label}
-              </Badge>
-            </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-sm text-sm leading-6">
-              <div className="space-y-1">
-                <div className="font-medium">{tag.hover.title}</div>
-                {tag.hover.items.map((detailItem) => (
-                  <p key={`${tag.key}-${detailItem.label}`}>
-                    {detailItem.label}：{detailItem.value}
-                  </p>
-                ))}
-              </div>
-            </TooltipContent>
-          </Tooltip>
-        );
-      })}
-    </div>
-  );
-}
 
 export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) {
   if (!items.length) {
@@ -184,7 +141,7 @@ export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) 
               <CardContent className="space-y-2 px-4 text-sm leading-6 text-muted-foreground">
                 <p className="text-foreground">{item.summary}</p>
                 <p>{item.recommendation}</p>
-                <InlineSignalTagList tags={item.signalTags} />
+                <SignalTagList tags={item.signalTags} />
                 <p className="text-xs text-foreground/75">
                   判定依据：{item.statusExplanation.reason}
                 </p>
