@@ -115,5 +115,5 @@ test('builds status explanation fallback reason when input reason is empty', () 
   assert.equal(explanation.tradeMeaning, '已有方向或预案，但还差确认，不急着动作');
   assert.equal(explanation.ruleState, '待确认');
   assert.equal(explanation.directionLabel, '中性');
-  assert.equal(explanation.reason, '暂无额外说明');
+  assert.equal(explanation.reason, '当前规则未提供明确原因');
 });

@@ -306,7 +306,7 @@ export function directionFromStructure(direction?: string | null): DirectionTone
 export function buildStatusExplanation(input: StatusExplanationInput): StatusExplanation {
   const statusMeta = getActionStatusMeta(input.status);
   const directionMeta = getDirectionMeta(input.direction);
-  const reason = cleanText(input.reason) || '暂无额外说明';
+  const reason = cleanText(input.reason) || '当前规则未提供明确原因';
 
   return {
     tradeMeaning: statusMeta.tradeMeaning,
