@@ -449,3 +449,65 @@ test('loading and error states use unified Chinese labels', () => {
   assert.equal(loadingVm.statusBar.aiStatus.label, '生成中');
   assert.equal(errorVm.statusBar.aiStatus.label, '生成失败');
 });
+
+test('global strategy is derived from three trading combinations, not a single daily label', () => {
+  const result = createResult();
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'buy',
+        action_label: '轻仓试探',
+        bias: 'bullish',
+        confidence: 'medium',
+        can_trade: true,
+      },
+      execution: {
+        entry_style: 'pullback_confirm' as never,
+        triggers: ['30分钟放量突破平台上沿'],
+        invalidation: ['30分钟跌回突破位'],
+        confirmation: ['回踩不破突破位'],
+        position_sizing: { max_ratio: 0.2, reason: '日线仍需确认，只允许轻仓试探' },
+        risk_flags: ['日线结构未完全确认'],
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.equal(vm.globalStrategy.scopeLabel, '综合范围：中线主策略组合、短线执行组合、超短线 / T 组合');
+  assert.equal(vm.globalStrategy.primaryCombinationLabel, '短线执行组合｜日线 → 30分钟');
+  assert.equal(vm.globalStrategy.primaryConstraintLevel, 'daily');
+  assert.equal(vm.globalStrategy.primaryConstraintLevelLabel, '日线');
+  assert.equal(vm.globalStrategy.triggerLevel, 'hour30');
+  assert.equal(vm.globalStrategy.triggerLevelLabel, '30分钟');
+  assert.equal(vm.globalStrategy.actionLabel, '可执行');
+  assert.equal(vm.tradingCombinations.length, 3);
+  assert.deepEqual(
+    vm.tradingCombinations.map((item) => item.label),
+    ['中线主策略组合｜周线 → 日线', '短线执行组合｜日线 → 30分钟', '超短线 / T 组合｜60分钟 → 15分钟']
+  );
+});
+
+test('hard gates expose source and hover explanation', () => {
+  const vm = buildAnalysisPageViewModel({
+    result: createResult(),
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.equal(vm.summary.hardGateTitle, '主策略硬门控');
+  assert.match(vm.summary.hardGateSourceLabel!, /当前硬门控来自主判定级别：日线/);
+  assert.match(vm.summary.hardGateSourceLabel!, /当前优先组合：短线执行组合｜日线 → 30分钟/);
+  const positionGate = vm.summary.hardGates.find((gate) => gate.label === '仓位权限');
+  assert.ok(positionGate);
+  assert.ok(positionGate.description);
+  assert.equal(positionGate.description.title, '仓位权限');
+  assert.match(positionGate.description.tradeImpact, /不能突破/);
+  assert.match(positionGate.description.source, /trade_qualification.position_permission/);
+});

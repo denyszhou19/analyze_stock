@@ -11,6 +11,14 @@ import {
   preferChineseList,
   preferChineseText,
 } from './trinity-decision-labels.ts';
+import {
+  buildStatusExplanation,
+  directionFromBias,
+  getActionStatusMeta,
+  getDirectionMeta,
+  getStructureTagMeta,
+  type DirectionTone,
+} from './trinity-display-vocabulary.ts';
 
 type TrinityLevel = TrinityDecision['level'];
 
@@ -44,9 +52,17 @@ export interface AnalysisPageStatusBarViewModel {
   dataRanges: AnalysisPageDataRangeViewModel[];
 }
 
+export interface AnalysisPageHardGateDescription {
+  title: string;
+  meaning: string;
+  tradeImpact: string;
+  source: string;
+}
+
 export interface AnalysisPageSummaryGate {
   label: string;
   value: string;
+  description?: AnalysisPageHardGateDescription;
 }
 
 export interface AnalysisPageSummaryViewModel {
@@ -58,6 +74,8 @@ export interface AnalysisPageSummaryViewModel {
   triggerLabels: string[];
   riskLabels: string[];
   guardrail: string;
+  hardGateTitle?: string;
+  hardGateSourceLabel?: string;
   hardGates: AnalysisPageSummaryGate[];
 }
 
@@ -65,6 +83,40 @@ export interface AnalysisPageBusDimension {
   title: string;
   primary: string;
   detail: string;
+}
+
+export type TradingCombinationKey = 'midline' | 'shortline' | 'intraday_t';
+
+export interface AnalysisPageGlobalStrategyViewModel {
+  scopeLabel: string;
+  primaryCombination: TradingCombinationKey;
+  primaryCombinationLabel: string;
+  primaryConstraintLevel: TrinityLevel;
+  primaryConstraintLevelLabel: string;
+  triggerLevel: TrinityLevel;
+  triggerLevelLabel: string;
+  direction: DirectionTone;
+  directionLabel: string;
+  actionLabel: string;
+  headline: string;
+  primaryReason: string;
+  triggerLabels: string[];
+  riskLabels: string[];
+  guardrail: string;
+}
+
+export interface AnalysisPageTradingCombinationViewModel {
+  key: TradingCombinationKey;
+  label: string;
+  levels: [TrinityLevel, TrinityLevel];
+  direction: DirectionTone;
+  directionLabel: string;
+  actionLabel: string;
+  parentConstraint: string;
+  triggerLevelLabel: string;
+  suitableAction: string;
+  majorRisk: string;
+  explanation: string;
 }
 
 export interface AnalysisPageRuleChainItem {
@@ -76,7 +128,9 @@ export interface AnalysisPageRuleChainItem {
 
 export interface AnalysisPageViewModel {
   statusBar: AnalysisPageStatusBarViewModel;
+  globalStrategy: AnalysisPageGlobalStrategyViewModel;
   summary: AnalysisPageSummaryViewModel;
+  tradingCombinations: AnalysisPageTradingCombinationViewModel[];
   bus: {
     dimensions: AnalysisPageBusDimension[];
   };
@@ -336,31 +390,124 @@ function buildStatusBar(
   };
 }
 
+function gateDescription(
+  label: string,
+  value: string,
+  source: string
+): AnalysisPageHardGateDescription {
+  const meanings: Record<string, string> = {
+    后端最终动作: '后端确定性链路给出的当前最大动作。',
+    交易模式: '当前策略允许采用的交易模式。',
+    仓位权限: '后端允许的最大仓位动作范围。',
+    结构资格: '当前结构是否具备交易解释力。',
+    聚焦结构: '当前主策略正在跟踪的结构类型。',
+    执行级别: '当前硬门控来自哪个主判定级别。',
+    量能状态: '突破、跌破或回踩是否获得量能支持。',
+    结论约束: '当前策略不能突破的主要限制。',
+  };
+
+  return {
+    title: label,
+    meaning: meanings[label] ?? '当前硬门控字段。',
+    tradeImpact: `当前值为「${value}」，AI 和页面结论不能突破这个限制。`,
+    source,
+  };
+}
+
+function primaryLevelSourceLabel(
+  decision: TrinityDecision,
+  primaryCombination?: AnalysisPageTradingCombinationViewModel
+): string {
+  const levelIndex = PRIMARY_DECISION_ORDER.indexOf(decision.level);
+  const combinationLabel = primaryCombination ? `；当前优先组合：${primaryCombination.label}` : '';
+  if (levelIndex <= 0) {
+    return `当前硬门控来自主判定级别：${LEVEL_LABELS[decision.level]}${combinationLabel}`;
+  }
+
+  const missingLevels = PRIMARY_DECISION_ORDER.slice(0, levelIndex).map((level) => LEVEL_LABELS[level]);
+  return `当前硬门控来自主判定级别：${LEVEL_LABELS[decision.level]}${combinationLabel}；因${missingLevels.join('、')}主判定缺失，已自动降级。`;
+}
+
 function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
   const actionLabel = formatDecisionActionLabel(
     decision.conclusion.action,
     decision.conclusion.action_label
   );
+  const volumeValue = `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}`;
+  const guardrailValue =
+    decision.conclusion.wait_reason ?? decision.execution.position_sizing.reason ?? '暂无明确约束';
 
   return [
-    { label: '后端最终动作', value: actionLabel },
-    { label: '交易模式', value: TRADE_MODE_LABELS[decision.trade_qualification.trade_mode] },
+    {
+      label: '后端最终动作',
+      value: actionLabel,
+      description: gateDescription('后端最终动作', actionLabel, 'trinity_decision.conclusion.action'),
+    },
+    {
+      label: '交易模式',
+      value: TRADE_MODE_LABELS[decision.trade_qualification.trade_mode],
+      description: gateDescription(
+        '交易模式',
+        TRADE_MODE_LABELS[decision.trade_qualification.trade_mode],
+        'trinity_decision.trade_qualification.trade_mode'
+      ),
+    },
     {
       label: '仓位权限',
       value: POSITION_PERMISSION_LABELS[decision.trade_qualification.position_permission],
+      description: gateDescription(
+        '仓位权限',
+        POSITION_PERMISSION_LABELS[decision.trade_qualification.position_permission],
+        'trinity_decision.trade_qualification.position_permission'
+      ),
     },
-    { label: '结构资格', value: STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification] },
-    { label: '聚焦结构', value: decision.structure.type },
-    { label: '执行级别', value: LEVEL_LABELS[decision.level] },
+    {
+      label: '结构资格',
+      value: STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification],
+      description: gateDescription(
+        '结构资格',
+        STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification],
+        'trinity_decision.structure.qualification'
+      ),
+    },
+    {
+      label: '聚焦结构',
+      value: decision.structure.type,
+      description: gateDescription('聚焦结构', decision.structure.type, 'trinity_decision.structure.type'),
+    },
+    {
+      label: '执行级别',
+      value: LEVEL_LABELS[decision.level],
+      description: gateDescription('执行级别', LEVEL_LABELS[decision.level], 'trinity_decision.level'),
+    },
     {
       label: '量能状态',
-      value: `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}`,
+      value: volumeValue,
+      description: gateDescription(
+        '量能状态',
+        volumeValue,
+        'trinity_decision.volume_confirmation.volume_state'
+      ),
     },
-    { label: '结论约束', value: decision.conclusion.wait_reason ?? decision.execution.position_sizing.reason },
+    {
+      label: '结论约束',
+      value: guardrailValue,
+      description: gateDescription(
+        '结论约束',
+        guardrailValue,
+        decision.conclusion.wait_reason
+          ? 'trinity_decision.conclusion.wait_reason'
+          : 'trinity_decision.execution.position_sizing.reason'
+      ),
+    },
   ];
 }
 
-function buildSummary(decision: TrinityDecision, aiState: AnalysisPageAiState): AnalysisPageSummaryViewModel {
+function buildSummary(
+  decision: TrinityDecision,
+  aiState: AnalysisPageAiState,
+  primaryCombination: AnalysisPageTradingCombinationViewModel
+): AnalysisPageSummaryViewModel {
   const readySummary = aiState.status === 'ready' ? aiState.summary : null;
   const errorMessage = aiState.status === 'error' ? aiState.message : null;
   const actionLabel = formatDecisionActionLabel(
@@ -381,11 +528,13 @@ function buildSummary(decision: TrinityDecision, aiState: AnalysisPageAiState): 
     triggerLabels: preferChineseList(readySummary?.triggers, decision.execution.triggers),
     riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
     guardrail: preferChineseText(readySummary?.guardrail, backendReason),
+    hardGateTitle: '主策略硬门控',
+    hardGateSourceLabel: primaryLevelSourceLabel(decision, primaryCombination),
     hardGates: buildHardGates(decision),
   };
 }
 
-function findDecision(result: AnalysisResultData, level: TrinityLevel): TrinityDecision | null {
+function findLevelDecision(result: AnalysisResultData, level: TrinityLevel): TrinityDecision | null {
   return result.periods[level]?.trinity_decision ?? null;
 }
 
@@ -393,12 +542,163 @@ function describePeriod(period?: PeriodAnalysisData): string {
   return period?.structure?.structure_type || period?.trinity_decision?.structure.type || '未生成结构';
 }
 
+function resolveCombinationStatus(
+  major: TrinityDecision | null,
+  minor: TrinityDecision | null
+): TrinityJudgmentCriterion['status'] {
+  if (!major && !minor) {
+    return 'failed';
+  }
+  if (minor?.conclusion.can_trade && major?.conclusion.bias !== 'bearish') {
+    return 'passed';
+  }
+  if (major?.trade_qualification.position_permission === 'no_position') {
+    return 'warning';
+  }
+  return 'info';
+}
+
+function buildCombination({
+  key,
+  label,
+  levels,
+  result,
+}: {
+  key: TradingCombinationKey;
+  label: string;
+  levels: [TrinityLevel, TrinityLevel];
+  result: AnalysisResultData;
+}): AnalysisPageTradingCombinationViewModel {
+  const [majorLevel, minorLevel] = levels;
+  const major = findLevelDecision(result, majorLevel);
+  const minor = findLevelDecision(result, minorLevel);
+  const status = resolveCombinationStatus(major, minor);
+  const statusMeta = getActionStatusMeta(status);
+  const direction = directionFromBias(minor?.conclusion.bias ?? major?.conclusion.bias ?? 'neutral');
+  const directionLabel = getDirectionMeta(direction).label;
+  const majorLabel = LEVEL_LABELS[majorLevel];
+  const minorLabel = LEVEL_LABELS[minorLevel];
+
+  return {
+    key,
+    label,
+    levels,
+    direction,
+    directionLabel,
+    actionLabel: statusMeta.label,
+    parentConstraint: major
+      ? `${majorLabel}：${major.conclusion.wait_reason ?? major.trade_qualification.reason[0] ?? '暂无额外约束'}`
+      : `${majorLabel}缺失`,
+    triggerLevelLabel: minorLabel,
+    suitableAction: minor
+      ? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
+      : '等待数据补齐',
+    majorRisk: minor?.execution.risk_flags?.[0] ?? major?.execution.risk_flags?.[0] ?? '暂无明确风险',
+    explanation: `${majorLabel}定约束，${minorLabel}给触发；${statusMeta.tradeMeaning}`,
+  };
+}
+
+function buildTradingCombinations(result: AnalysisResultData): AnalysisPageTradingCombinationViewModel[] {
+  return [
+    buildCombination({
+      key: 'midline',
+      label: '中线主策略组合｜周线 → 日线',
+      levels: ['weekly', 'daily'],
+      result,
+    }),
+    buildCombination({
+      key: 'shortline',
+      label: '短线执行组合｜日线 → 30分钟',
+      levels: ['daily', 'hour30'],
+      result,
+    }),
+    buildCombination({
+      key: 'intraday_t',
+      label: '超短线 / T 组合｜60分钟 → 15分钟',
+      levels: ['hour60', 'hour15'],
+      result,
+    }),
+  ];
+}
+
+function pickPrimaryCombination(
+  combinations: AnalysisPageTradingCombinationViewModel[]
+): AnalysisPageTradingCombinationViewModel {
+  const score: Record<string, number> = {
+    可执行: 4,
+    谨慎看: 3,
+    观察中: 2,
+    暂不做: 1,
+  };
+  const tieBreak: Record<TradingCombinationKey, number> = {
+    shortline: 3,
+    midline: 2,
+    intraday_t: 1,
+  };
+
+  return [...combinations].sort((left, right) => {
+    const scoreDiff = score[right.actionLabel] - score[left.actionLabel];
+    if (scoreDiff !== 0) {
+      return scoreDiff;
+    }
+    return tieBreak[right.key] - tieBreak[left.key];
+  })[0];
+}
+
+function buildGlobalStrategy({
+  result,
+  primaryCombination,
+}: {
+  result: AnalysisResultData;
+  primaryCombination: AnalysisPageTradingCombinationViewModel;
+}): AnalysisPageGlobalStrategyViewModel {
+  const [primaryConstraintLevel, triggerLevel] = primaryCombination.levels;
+  const constraintDecision = findLevelDecision(result, primaryConstraintLevel);
+  const triggerDecision = findLevelDecision(result, triggerLevel);
+  const status = resolveCombinationStatus(constraintDecision, triggerDecision);
+  const explanation = buildStatusExplanation({
+    status,
+    direction: primaryCombination.direction,
+    reason:
+      triggerDecision?.conclusion.wait_reason ??
+      triggerDecision?.trade_qualification.reason?.[0] ??
+      constraintDecision?.conclusion.wait_reason ??
+      constraintDecision?.trade_qualification.reason?.[0],
+  });
+  const structureMeta = getStructureTagMeta(
+    triggerDecision?.structure.type ?? constraintDecision?.structure.type ?? ''
+  );
+  const combinationNames = ['中线主策略组合', '短线执行组合', '超短线 / T 组合'];
+
+  return {
+    scopeLabel: `综合范围：${combinationNames.join('、')}`,
+    primaryCombination: primaryCombination.key,
+    primaryCombinationLabel: primaryCombination.label,
+    primaryConstraintLevel,
+    primaryConstraintLevelLabel: LEVEL_LABELS[primaryConstraintLevel],
+    triggerLevel,
+    triggerLevelLabel: LEVEL_LABELS[triggerLevel],
+    direction: primaryCombination.direction,
+    directionLabel: primaryCombination.directionLabel,
+    actionLabel: primaryCombination.actionLabel,
+    headline: `${primaryCombination.label}｜${structureMeta.label}｜${primaryCombination.directionLabel}${primaryCombination.actionLabel}`,
+    primaryReason: explanation.reason,
+    triggerLabels: triggerDecision?.execution.triggers ?? [],
+    riskLabels: triggerDecision?.execution.risk_flags ?? constraintDecision?.execution.risk_flags ?? [],
+    guardrail:
+      constraintDecision?.conclusion.wait_reason ??
+      constraintDecision?.execution.position_sizing.reason ??
+      triggerDecision?.execution.position_sizing.reason ??
+      explanation.tradeMeaning,
+  };
+}
+
 function buildBus(result: AnalysisResultData): AnalysisPageViewModel['bus'] {
-  const weekly = findDecision(result, 'weekly');
-  const daily = findDecision(result, 'daily');
-  const hour60 = findDecision(result, 'hour60');
-  const hour30 = findDecision(result, 'hour30');
-  const hour15 = findDecision(result, 'hour15');
+  const weekly = findLevelDecision(result, 'weekly');
+  const daily = findLevelDecision(result, 'daily');
+  const hour60 = findLevelDecision(result, 'hour60');
+  const hour30 = findLevelDecision(result, 'hour30');
+  const hour15 = findLevelDecision(result, 'hour15');
 
   return {
     dimensions: [
@@ -539,10 +839,14 @@ export function buildAnalysisPageViewModel({
   aiState: AnalysisPageAiState;
 }): AnalysisPageViewModel {
   const primaryDecision = pickPrimaryDecision(result);
+  const tradingCombinations = buildTradingCombinations(result);
+  const primaryCombination = pickPrimaryCombination(tradingCombinations);
 
   return {
     statusBar: buildStatusBar(result, integrity, aiState),
-    summary: buildSummary(primaryDecision, aiState),
+    globalStrategy: buildGlobalStrategy({ result, primaryCombination }),
+    summary: buildSummary(primaryDecision, aiState, primaryCombination),
+    tradingCombinations,
     bus: buildBus(result),
     ruleChain: buildRuleChain(primaryDecision),
   };
