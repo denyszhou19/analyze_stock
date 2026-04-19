@@ -46,6 +46,7 @@ export interface AnalysisPageSummaryGate {
 
 export interface AnalysisPageSummaryViewModel {
   mode: AnalysisPageAiState['status'];
+  errorMessage?: string | null;
   headline: string;
   primaryActionLabel: string;
   primaryReason: string;
@@ -305,9 +306,11 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
 
 function buildSummary(decision: TrinityDecision, aiState: AnalysisPageAiState): AnalysisPageSummaryViewModel {
   const readySummary = aiState.status === 'ready' ? aiState.summary : null;
+  const errorMessage = aiState.status === 'error' ? aiState.message : null;
 
   return {
     mode: aiState.status,
+    errorMessage,
     headline: readySummary?.headline || decision.conclusion.action_label,
     primaryActionLabel: readySummary ? decision.conclusion.action_label : decision.conclusion.action_label,
     primaryReason:

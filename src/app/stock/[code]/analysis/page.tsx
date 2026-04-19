@@ -8,7 +8,6 @@ import { domToJpeg } from 'modern-screenshot';
 
 import { AnalysisPeriodDetails } from '@/components/stock/AnalysisPeriodDetails';
 import type { AnalysisPeriodSection } from '@/components/stock/AnalysisPeriodDetails';
-import { AnalysisStatusBar } from '@/components/stock/AnalysisStatusBar';
 import { AnalysisSummaryPanel } from '@/components/stock/AnalysisSummaryPanel';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
@@ -574,8 +573,6 @@ export default function StockAnalysisPage() {
             <Clock className="h-4 w-4" />
             <span>分析时间：{result.analysis_time || '未知'}</span>
           </div>
-
-          <AnalysisStatusBar {...pageViewModel.statusBar} />
 
           <AnalysisSummaryPanel
             viewModel={pageViewModel.summary}

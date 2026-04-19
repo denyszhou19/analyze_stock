@@ -123,6 +123,7 @@ test('AnalysisSummaryPanel error renders fallback copy and retry action', async 
       viewModel: {
         ...summaryViewModel,
         mode: 'error',
+        errorMessage: 'Codex CLI 执行失败 (exit 2): stderr detail',
       },
       onGenerate: () => {},
       canGenerate: true,
@@ -130,6 +131,7 @@ test('AnalysisSummaryPanel error renders fallback copy and retry action', async 
   );
 
   assert.match(html, /AI 综合判断生成失败，当前展示后端确定性结论。/);
+  assert.match(html, /Codex CLI 执行失败 \(exit 2\): stderr detail/);
   assert.match(html, /重试生成 AI 综合判断/);
   assert.match(html, /后端最终动作/);
 });

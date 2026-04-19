@@ -99,9 +99,14 @@ export function AnalysisSummaryPanel({
           </p>
         ) : null}
         {isError ? (
-          <p className="rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
-            AI 综合判断生成失败，当前展示后端确定性结论。
-          </p>
+          <div className="space-y-2 rounded-lg border border-destructive/25 bg-destructive/10 px-3 py-2 text-sm text-destructive">
+            <p>AI 综合判断生成失败，当前展示后端确定性结论。</p>
+            {viewModel.errorMessage ? (
+              <p className="break-words text-xs leading-6 text-destructive/90">
+                真实错误：{viewModel.errorMessage}
+              </p>
+            ) : null}
+          </div>
         ) : null}
       </CardHeader>
       <CardContent className="space-y-5">
