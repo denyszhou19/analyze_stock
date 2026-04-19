@@ -59,6 +59,13 @@ test('maps direction tone to Chinese labels and color classes', () => {
   assert.match(vocabulary.getDirectionMeta('neutral').textClassName, /slate|gray/);
 });
 
+test('maps signal tag tone to fixed badge colors', () => {
+  assert.match(vocabulary.getSignalTagToneMeta('bullish').badgeClassName, /rose|red/);
+  assert.match(vocabulary.getSignalTagToneMeta('bearish').badgeClassName, /emerald|green/);
+  assert.match(vocabulary.getSignalTagToneMeta('warning').badgeClassName, /amber|orange/);
+  assert.match(vocabulary.getSignalTagToneMeta('neutral').badgeClassName, /slate|gray/);
+});
+
 test('normalizes structure tags globally', () => {
   const standardC = vocabulary.getStructureTagMeta('C单平台式');
   assert.equal(standardC.label, 'C单平台式');
