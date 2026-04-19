@@ -1,15 +1,20 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
 
+type ActionStatus = import('../src/lib/trinity-display-vocabulary.ts').ActionStatus;
+type DirectionTone = import('../src/lib/trinity-display-vocabulary.ts').DirectionTone;
+type ActionStatusLabel = import('../src/lib/trinity-display-vocabulary.ts').ActionStatusLabel;
+type ActionRuleState = import('../src/lib/trinity-display-vocabulary.ts').ActionRuleState;
+
 const vocabulary = await import(
   new URL('../src/lib/trinity-display-vocabulary.ts', import.meta.url).href
 ) as typeof import('../src/lib/trinity-display-vocabulary.ts');
 
 test('exports planned status and direction type aliases through runtime helpers', () => {
-  const status: vocabulary.ActionStatus = 'passed';
-  const direction: vocabulary.DirectionTone = 'bullish';
-  const statusLabel: vocabulary.ActionStatusLabel = '可执行';
-  const ruleState: vocabulary.ActionRuleState = '已满足';
+  const status: ActionStatus = 'passed';
+  const direction: DirectionTone = 'bullish';
+  const statusLabel: ActionStatusLabel = '可执行';
+  const ruleState: ActionRuleState = '已满足';
 
   assert.equal(vocabulary.getActionStatusMeta(status).label, statusLabel);
   assert.equal(vocabulary.getActionStatusMeta(status).ruleState, ruleState);
@@ -20,8 +25,8 @@ test('maps backend status to trading language labels, icons and rule state', () 
   assert.deepEqual(vocabulary.getActionStatusMeta('passed'), {
     label: '可执行',
     icon: '✓',
-    badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    cardClassName: 'border-emerald-200/70 bg-emerald-50/40',
+    badgeClassName: 'border-slate-200 bg-slate-50 text-slate-700',
+    cardClassName: 'border-slate-200 bg-slate-50/60',
     tradeMeaning: '这条规则已满足，可纳入当前执行判断',
     ruleState: '已满足',
   });
@@ -34,6 +39,12 @@ test('maps backend status to trading language labels, icons and rule state', () 
   assert.equal(vocabulary.getActionStatusMeta('failed').label, '暂不做');
   assert.equal(vocabulary.getActionStatusMeta('failed').icon, '×');
   assert.equal(vocabulary.getActionStatusMeta('failed').ruleState, '不成立');
+
+  for (const status of ['passed', 'info', 'warning', 'failed'] as const) {
+    const meta = vocabulary.getActionStatusMeta(status);
+    assert.doesNotMatch(meta.badgeClassName, /(red|green|emerald)/);
+    assert.doesNotMatch(meta.cardClassName, /(red|green|emerald)/);
+  }
 });
 
 test('maps direction tone to Chinese labels and color classes', () => {
@@ -61,13 +72,24 @@ test('normalizes structure tags globally', () => {
   assert.equal(extendedC.className, 'border-blue-200 bg-blue-50 text-blue-700');
   assert.match(extendedC.tradeMeaning, /不能直接等同于标准C/);
 
+  const aliasA = vocabulary.getStructureTagMeta('延伸A');
+  assert.equal(aliasA.label, '延伸A类');
+  assert.equal(aliasA.family, 'A');
+
   assert.equal(vocabulary.getStructureTagMeta('未知结构').label, '未知结构');
 });
 
 test('maps structure direction enum into direction tone', () => {
+  assert.equal(vocabulary.directionFromBias('bullish'), 'bullish');
+  assert.equal(vocabulary.directionFromBias('bearish'), 'bearish');
+  assert.equal(vocabulary.directionFromBias(''), 'neutral');
+  assert.equal(vocabulary.directionFromBias('unknown'), 'neutral');
+
   assert.equal(vocabulary.directionFromStructure('up'), 'bullish');
   assert.equal(vocabulary.directionFromStructure('down'), 'bearish');
   assert.equal(vocabulary.directionFromStructure('neutral'), 'neutral');
+  assert.equal(vocabulary.directionFromStructure(''), 'neutral');
+  assert.equal(vocabulary.directionFromStructure('sideways'), 'neutral');
 });
 
 test('builds status hover explanation with reason and direction', () => {
@@ -81,4 +103,17 @@ test('builds status hover explanation with reason and direction', () => {
   assert.equal(explanation.ruleState, '有约束');
   assert.equal(explanation.directionLabel, '偏空');
   assert.equal(explanation.reason, '父级偏空，当前级别反弹未确认');
+});
+
+test('builds status explanation fallback reason when input reason is empty', () => {
+  const explanation = vocabulary.buildStatusExplanation({
+    status: 'info',
+    direction: 'neutral',
+    reason: '   ',
+  });
+
+  assert.equal(explanation.tradeMeaning, '已有方向或预案，但还差确认，不急着动作');
+  assert.equal(explanation.ruleState, '待确认');
+  assert.equal(explanation.directionLabel, '中性');
+  assert.equal(explanation.reason, '暂无额外说明');
 });

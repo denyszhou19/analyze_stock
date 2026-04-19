@@ -59,32 +59,32 @@ const ACTION_STATUS_META: Record<ActionStatus, ActionStatusMeta> = {
   passed: {
     label: '可执行',
     icon: '✓',
-    badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
-    cardClassName: 'border-emerald-200/70 bg-emerald-50/40',
+    badgeClassName: NEUTRAL_CLASS_NAME,
+    cardClassName: 'border-slate-200 bg-slate-50/60',
     tradeMeaning: '这条规则已满足，可纳入当前执行判断',
     ruleState: '已满足',
   },
   info: {
     label: '观察中',
     icon: '○',
-    badgeClassName: 'border-sky-200 bg-sky-50 text-sky-700',
-    cardClassName: 'border-sky-200/80 bg-sky-50/50',
+    badgeClassName: NEUTRAL_CLASS_NAME,
+    cardClassName: 'border-slate-200 bg-slate-50/60',
     tradeMeaning: '已有方向或预案，但还差确认，不急着动作',
     ruleState: '待确认',
   },
   warning: {
     label: '谨慎看',
     icon: '!',
-    badgeClassName: 'border-amber-200 bg-amber-50 text-amber-800',
-    cardClassName: 'border-amber-200/80 bg-amber-50/50',
+    badgeClassName: NEUTRAL_CLASS_NAME,
+    cardClassName: 'border-slate-200 bg-slate-50/60',
     tradeMeaning: '存在约束，不能直接放大动作',
     ruleState: '有约束',
   },
   failed: {
     label: '暂不做',
     icon: '×',
-    badgeClassName: 'border-red-200 bg-red-50 text-red-700',
-    cardClassName: 'border-red-200/80 bg-red-50/50',
+    badgeClassName: NEUTRAL_CLASS_NAME,
+    cardClassName: 'border-slate-200 bg-slate-50/60',
     tradeMeaning: '当前不支持按这条规则交易',
     ruleState: '不成立',
   },
@@ -306,11 +306,12 @@ export function directionFromStructure(direction?: string | null): DirectionTone
 export function buildStatusExplanation(input: StatusExplanationInput): StatusExplanation {
   const statusMeta = getActionStatusMeta(input.status);
   const directionMeta = getDirectionMeta(input.direction);
+  const reason = cleanText(input.reason) || '暂无额外说明';
 
   return {
     tradeMeaning: statusMeta.tradeMeaning,
     ruleState: statusMeta.ruleState,
     directionLabel: directionMeta.label,
-    reason: cleanText(input.reason),
+    reason,
   };
 }
