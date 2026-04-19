@@ -24,6 +24,21 @@ function createExplainableField(label: string, value: string) {
   };
 }
 
+function createSignalTag(label: string, tone: 'bullish' | 'bearish' | 'warning' | 'neutral') {
+  return {
+    key: label,
+    label,
+    tone,
+    hover: {
+      title: `${label}说明`,
+      items: [
+        { label: '这句话是什么意思', value: `${label}的补充说明` },
+        { label: '为什么这么判断', value: `${label}对应的判定依据` },
+      ],
+    },
+  };
+}
+
 function createRuleItem(
   overrides: Partial<{
     title: string;
@@ -110,14 +125,22 @@ test('TradingCycleBus renders three trading combinations with direction and trig
           directionLabel: '中性',
           actionLabel: '谨慎看',
           relationHint: '日线看背景，30分钟看执行',
-          summary: '日线等待确认，30分钟先看触发',
-          recommendation: '先等30分钟确认',
-          signalTags: [],
-          parentConstraint: createExplainableField('父级约束', '日线：等待确认'),
-          triggerLevel: createExplainableField('触发级别', '30分钟：等待确认'),
+          summary: '日线还没完全放行，30分钟先看确认',
+          recommendation: '先等30分钟放量突破平台上沿',
+          signalTags: [createSignalTag('时空｜中偏弱', 'warning')],
+          parentConstraint: {
+            label: '父级约束',
+            value: '日线：仍未完全放行',
+            hoverTitle: '父级约束说明',
+            hoverItems: [
+              { label: '这句话是什么意思', value: '上一级还没有完全放开当前执行权限。' },
+              { label: '为什么这么判断', value: '日线结构和触发条件都还需要进一步确认。' },
+            ],
+          },
+          triggerLevel: createExplainableField('触发级别', '30分钟：放量突破平台上沿'),
           triggerLevelLabel: '30分钟',
-          suitableAction: createExplainableField('适合动作', '轻仓试探'),
-          majorRisk: createExplainableField('主要风险', '日线硬门控未放开'),
+          suitableAction: createExplainableField('适合动作', '等待30分钟确认后再决定是否轻仓试探'),
+          majorRisk: createExplainableField('主要风险', '30分钟冲高但量能不足会再次回到等待'),
           explanation: '日线定约束，30分钟给触发；存在约束，不能直接放大动作',
         },
         {
@@ -151,7 +174,12 @@ test('TradingCycleBus renders three trading combinations with direction and trig
   assert.match(html, /适合动作/);
   assert.match(html, /主要风险/);
   assert.match(html, /周线：大方向偏多/);
-  assert.match(html, /轻仓试探/);
+  assert.match(html, /日线还没完全放行，30分钟先看确认/);
+  assert.match(html, /先等30分钟放量突破平台上沿/);
+  assert.match(html, /时空｜中偏弱/);
+  assert.match(html, /父级约束说明/);
+  assert.match(html, /这句话是什么意思/);
+  assert.doesNotMatch(html, /日线定约束，30分钟给触发/);
   assert.doesNotMatch(html, /维度一/);
 });
 
@@ -165,7 +193,23 @@ test('TrinityRuleChain renders six rule items and keeps failed status plus reaso
       sourceLabel:
         '本规则链默认按日线主判定展示；若日线缺失，则依次降级为周线、60分钟、30分钟、15分钟。',
       items: [
-        createRuleItem(),
+        createRuleItem({
+          summary: '延伸结构可观察，但不能按标准节点操作',
+          recommendation: '先按边界看，不按标准节点下手',
+          signalTags: [createSignalTag('结构｜延伸C', 'neutral')],
+          detailHover: {
+            title: '结构资格说明',
+            items: [
+              { label: '这句话是什么意思', value: '当前结构还能观察，但已不适合按标准节点机械执行。' },
+              { label: '为什么这么判断', value: '结构已经进入延伸阶段，标准编号解释力下降。' },
+              { label: '当前限制', value: '不能把当前段落直接当作标准 C 节点操作。' },
+              { label: '下一步条件', value: '继续观察平台边界与确认节奏。' },
+              { label: '判定依据', value: '延伸结构更依赖边界与执行段确认。' },
+            ],
+          },
+          detail: '周线方向允许向下钻取。',
+          reason: '父级方向一致',
+        }),
         createRuleItem({
           title: 'MACD 时空',
           status: 'info',
@@ -274,8 +318,12 @@ test('TrinityRuleChain renders six rule items and keeps failed status plus reaso
   assert.match(html, /交易含义/);
   assert.match(html, /规则状态/);
   assert.match(html, /当前方向/);
-  assert.match(html, /15分钟入场点尚未成立/);
-  assert.match(html, /入场触发条件缺失/);
+  assert.match(html, /延伸结构可观察，但不能按标准节点操作/);
+  assert.match(html, /先按边界看，不按标准节点下手/);
+  assert.match(html, /结构｜延伸C/);
+  assert.match(html, /结构资格说明/);
+  assert.match(html, /当前限制/);
+  assert.doesNotMatch(html, /周线方向允许向下钻取/);
   assert.match(html, /等待触发：已有预案，但触发条件尚未满足/);
   assert.doesNotMatch(html, />通过</);
   assert.doesNotMatch(html, />警示</);

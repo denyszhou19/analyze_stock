@@ -1,12 +1,7 @@
 import { Info } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { getDirectionMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
 import type { AnalysisPageRuleChainItem } from '@/lib/trinity-analysis-page-view-model';
@@ -66,6 +61,50 @@ const RULE_HINTS: Record<string, { title: string; body: string[] }> = {
   },
 };
 
+const SIGNAL_TAG_TONE_CLASS_NAME = {
+  bullish: 'border-rose-200 bg-rose-50 text-rose-700',
+  bearish: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  warning: 'border-amber-200 bg-amber-50 text-amber-800',
+  neutral: 'border-slate-200 bg-slate-50 text-slate-700',
+} as const;
+
+function InlineSignalTagList({ tags }: { tags: AnalysisPageRuleChainItem['signalTags'] }) {
+  if (!tags.length) {
+    return null;
+  }
+
+  return (
+    <div className="flex flex-wrap gap-1.5">
+      {tags.map((tag) => {
+        const badgeClassName = SIGNAL_TAG_TONE_CLASS_NAME[tag.tone];
+
+        return (
+          <Tooltip key={tag.key}>
+            <TooltipTrigger asChild>
+              <Badge
+                variant="outline"
+                className={cn('cursor-help whitespace-nowrap', badgeClassName)}
+              >
+                {tag.label}
+              </Badge>
+            </TooltipTrigger>
+            <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+              <div className="space-y-1">
+                <div className="font-medium">{tag.hover.title}</div>
+                {tag.hover.items.map((detailItem) => (
+                  <p key={`${tag.key}-${detailItem.label}`}>
+                    {detailItem.label}：{detailItem.value}
+                  </p>
+                ))}
+              </div>
+            </TooltipContent>
+          </Tooltip>
+        );
+      })}
+    </div>
+  );
+}
+
 export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) {
   if (!items.length) {
     return null;
@@ -95,55 +134,60 @@ export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) 
                 <div className="flex items-center gap-1.5">
                   <CardTitle className="text-sm leading-6">{item.title}</CardTitle>
                   {RULE_HINTS[item.title] ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger
-                          asChild
-                          aria-label={`${item.title}释义`}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground"
-                        >
-                          <span>
-                            <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-sm text-sm leading-6">
-                          <div className="space-y-1">
-                            <div className="font-medium">{RULE_HINTS[item.title].title}</div>
-                            {RULE_HINTS[item.title].body.map((line) => (
-                              <p key={`${item.title}-${line}`}>{line}</p>
-                            ))}
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger
+                        asChild
+                        aria-label={`${item.title}释义`}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground"
+                      >
+                        <span>
+                          <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                        <div className="space-y-1">
+                          <div className="font-medium">{RULE_HINTS[item.title].title}</div>
+                          {RULE_HINTS[item.title].body.map((line) => (
+                            <p key={`${item.title}-${line}`}>{line}</p>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   ) : null}
                 </div>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge
-                        variant="outline"
-                        className={cn('cursor-help', directionMeta.badgeClassName)}
-                      >
-                        <span className="mr-1">{item.displayStatusIcon}</span>
-                        {item.displayStatusLabel}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-sm text-sm leading-6">
-                      <div className="space-y-1">
-                        <div className="font-medium">{item.displayStatusLabel}</div>
-                        <p>交易含义：{item.statusExplanation.tradeMeaning}</p>
-                        <p>规则状态：{item.statusExplanation.ruleState}</p>
-                        <p>当前方向：{item.statusExplanation.directionLabel}</p>
-                        <p>当前原因：{item.statusExplanation.reason}</p>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className={cn('cursor-help', directionMeta.badgeClassName)}
+                    >
+                      <span className="mr-1">{item.displayStatusIcon}</span>
+                      {item.displayStatusLabel}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                    <div className="space-y-1">
+                      <div className="font-medium">{item.detailHover.title}</div>
+                      <p>状态标签：{item.displayStatusLabel}</p>
+                      <p>交易含义：{item.statusExplanation.tradeMeaning}</p>
+                      <p>规则状态：{item.statusExplanation.ruleState}</p>
+                      <p>当前方向：{item.statusExplanation.directionLabel}</p>
+                      {item.detailHover.items.map((detailItem) => (
+                        <p key={`${item.title}-${detailItem.label}`}>
+                          {detailItem.label}：{detailItem.value}
+                        </p>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </CardHeader>
               <CardContent className="space-y-2 px-4 text-sm leading-6 text-muted-foreground">
-                <p>{item.detail}</p>
-                <p className="text-xs text-foreground/75">判定依据：{item.reason}</p>
+                <p className="text-foreground">{item.summary}</p>
+                <p>{item.recommendation}</p>
+                <InlineSignalTagList tags={item.signalTags} />
+                <p className="text-xs text-foreground/75">
+                  判定依据：{item.statusExplanation.reason}
+                </p>
               </CardContent>
             </Card>
           );
