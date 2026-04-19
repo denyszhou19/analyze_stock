@@ -12,6 +12,10 @@ import {
   preferChineseText,
 } from './trinity-decision-labels.ts';
 import {
+  buildDecisionSignalTags,
+  type TrinitySignalTag,
+} from './trinity-signal-tags.ts';
+import {
   buildStatusExplanation,
   directionFromBias,
   directionFromStructure,
@@ -86,6 +90,20 @@ export interface AnalysisPageBusDimension {
   detail: string;
 }
 
+export interface AnalysisPageHoverItem {
+  label: string;
+  value: string;
+}
+
+export interface AnalysisPageExplainableField {
+  label: string;
+  value: string;
+  hoverTitle: string;
+  hoverItems: AnalysisPageHoverItem[];
+}
+
+export interface AnalysisPageSignalTagViewModel extends TrinitySignalTag {}
+
 export type TradingCombinationKey = 'midline' | 'shortline' | 'intraday_t';
 
 export interface AnalysisPageGlobalStrategyViewModel {
@@ -113,10 +131,15 @@ export interface AnalysisPageTradingCombinationViewModel {
   direction: DirectionTone;
   directionLabel: string;
   actionLabel: string;
-  parentConstraint: string;
+  relationHint: string;
+  summary: string;
+  recommendation: string;
+  signalTags: AnalysisPageSignalTagViewModel[];
+  parentConstraint: AnalysisPageExplainableField;
+  triggerLevel: AnalysisPageExplainableField;
   triggerLevelLabel: string;
-  suitableAction: string;
-  majorRisk: string;
+  suitableAction: AnalysisPageExplainableField;
+  majorRisk: AnalysisPageExplainableField;
   explanation: string;
 }
 
@@ -133,6 +156,13 @@ export interface AnalysisPageRuleChainItem {
   directionLabel: string;
   detail: string;
   reason: string;
+  summary: string;
+  recommendation: string;
+  signalTags: AnalysisPageSignalTagViewModel[];
+  detailHover: {
+    title: string;
+    items: AnalysisPageHoverItem[];
+  };
   statusExplanation: ReturnType<typeof buildStatusExplanation>;
 }
 
@@ -326,6 +356,162 @@ function normalizeExecutionDetail(detail?: string | null): string {
   return rest.length ? [entryStyleLabel, ...rest].join('｜') : entryStyleLabel;
 }
 
+function createHoverItem(label: string, value?: string | null, fallback = '暂无补充说明'): AnalysisPageHoverItem {
+  const normalizedValue = normalizeRuleChainText(value);
+  return {
+    label,
+    value: normalizedValue || fallback,
+  };
+}
+
+function buildExplainableField({
+  label,
+  value,
+  hoverTitle,
+  hoverItems,
+}: {
+  label: string;
+  value?: string | null;
+  hoverTitle: string;
+  hoverItems: AnalysisPageHoverItem[];
+}): AnalysisPageExplainableField {
+  return {
+    label,
+    value: normalizeRuleChainText(value) || '暂无明确说明',
+    hoverTitle,
+    hoverItems,
+  };
+}
+
+function compactTriggerText(trigger?: string | null): string {
+  const normalized = normalizeRuleChainText(trigger);
+  if (!normalized) {
+    return '等待确认信号';
+  }
+
+  return normalized.replace(/^(周线|日线|60分钟|30分钟|15分钟)/, '').trim();
+}
+
+function buildCombinationSummary(
+  majorLevel: TrinityLevel,
+  minorLevel: TrinityLevel,
+  major: TrinityDecision | null,
+  minor: TrinityDecision | null
+): string {
+  const majorLabel = LEVEL_LABELS[majorLevel];
+  const minorLabel = LEVEL_LABELS[minorLevel];
+
+  if (!major) {
+    return `${majorLabel}缺失，${minorLabel}先不单独执行`;
+  }
+
+  if (!major.conclusion.can_trade || major.trade_qualification.position_permission === 'no_position') {
+    return `${majorLabel}还没完全放行，${minorLabel}先看确认`;
+  }
+
+  if (minor?.conclusion.can_trade) {
+    return `${majorLabel}给背景，${minorLabel}可按触发执行`;
+  }
+
+  return `${majorLabel}定背景，${minorLabel}继续等触发`;
+}
+
+function buildCombinationRecommendation(
+  majorLevel: TrinityLevel,
+  major: TrinityDecision | null,
+  minor: TrinityDecision | null
+): string {
+  if (!major) {
+    return `先等${LEVEL_LABELS[majorLevel]}数据补齐`;
+  }
+
+  const primaryTrigger = compactTriggerText(minor?.execution.triggers?.[0] ?? major.execution.triggers?.[0]);
+  return `先等${primaryTrigger}`;
+}
+
+function buildCombinationSignalTags(
+  major: TrinityDecision | null,
+  minor: TrinityDecision | null
+): AnalysisPageSignalTagViewModel[] {
+  const majorTags = buildDecisionSignalTags(major, { max: 3 });
+  if (majorTags.length >= 3) {
+    return majorTags;
+  }
+
+  const minorTags = buildDecisionSignalTags(minor, { max: 3 }).filter(
+    (tag) => !majorTags.some((majorTag) => majorTag.key === tag.key && majorTag.label === tag.label)
+  );
+  return [...majorTags, ...minorTags].slice(0, 3);
+}
+
+function buildCategorySignalTags(
+  category: TrinityJudgmentCriterion['category'],
+  decision: TrinityDecision
+): AnalysisPageSignalTagViewModel[] {
+  const tags = buildDecisionSignalTags(decision);
+  const byCategory: Partial<Record<TrinityJudgmentCriterion['category'], TrinitySignalTag['key'][]>> = {
+    structure: ['structure'],
+    spacetime: ['spacetime'],
+    moving_average: ['breakthrough', 'moving_average'],
+    volume: ['volume'],
+  };
+  const keys = byCategory[category];
+  if (!keys) {
+    return buildDecisionSignalTags(decision, { max: 1 });
+  }
+
+  const selected = tags.filter((tag) => keys.includes(tag.key));
+  return selected.length > 0 ? selected.slice(0, 2) : buildDecisionSignalTags(decision, { max: 1 });
+}
+
+function buildStructureRuleSummary(decision: TrinityDecision): string {
+  return decision.structure.explainability.status === 'passed'
+    ? 'A原型成立，但仍需等待更明确确认'
+    : '延伸结构可观察，但不能按标准节点操作';
+}
+
+function buildStructureRuleRecommendation(decision: TrinityDecision): string {
+  const canTradeByNodes =
+    decision.trade_qualification.trade_mode === 'standard_node_trade' &&
+    decision.structure.can_trade_by_structure_nodes;
+  return canTradeByNodes ? '先沿结构确认节奏继续跟踪' : '先按结构边界和确认节奏继续跟踪';
+}
+
+function buildRuleDetailHover(
+  title: string,
+  summary: string,
+  detail: string,
+  reason: string,
+  decision: TrinityDecision
+): { title: string; items: AnalysisPageHoverItem[] } {
+  return {
+    title: `${title}说明`,
+    items: [
+      createHoverItem('这句话是什么意思', summary),
+      createHoverItem('为什么这么判断', detail || reason),
+      createHoverItem(
+        '当前限制',
+        resolveChineseReason(
+          [
+            decision.conclusion.wait_reason,
+            decision.trade_qualification.reason?.[0],
+            decision.execution.position_sizing.reason,
+          ],
+          '暂无明确限制'
+        )
+      ),
+      createHoverItem(
+        '下一步条件',
+        formatList([...decision.execution.triggers, ...decision.execution.confirmation], '继续等待下一步信号')
+      ),
+      createHoverItem(
+        '判定依据',
+        formatList(decision.structure.explainability.evidence, reason || '以后端判定链为准')
+      ),
+    ],
+  };
+}
+
 function buildRuleChainSourceLabel(level: TrinityLevel): string {
   const levelIndex = PRIMARY_DECISION_ORDER.indexOf(level);
   if (levelIndex <= 0) {
@@ -342,12 +528,23 @@ function decorateRuleChainItem({
   direction,
   detail,
   reason,
+  summary,
+  recommendation,
+  signalTags,
+  detailHover,
 }: {
   title: string;
   status: TrinityJudgmentCriterion['status'];
   direction: DirectionTone;
   detail: string;
   reason: string;
+  summary: string;
+  recommendation: string;
+  signalTags: AnalysisPageSignalTagViewModel[];
+  detailHover: {
+    title: string;
+    items: AnalysisPageHoverItem[];
+  };
 }): AnalysisPageRuleChainItem {
   const statusMeta = getActionStatusMeta(status);
 
@@ -360,6 +557,10 @@ function decorateRuleChainItem({
     directionLabel: getDirectionMeta(direction).label,
     detail,
     reason,
+    summary,
+    recommendation,
+    signalTags,
+    detailHover,
     statusExplanation: buildStatusExplanation({ status, direction, reason }),
   };
 }
@@ -646,6 +847,21 @@ function buildCombination({
   const directionLabel = getDirectionMeta(direction).label;
   const majorLabel = LEVEL_LABELS[majorLevel];
   const minorLabel = LEVEL_LABELS[minorLevel];
+  const parentConstraintValue = major
+    ? `${majorLabel}：${resolveChineseReason(
+        [
+          major.conclusion.wait_reason,
+          major.trade_qualification.reason[0],
+          major.execution.position_sizing.reason,
+        ],
+        '暂无额外约束'
+      )}`
+    : `${majorLabel}缺失`;
+  const suitableActionValue = minor
+    ? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
+    : '等待数据补齐';
+  const majorRiskValue = minor?.execution.risk_flags?.[0] ?? major?.execution.risk_flags?.[0] ?? '暂无明确风险';
+  const triggerValue = minor?.execution.triggers?.[0] ?? major?.execution.triggers?.[0] ?? `${minorLabel}等待触发`;
 
   return {
     key,
@@ -655,21 +871,76 @@ function buildCombination({
     direction,
     directionLabel,
     actionLabel: statusMeta.label,
-    parentConstraint: major
-      ? `${majorLabel}：${resolveChineseReason(
-          [
-            major.conclusion.wait_reason,
-            major.trade_qualification.reason[0],
-            major.execution.position_sizing.reason,
-          ],
-          '暂无额外约束'
-        )}`
-      : `${majorLabel}缺失`,
+    relationHint: `${majorLabel}看背景，${minorLabel}看执行`,
+    summary: buildCombinationSummary(majorLevel, minorLevel, major, minor),
+    recommendation: buildCombinationRecommendation(majorLevel, major, minor),
+    signalTags: buildCombinationSignalTags(major, minor),
+    parentConstraint: buildExplainableField({
+      label: '父级约束',
+      value: parentConstraintValue,
+      hoverTitle: '父级约束说明',
+      hoverItems: [
+        createHoverItem('这句话是什么意思', `${majorLabel}负责决定这组交易能不能放行。`),
+        createHoverItem(
+          '为什么这么判断',
+          major
+            ? resolveChineseReason(
+                [
+                  major.conclusion.wait_reason,
+                  major.trade_qualification.reason[0],
+                  major.execution.position_sizing.reason,
+                ],
+                '暂无额外约束'
+              )
+            : `${majorLabel}主判定缺失`
+        ),
+        createHoverItem(
+          '当前限制',
+          major ? formatList(major.trade_qualification.reason, parentConstraintValue) : `${majorLabel}缺失`
+        ),
+        createHoverItem(
+          '下一步条件',
+          major ? formatList(major.execution.triggers, '等待父级确认信号') : `先补齐${majorLabel}主判定`
+        ),
+      ],
+    }),
+    triggerLevel: buildExplainableField({
+      label: '触发级别',
+      value: `${minorLabel}：${compactTriggerText(triggerValue)}`,
+      hoverTitle: '触发级别说明',
+      hoverItems: [
+        createHoverItem('这句话是什么意思', `${minorLabel}负责给出更具体的执行触发。`),
+        createHoverItem('为什么这么判断', triggerValue),
+        createHoverItem('当前限制', major ? parentConstraintValue : `${majorLabel}缺失`),
+        createHoverItem(
+          '下一步条件',
+          minor ? formatList(minor.execution.confirmation, '等待更明确确认') : `先补齐${minorLabel}主判定`
+        ),
+      ],
+    }),
     triggerLevelLabel: minorLabel,
-    suitableAction: minor
-      ? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
-      : '等待数据补齐',
-    majorRisk: minor?.execution.risk_flags?.[0] ?? major?.execution.risk_flags?.[0] ?? '暂无明确风险',
+    suitableAction: buildExplainableField({
+      label: '适合动作',
+      value: suitableActionValue,
+      hoverTitle: '适合动作说明',
+      hoverItems: [
+        createHoverItem('这句话是什么意思', '这是在当前父子级别约束下更适合采用的动作。'),
+        createHoverItem('为什么这么判断', minor?.execution.position_sizing.reason ?? major?.execution.position_sizing.reason),
+        createHoverItem('当前限制', parentConstraintValue),
+        createHoverItem('下一步条件', formatList(minor?.execution.triggers ?? major?.execution.triggers, '等待进一步确认')),
+      ],
+    }),
+    majorRisk: buildExplainableField({
+      label: '主要风险',
+      value: majorRiskValue,
+      hoverTitle: '主要风险说明',
+      hoverItems: [
+        createHoverItem('这句话是什么意思', '这是当前组合最需要优先防守的风险点。'),
+        createHoverItem('为什么这么判断', formatList(minor?.execution.risk_flags ?? major?.execution.risk_flags, majorRiskValue)),
+        createHoverItem('当前限制', parentConstraintValue),
+        createHoverItem('下一步条件', formatList(minor?.execution.invalidation ?? major?.execution.invalidation, '等待失效条件明确')),
+      ],
+    }),
     explanation: `${majorLabel}定约束，${minorLabel}给触发；${statusMeta.tradeMeaning}`,
   };
 }
@@ -839,43 +1110,80 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
 
       const criterion = findCriterion(decision, category);
       if (criterion) {
+        const detail =
+          category === 'execution'
+            ? normalizeExecutionDetail(criterion.detail)
+            : normalizeRuleChainText(criterion.detail);
+        const reason = normalizeRuleChainText(criterion.label);
+        const summary =
+          category === 'structure' ? buildStructureRuleSummary(decision) : detail || reason || `${title}暂无摘要`;
+        const recommendation =
+          category === 'structure'
+            ? buildStructureRuleRecommendation(decision)
+            : `先按${title}继续跟踪`;
+
         return decorateRuleChainItem({
           title,
           status: criterion.status,
           direction: categoryDirection,
-          detail:
-            category === 'execution'
-              ? normalizeExecutionDetail(criterion.detail)
-              : normalizeRuleChainText(criterion.detail),
-          reason: normalizeRuleChainText(criterion.label),
+          detail,
+          reason,
+          summary,
+          recommendation,
+          signalTags: buildCategorySignalTags(category, decision),
+          detailHover: buildRuleDetailHover(title, summary, detail, reason, decision),
         });
       }
 
       if (category === 'structure') {
+        const status =
+          decision.structure.explainability.status === 'failed'
+            ? 'failed'
+            : decision.structure.explainability.status === 'passed'
+              ? 'passed'
+              : 'warning';
+        const detail = normalizeRuleChainText(
+          `${STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification]}｜${decision.structure.explainability.reason}`
+        );
+        const reason = normalizeRuleChainText(decision.structure.explainability.reason);
+        const summary = buildStructureRuleSummary(decision);
+        const recommendation = buildStructureRuleRecommendation(decision);
         return decorateRuleChainItem({
           title,
-          status: decision.structure.explainability.status === 'failed' ? 'failed' : decision.structure.explainability.status === 'passed' ? 'passed' : 'warning',
+          status,
           direction: categoryDirection,
-          detail: normalizeRuleChainText(
-            `${STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification]}｜${decision.structure.explainability.reason}`
-          ),
-          reason: normalizeRuleChainText(decision.structure.explainability.reason),
+          detail,
+          reason,
+          summary,
+          recommendation,
+          signalTags: buildCategorySignalTags(category, decision),
+          detailHover: buildRuleDetailHover(title, summary, detail, reason, decision),
         });
       }
       if (category === 'spacetime') {
+        const detail = normalizeRuleChainText(
+          `${decision.spacetime.status}｜${BIAS_LABELS[decision.spacetime.direction_bias]}｜${decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason}`
+        );
+        const reason = normalizeRuleChainText(
+          decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason
+        );
         return decorateRuleChainItem({
           title,
           status: decision.spacetime.structure_match ? 'passed' : 'warning',
           direction: categoryDirection,
-          detail: normalizeRuleChainText(
-            `${decision.spacetime.status}｜${BIAS_LABELS[decision.spacetime.direction_bias]}｜${decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason}`
-          ),
-          reason: normalizeRuleChainText(
-            decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason
-          ),
+          detail,
+          reason,
+          summary: detail,
+          recommendation: '先等时空共振补齐后再推进动作',
+          signalTags: buildCategorySignalTags(category, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
         });
       }
       if (category === 'moving_average') {
+        const detail = normalizeRuleChainText(
+          `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`
+        );
+        const reason = normalizeRuleChainText(decision.moving_average.ma_gate.reason);
         return decorateRuleChainItem({
           title,
           status:
@@ -883,45 +1191,65 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
               ? 'passed'
               : 'warning',
           direction: categoryDirection,
-          detail: normalizeRuleChainText(
-            `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`
-          ),
-          reason: normalizeRuleChainText(decision.moving_average.ma_gate.reason),
+          detail,
+          reason,
+          summary: detail,
+          recommendation: '先按均线门槛继续观察突破质量',
+          signalTags: buildCategorySignalTags(category, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
         });
       }
       if (category === 'volume') {
+        const detail = normalizeRuleChainText(
+          `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`
+        );
+        const reason = normalizeRuleChainText(decision.volume_confirmation.volume_gate.reason);
         return decorateRuleChainItem({
           title,
           status: decision.volume_confirmation.volume_gate.confidence_adjustment === 'downgrade' ? 'warning' : 'info',
           direction: categoryDirection,
-          detail: normalizeRuleChainText(
-            `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`
-          ),
-          reason: normalizeRuleChainText(decision.volume_confirmation.volume_gate.reason),
+          detail,
+          reason,
+          summary: detail,
+          recommendation: '先看量能是否补齐确认',
+          signalTags: buildCategorySignalTags(category, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
         });
       }
       if (category === 'level_nesting') {
+        const detail = normalizeRuleChainText(
+          nesting
+            ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}`
+            : '暂无父子级别权限约束'
+        );
+        const reason = normalizeRuleChainText(nesting?.permission.reason ?? '暂无父子级别权限约束');
         return decorateRuleChainItem({
           title,
           status: nesting?.resonance === 'aligned' ? 'passed' : 'warning',
           direction: categoryDirection,
-          detail: normalizeRuleChainText(
-            nesting
-              ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}`
-              : '暂无父子级别权限约束'
-          ),
-          reason: normalizeRuleChainText(nesting?.permission.reason ?? '暂无父子级别权限约束'),
+          detail,
+          reason,
+          summary: detail,
+          recommendation: '先服从父子级别权限再决定动作',
+          signalTags: buildCategorySignalTags(category, decision),
+          detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
         });
       }
 
+      const detail = normalizeExecutionDetail(
+        `${decision.execution.entry_style}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
+      );
+      const reason = normalizeRuleChainText(decision.execution.position_sizing.reason);
       return decorateRuleChainItem({
         title,
         status: decision.conclusion.can_trade ? 'passed' : 'info',
         direction: categoryDirection,
-        detail: normalizeExecutionDetail(
-          `${decision.execution.entry_style}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
-        ),
-        reason: normalizeRuleChainText(decision.execution.position_sizing.reason),
+        detail,
+        reason,
+        summary: detail,
+        recommendation: `先等${compactTriggerText(decision.execution.triggers[0])}`,
+        signalTags: buildCategorySignalTags(category, decision),
+        detailHover: buildRuleDetailHover(title, detail, detail, reason, decision),
       });
     }),
   };
