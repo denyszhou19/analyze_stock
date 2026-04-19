@@ -5,11 +5,35 @@ const vocabulary = await import(
   new URL('../src/lib/trinity-display-vocabulary.ts', import.meta.url).href
 ) as typeof import('../src/lib/trinity-display-vocabulary.ts');
 
-test('maps backend status to trading language labels', () => {
-  assert.equal(vocabulary.getActionStatusMeta('passed').label, '可执行');
+test('exports planned status and direction type aliases through runtime helpers', () => {
+  const status: vocabulary.ActionStatus = 'passed';
+  const direction: vocabulary.DirectionTone = 'bullish';
+  const statusLabel: vocabulary.ActionStatusLabel = '可执行';
+  const ruleState: vocabulary.ActionRuleState = '已满足';
+
+  assert.equal(vocabulary.getActionStatusMeta(status).label, statusLabel);
+  assert.equal(vocabulary.getActionStatusMeta(status).ruleState, ruleState);
+  assert.equal(vocabulary.getDirectionMeta(direction).label, '偏多');
+});
+
+test('maps backend status to trading language labels, icons and rule state', () => {
+  assert.deepEqual(vocabulary.getActionStatusMeta('passed'), {
+    label: '可执行',
+    icon: '✓',
+    badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+    cardClassName: 'border-emerald-200/70 bg-emerald-50/40',
+    tradeMeaning: '这条规则已满足，可纳入当前执行判断',
+    ruleState: '已满足',
+  });
   assert.equal(vocabulary.getActionStatusMeta('info').label, '观察中');
+  assert.equal(vocabulary.getActionStatusMeta('info').icon, '○');
+  assert.equal(vocabulary.getActionStatusMeta('info').ruleState, '待确认');
   assert.equal(vocabulary.getActionStatusMeta('warning').label, '谨慎看');
+  assert.equal(vocabulary.getActionStatusMeta('warning').icon, '!');
+  assert.equal(vocabulary.getActionStatusMeta('warning').ruleState, '有约束');
   assert.equal(vocabulary.getActionStatusMeta('failed').label, '暂不做');
+  assert.equal(vocabulary.getActionStatusMeta('failed').icon, '×');
+  assert.equal(vocabulary.getActionStatusMeta('failed').ruleState, '不成立');
 });
 
 test('maps direction tone to Chinese labels and color classes', () => {
@@ -17,8 +41,11 @@ test('maps direction tone to Chinese labels and color classes', () => {
   assert.equal(vocabulary.getDirectionMeta('bearish').label, '偏空');
   assert.equal(vocabulary.getDirectionMeta('neutral').label, '中性');
   assert.match(vocabulary.getDirectionMeta('bullish').cardClassName, /red/);
+  assert.match(vocabulary.getDirectionMeta('bullish').textClassName, /red/);
   assert.match(vocabulary.getDirectionMeta('bearish').cardClassName, /green/);
+  assert.match(vocabulary.getDirectionMeta('bearish').textClassName, /green/);
   assert.match(vocabulary.getDirectionMeta('neutral').cardClassName, /slate|gray/);
+  assert.match(vocabulary.getDirectionMeta('neutral').textClassName, /slate|gray/);
 });
 
 test('normalizes structure tags globally', () => {
@@ -35,6 +62,12 @@ test('normalizes structure tags globally', () => {
   assert.match(extendedC.tradeMeaning, /不能直接等同于标准C/);
 
   assert.equal(vocabulary.getStructureTagMeta('未知结构').label, '未知结构');
+});
+
+test('maps structure direction enum into direction tone', () => {
+  assert.equal(vocabulary.directionFromStructure('up'), 'bullish');
+  assert.equal(vocabulary.directionFromStructure('down'), 'bearish');
+  assert.equal(vocabulary.directionFromStructure('neutral'), 'neutral');
 });
 
 test('builds status hover explanation with reason and direction', () => {

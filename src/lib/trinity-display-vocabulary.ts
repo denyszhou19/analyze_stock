@@ -1,5 +1,9 @@
-export type TrinityActionStatus = 'passed' | 'info' | 'warning' | 'failed';
-export type TrinityDirection = 'bullish' | 'bearish' | 'neutral';
+export type ActionStatus = 'passed' | 'info' | 'warning' | 'failed';
+export type DirectionTone = 'bullish' | 'bearish' | 'neutral';
+export type ActionStatusLabel = '可执行' | '观察中' | '谨慎看' | '暂不做';
+export type ActionRuleState = '已满足' | '待确认' | '有约束' | '不成立';
+export type TrinityActionStatus = ActionStatus;
+export type TrinityDirection = DirectionTone;
 export type TrinityStructureFamily =
   | 'A'
   | 'B'
@@ -13,17 +17,19 @@ export type TrinityStructureFamily =
   | 'unknown';
 
 export interface ActionStatusMeta {
-  label: string;
+  label: ActionStatusLabel;
+  icon: '✓' | '○' | '!' | '×';
   badgeClassName: string;
   cardClassName: string;
   tradeMeaning: string;
-  ruleState: string;
+  ruleState: ActionRuleState;
 }
 
 export interface DirectionMeta {
-  label: string;
+  label: '偏多' | '偏空' | '中性';
   badgeClassName: string;
   cardClassName: string;
+  textClassName: string;
 }
 
 export interface StructureTagMeta {
@@ -35,37 +41,40 @@ export interface StructureTagMeta {
 }
 
 export interface StatusExplanationInput {
-  status?: TrinityActionStatus | string | null;
-  direction?: TrinityDirection | string | null;
+  status?: ActionStatus | string | null;
+  direction?: DirectionTone | string | null;
   reason?: string | null;
 }
 
 export interface StatusExplanation {
   tradeMeaning: string;
-  ruleState: string;
-  directionLabel: string;
+  ruleState: ActionRuleState;
+  directionLabel: DirectionMeta['label'];
   reason: string;
 }
 
 const NEUTRAL_CLASS_NAME = 'border-slate-200 bg-slate-50 text-slate-700';
 
-const ACTION_STATUS_META: Record<TrinityActionStatus, ActionStatusMeta> = {
+const ACTION_STATUS_META: Record<ActionStatus, ActionStatusMeta> = {
   passed: {
     label: '可执行',
+    icon: '✓',
     badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
     cardClassName: 'border-emerald-200/70 bg-emerald-50/40',
-    tradeMeaning: '条件齐备，可按既定计划执行。',
-    ruleState: '已通过',
+    tradeMeaning: '这条规则已满足，可纳入当前执行判断',
+    ruleState: '已满足',
   },
   info: {
     label: '观察中',
+    icon: '○',
     badgeClassName: 'border-sky-200 bg-sky-50 text-sky-700',
     cardClassName: 'border-sky-200/80 bg-sky-50/50',
-    tradeMeaning: '条件仍在演进，先观察，不急于放大动作。',
-    ruleState: '待观察',
+    tradeMeaning: '已有方向或预案，但还差确认，不急着动作',
+    ruleState: '待确认',
   },
   warning: {
     label: '谨慎看',
+    icon: '!',
     badgeClassName: 'border-amber-200 bg-amber-50 text-amber-800',
     cardClassName: 'border-amber-200/80 bg-amber-50/50',
     tradeMeaning: '存在约束，不能直接放大动作',
@@ -73,28 +82,32 @@ const ACTION_STATUS_META: Record<TrinityActionStatus, ActionStatusMeta> = {
   },
   failed: {
     label: '暂不做',
+    icon: '×',
     badgeClassName: 'border-red-200 bg-red-50 text-red-700',
     cardClassName: 'border-red-200/80 bg-red-50/50',
-    tradeMeaning: '当前条件不满足，暂不执行该方向动作。',
-    ruleState: '不通过',
+    tradeMeaning: '当前不支持按这条规则交易',
+    ruleState: '不成立',
   },
 };
 
-const DIRECTION_META: Record<TrinityDirection, DirectionMeta> = {
+const DIRECTION_META: Record<DirectionTone, DirectionMeta> = {
   bullish: {
     label: '偏多',
     badgeClassName: 'border-red-200 bg-red-50 text-red-700',
     cardClassName: 'border-red-200 bg-red-50 text-red-950',
+    textClassName: 'text-red-700',
   },
   bearish: {
     label: '偏空',
     badgeClassName: 'border-green-200 bg-green-50 text-green-700',
     cardClassName: 'border-green-200 bg-green-50 text-green-950',
+    textClassName: 'text-green-700',
   },
   neutral: {
     label: '中性',
     badgeClassName: NEUTRAL_CLASS_NAME,
     cardClassName: 'border-slate-200 bg-slate-50 text-slate-900',
+    textClassName: 'text-slate-700',
   },
 };
 
@@ -216,7 +229,7 @@ function cleanText(value?: string | null): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
-function normalizeActionStatus(status?: TrinityActionStatus | string | null): TrinityActionStatus {
+function normalizeActionStatus(status?: ActionStatus | string | null): ActionStatus {
   const cleaned = cleanText(status).toLowerCase();
   if (cleaned === 'passed' || cleaned === 'info' || cleaned === 'warning' || cleaned === 'failed') {
     return cleaned;
@@ -224,7 +237,7 @@ function normalizeActionStatus(status?: TrinityActionStatus | string | null): Tr
   return 'info';
 }
 
-function normalizeDirection(direction?: TrinityDirection | string | null): TrinityDirection {
+function normalizeDirection(direction?: DirectionTone | string | null): DirectionTone {
   const cleaned = cleanText(direction);
   const lower = cleaned.toLowerCase();
 
@@ -232,7 +245,9 @@ function normalizeDirection(direction?: TrinityDirection | string | null): Trini
     lower === 'bullish' ||
     cleaned === '偏多' ||
     cleaned === '看多' ||
-    cleaned === '中性偏多'
+    cleaned === '中性偏多' ||
+    lower === 'up' ||
+    cleaned === '向上'
   ) {
     return 'bullish';
   }
@@ -241,7 +256,9 @@ function normalizeDirection(direction?: TrinityDirection | string | null): Trini
     lower === 'bearish' ||
     cleaned === '偏空' ||
     cleaned === '看空' ||
-    cleaned === '中性偏空'
+    cleaned === '中性偏空' ||
+    lower === 'down' ||
+    cleaned === '向下'
   ) {
     return 'bearish';
   }
@@ -254,11 +271,11 @@ function normalizeStructureTag(tag?: string | null): string {
   return STRUCTURE_TAG_ALIASES[cleaned] ?? cleaned;
 }
 
-export function getActionStatusMeta(status?: TrinityActionStatus | string | null): ActionStatusMeta {
+export function getActionStatusMeta(status?: ActionStatus | string | null): ActionStatusMeta {
   return ACTION_STATUS_META[normalizeActionStatus(status)];
 }
 
-export function getDirectionMeta(direction?: TrinityDirection | string | null): DirectionMeta {
+export function getDirectionMeta(direction?: DirectionTone | string | null): DirectionMeta {
   return DIRECTION_META[normalizeDirection(direction)];
 }
 
@@ -278,22 +295,12 @@ export function getStructureTagMeta(tag?: string | null): StructureTagMeta {
   };
 }
 
-export function directionFromBias(bias?: string | null): TrinityDirection {
+export function directionFromBias(bias?: string | null): DirectionTone {
   return normalizeDirection(bias);
 }
 
-export function directionFromStructure(tag?: string | null): TrinityDirection {
-  const normalizedTag = normalizeStructureTag(tag);
-
-  if (normalizedTag.includes('上升') || normalizedTag.includes('向上')) {
-    return 'bullish';
-  }
-
-  if (normalizedTag.includes('下降') || normalizedTag.includes('向下')) {
-    return 'bearish';
-  }
-
-  return 'neutral';
+export function directionFromStructure(direction?: string | null): DirectionTone {
+  return normalizeDirection(direction);
 }
 
 export function buildStatusExplanation(input: StatusExplanationInput): StatusExplanation {
