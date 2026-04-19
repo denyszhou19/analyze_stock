@@ -3,10 +3,17 @@ import type { SignalTagTone } from '@/lib/trinity-display-vocabulary';
 
 export interface SignalTagHover {
   title: string;
-  items: string[];
+  items: Array<{ label: string; value: string }>;
 }
 
 export interface TrinitySignalTag {
+  key:
+    | 'spacetime'
+    | 'breakthrough'
+    | 'volume'
+    | 'moving_average'
+    | 'structure'
+    | 'divergence';
   category: '时空' | '突破/跌破' | '量能' | '均线' | '结构' | '背离';
   result: string;
   label: string;
@@ -23,27 +30,43 @@ function cleanText(value?: string | null): string {
 }
 
 function buildTag(
+  key: TrinitySignalTag['key'],
   category: TrinitySignalTag['category'],
   result?: string | null,
   tone: SignalTagTone = 'neutral',
-  items: Array<string | null | undefined> = []
+  items: Array<{ label: string; value?: string | null } | null | undefined> = []
 ): TrinitySignalTag | null {
   const cleanedResult = cleanText(result);
   if (!cleanedResult) {
     return null;
   }
 
-  const cleanedItems = items.map((item) => cleanText(item)).filter(Boolean);
+  const cleanedItems = items
+    .map((item) => {
+      if (!item) {
+        return null;
+      }
+
+      const label = cleanText(item.label);
+      const value = cleanText(item.value);
+      if (!label || !value) {
+        return null;
+      }
+
+      return { label, value };
+    })
+    .filter((item): item is { label: string; value: string } => Boolean(item));
   const label = `${category}｜${cleanedResult}`;
 
   return {
+    key,
     category,
     result: cleanedResult,
     label,
     tone,
     hover: {
       title: label,
-      items: cleanedItems.length > 0 ? cleanedItems : [cleanedResult],
+      items: cleanedItems.length > 0 ? cleanedItems : [{ label: '结论', value: cleanedResult }],
     },
   };
 }
@@ -171,8 +194,22 @@ function divergenceTone(label: string): SignalTagTone {
   return 'neutral';
 }
 
+function normalizeBreakthroughPatternType(patternType?: string | null): string {
+  const cleaned = cleanText(patternType);
+  if (!cleaned) {
+    return '';
+  }
+  if (cleaned === '假突破') {
+    return '假突破风险';
+  }
+  if (cleaned === '假跌破') {
+    return '假跌破风险';
+  }
+  return cleaned;
+}
+
 function breakthroughPeriodTone(patternType?: string | null, direction?: string | null, isValid?: boolean | null): SignalTagTone {
-  const cleanedPattern = cleanText(patternType);
+  const cleanedPattern = normalizeBreakthroughPatternType(patternType);
   if (cleanedPattern.includes('假')) {
     return 'warning';
   }
@@ -193,25 +230,29 @@ export function buildDecisionSignalTags(
   }
 
   const tags = [
-    buildTag('时空', decision.spacetime.status, decision.spacetime.direction_bias, [
-      decision.spacetime.structure_match ? '时空与结构匹配' : decision.spacetime.mismatch_reason,
-      decision.spacetime.divergence_policy.reason,
+    buildTag('spacetime', '时空', decision.spacetime.status, decision.spacetime.direction_bias, [
+      {
+        label: '结构匹配',
+        value: decision.spacetime.structure_match ? '时空与结构匹配' : decision.spacetime.mismatch_reason,
+      },
+      { label: '背离策略', value: decision.spacetime.divergence_policy.reason },
     ]),
     buildTag(
+      'breakthrough',
       '突破/跌破',
       breakthroughDecisionLabel(decision.moving_average.breakthrough_state),
       breakthroughDecisionTone(decision.moving_average.breakthrough_state),
-      [decision.moving_average.ma_gate.reason]
+      [{ label: '说明', value: decision.moving_average.ma_gate.reason }]
     ),
-    buildTag('量能', breakoutVolumeLabel(decision.volume_confirmation.breakout_volume), breakoutVolumeTone(decision.volume_confirmation.breakout_volume), [
-      decision.volume_confirmation.volume_gate.reason,
+    buildTag('volume', '量能', breakoutVolumeLabel(decision.volume_confirmation.breakout_volume), breakoutVolumeTone(decision.volume_confirmation.breakout_volume), [
+      { label: '说明', value: decision.volume_confirmation.volume_gate.reason },
     ]),
-    buildTag('均线', maRoleLabel(decision.moving_average.ma55_role), maRoleTone(decision.moving_average.ma55_role), [
-      decision.moving_average.ma_gate.reason,
+    buildTag('moving_average', '均线', maRoleLabel(decision.moving_average.ma55_role), maRoleTone(decision.moving_average.ma55_role), [
+      { label: '说明', value: decision.moving_average.ma_gate.reason },
     ]),
-    buildTag('结构', structureLabel(decision.structure.type), 'neutral', [
-      decision.structure.explainability.reason,
-      ...decision.structure.explainability.evidence,
+    buildTag('structure', '结构', structureLabel(decision.structure.type), 'neutral', [
+      { label: '解释', value: decision.structure.explainability.reason },
+      ...decision.structure.explainability.evidence.map((item) => ({ label: '证据', value: item })),
     ]),
   ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
 
@@ -227,21 +268,23 @@ export function buildPeriodSignalTags(
   }
 
   const tags = [
-    buildTag('背离', divergenceLabel(period.macd?.divergence_note), divergenceTone(divergenceLabel(period.macd?.divergence_note)), [
-      period.macd?.divergence_note,
-      period.trinity_decision?.spacetime.divergence_policy.reason,
+    buildTag('divergence', '背离', divergenceLabel(period.macd?.divergence_note), divergenceTone(divergenceLabel(period.macd?.divergence_note)), [
+      { label: '说明', value: period.macd?.divergence_note },
+      { label: '策略', value: period.trinity_decision?.spacetime.divergence_policy.reason },
     ]),
     buildTag(
+      'breakthrough',
       '突破/跌破',
-      period.breakthrough?.pattern_type,
+      normalizeBreakthroughPatternType(period.breakthrough?.pattern_type),
       breakthroughPeriodTone(period.breakthrough?.pattern_type, period.breakthrough?.direction, period.breakthrough?.is_valid),
-      period.breakthrough?.key_signals ?? []
+      (period.breakthrough?.key_signals ?? []).map((item) => ({ label: '信号', value: item }))
     ),
     buildTag(
+      'spacetime',
       '时空',
       period.trinity_decision?.spacetime.status ?? period.macd?.status,
       period.trinity_decision?.spacetime.direction_bias ?? 'neutral',
-      [period.macd?.description]
+      [{ label: '说明', value: period.macd?.description }]
     ),
   ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
 

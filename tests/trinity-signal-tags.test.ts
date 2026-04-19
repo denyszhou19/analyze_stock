@@ -104,7 +104,7 @@ function createPeriod(overrides: Partial<PeriodAnalysisData> = {}): PeriodAnalys
       divergence_note: '注意顶背离',
     },
     breakthrough: {
-      pattern_type: '假突破风险',
+      pattern_type: '假突破',
       direction: 'up',
       is_valid: false,
       confidence: '中',
@@ -136,10 +136,12 @@ test('buildDecisionSignalTags builds short structured tags with stable hover pay
     tags.map((tag) => tag.label),
     ['时空｜中偏强', '突破/跌破｜突破候选', '量能｜突破量弱', '均线｜MA55支撑', '结构｜延伸C']
   );
+  assert.equal(tags[0]?.key, 'spacetime');
   assert.equal(tags[0]?.tone, 'bullish');
+  assert.equal(tags[1]?.key, 'breakthrough');
   assert.equal(tags[1]?.tone, 'warning');
   assert.equal(tags[2]?.hover.title, '量能｜突破量弱');
-  assert.deepEqual(tags[2]?.hover.items, ['突破量能偏弱']);
+  assert.deepEqual(tags[2]?.hover.items, [{ label: '说明', value: '突破量能偏弱' }]);
 });
 
 test('buildPeriodSignalTags combines period signals into capped tags', () => {
@@ -151,5 +153,8 @@ test('buildPeriodSignalTags combines period signals into capped tags', () => {
     '时空｜中偏弱',
   ]);
   assert.equal(tags[0]?.tone, 'bearish');
+  assert.equal(tags[0]?.key, 'divergence');
   assert.equal(tags[1]?.tone, 'warning');
+  assert.equal(tags[1]?.key, 'breakthrough');
+  assert.deepEqual(tags[1]?.hover.items, [{ label: '信号', value: '冲高后回落' }]);
 });
