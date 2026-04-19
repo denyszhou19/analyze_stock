@@ -140,7 +140,30 @@ test('buildStructureExplainabilityViewModel falls back to prediction text when e
   assert.equal(result.topology.currentLabel, null);
   assert.equal(result.topology.nextSegmentLabel, null);
   assert.equal(result.topology.hasExplainability, false);
-  assert.match(result.topology.fallbackText ?? '', /prediction/);
+  assert.match(result.topology.fallbackText ?? '', /预测信息回退/);
+});
+
+test('buildStructureExplainabilityViewModel normalizes internal stage field names for display', () => {
+  const result = buildStructureExplainabilityViewModel({
+    structure_type: '复杂结构',
+    interpretation: {
+      focus_structure: {
+        display_reason: 'current_stage 无法映射，next_stage 等待确认',
+      },
+    },
+    structure_details: {
+      prediction: {
+        current_stage: '第3个拐点',
+        next_stage: '结构完成，等待方向选择',
+      },
+    },
+  });
+
+  assert.equal(result.topology.displayReason, '当前阶段无法映射，下一阶段等待确认');
+  assert.equal(result.interpretation.displayReason, '当前阶段无法映射，下一阶段等待确认');
+  assert.equal(result.topology.fallbackText, '预测信息回退：第3个拐点 / 结构完成，等待方向选择');
+  assert.doesNotMatch(result.topology.displayReason ?? '', /current_stage|next_stage/);
+  assert.doesNotMatch(result.topology.fallbackText ?? '', /prediction 回退|current_stage|next_stage/);
 });
 
 test('buildStructureExplainabilityViewModel exposes downgraded focus-origin metadata', () => {

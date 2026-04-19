@@ -81,6 +81,7 @@ export interface AnalysisPageViewModel {
     dimensions: AnalysisPageBusDimension[];
   };
   ruleChain: {
+    sourceLabel: string;
     items: AnalysisPageRuleChainItem[];
   };
 }
@@ -195,13 +196,18 @@ const PULLBACK_VOLUME_LABELS: Record<
   not_applicable: '无回踩量能要求',
 };
 
-const ENTRY_STYLE_LABELS: Record<TrinityDecision['execution']['entry_style'], string> = {
+const ENTRY_STYLE_LABELS: Record<string, string> = {
   node: '节点执行',
   boundary: '边界执行',
   pullback: '回踩执行',
   breakout: '突破执行',
+  pullback_confirm: '回抽确认执行',
+  trend_hold: '趋势持有',
   t_trade: 'T 交易',
   none: '不执行',
+  wait: '等待触发',
+  待执行: '等待触发',
+  等待执行: '等待触发',
 };
 
 const RESONANCE_LABELS: Record<NonNullable<TrinityDecision['level_nesting']>['resonance'], string> = {
@@ -224,6 +230,46 @@ function pickPrimaryDecision(result: AnalysisResultData): TrinityDecision {
 
 function formatList(items?: string[] | null, fallback = '无'): string {
   return items?.filter(Boolean).join('、') || fallback;
+}
+
+function normalizeRuleChainText(value?: string | null): string {
+  if (!value) {
+    return '';
+  }
+
+  return value
+    .replace(/current_stage\s*/g, '当前阶段')
+    .replace(/next_stage\s*/g, '下一阶段');
+}
+
+function formatEntryStyleLabel(entryStyle?: string | null): string {
+  const normalized = entryStyle?.trim();
+  if (!normalized) {
+    return '等待执行';
+  }
+
+  return ENTRY_STYLE_LABELS[normalized] ?? (/[一-鿿]/.test(normalized) ? normalized : '等待执行');
+}
+
+function normalizeExecutionDetail(detail?: string | null): string {
+  const normalized = normalizeRuleChainText(detail);
+  if (!normalized) {
+    return '等待执行';
+  }
+
+  const [entryStyle, ...rest] = normalized.split('｜');
+  const entryStyleLabel = formatEntryStyleLabel(entryStyle);
+  return rest.length ? [entryStyleLabel, ...rest].join('｜') : entryStyleLabel;
+}
+
+function buildRuleChainSourceLabel(level: TrinityLevel): string {
+  const levelIndex = PRIMARY_DECISION_ORDER.indexOf(level);
+  if (levelIndex <= 0) {
+    return '本规则链默认按日线主判定展示；若日线缺失，则依次降级为周线、60分钟、30分钟、15分钟。';
+  }
+
+  const missingLevels = PRIMARY_DECISION_ORDER.slice(0, levelIndex).map((item) => LEVEL_LABELS[item]);
+  return `本规则链当前按${LEVEL_LABELS[level]}主判定展示；因${missingLevels.join('、')}主判定缺失，已自动降级。`;
 }
 
 function formatCoverage(startDate?: string | null, endDate?: string | null): string {
@@ -398,14 +444,18 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
   const nesting = decision.level_nesting;
 
   return {
+    sourceLabel: buildRuleChainSourceLabel(decision.level),
     items: RULE_CHAIN_CATEGORY_ORDER.map(({ title, category }) => {
       const criterion = findCriterion(decision, category);
       if (criterion) {
         return {
           title,
           status: criterion.status,
-          detail: criterion.detail,
-          reason: criterion.label,
+          detail:
+            category === 'execution'
+              ? normalizeExecutionDetail(criterion.detail)
+              : normalizeRuleChainText(criterion.detail),
+          reason: normalizeRuleChainText(criterion.label),
         };
       }
 
@@ -413,16 +463,22 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
         return {
           title,
           status: decision.structure.explainability.status === 'failed' ? 'failed' : decision.structure.explainability.status === 'passed' ? 'passed' : 'warning',
-          detail: `${STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification]}｜${decision.structure.explainability.reason}`,
-          reason: decision.structure.explainability.reason,
+          detail: normalizeRuleChainText(
+            `${STRUCTURE_QUALIFICATION_LABELS[decision.structure.qualification]}｜${decision.structure.explainability.reason}`
+          ),
+          reason: normalizeRuleChainText(decision.structure.explainability.reason),
         };
       }
       if (category === 'spacetime') {
         return {
           title,
           status: decision.spacetime.structure_match ? 'passed' : 'warning',
-          detail: `${decision.spacetime.status}｜${BIAS_LABELS[decision.spacetime.direction_bias]}｜${decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason}`,
-          reason: decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason,
+          detail: normalizeRuleChainText(
+            `${decision.spacetime.status}｜${BIAS_LABELS[decision.spacetime.direction_bias]}｜${decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason}`
+          ),
+          reason: normalizeRuleChainText(
+            decision.spacetime.mismatch_reason ?? decision.spacetime.divergence_policy.reason
+          ),
         };
       }
       if (category === 'moving_average') {
@@ -432,34 +488,42 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
             decision.moving_average.ma_gate.allow_long || decision.moving_average.ma_gate.allow_short
               ? 'passed'
               : 'warning',
-          detail: `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`,
-          reason: decision.moving_average.ma_gate.reason,
+          detail: normalizeRuleChainText(
+            `MA55 ${MA55_ROLE_LABELS[decision.moving_average.ma55_role]}｜MA233 ${MA233_ROLE_LABELS[decision.moving_average.ma233_role]}｜${BREAKTHROUGH_STATE_LABELS[decision.moving_average.breakthrough_state]}｜${decision.moving_average.ma_gate.reason}`
+          ),
+          reason: normalizeRuleChainText(decision.moving_average.ma_gate.reason),
         };
       }
       if (category === 'volume') {
         return {
           title,
           status: decision.volume_confirmation.volume_gate.confidence_adjustment === 'downgrade' ? 'warning' : 'info',
-          detail: `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`,
-          reason: decision.volume_confirmation.volume_gate.reason,
+          detail: normalizeRuleChainText(
+            `${VOLUME_STATE_LABELS[decision.volume_confirmation.volume_state]}｜${BREAKOUT_VOLUME_LABELS[decision.volume_confirmation.breakout_volume]}｜${BREAKDOWN_VOLUME_LABELS[decision.volume_confirmation.breakdown_volume]}｜${PULLBACK_VOLUME_LABELS[decision.volume_confirmation.pullback_volume]}`
+          ),
+          reason: normalizeRuleChainText(decision.volume_confirmation.volume_gate.reason),
         };
       }
       if (category === 'level_nesting') {
         return {
           title,
           status: nesting?.resonance === 'aligned' ? 'passed' : 'warning',
-          detail: nesting
-            ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}`
-            : '暂无父子级别权限约束',
-          reason: nesting?.permission.reason ?? '暂无父子级别权限约束',
+          detail: normalizeRuleChainText(
+            nesting
+              ? `${RESONANCE_LABELS[nesting.resonance]}｜${nesting.permission.reason}`
+              : '暂无父子级别权限约束'
+          ),
+          reason: normalizeRuleChainText(nesting?.permission.reason ?? '暂无父子级别权限约束'),
         };
       }
 
       return {
         title,
         status: decision.conclusion.can_trade ? 'passed' : 'info',
-        detail: `${ENTRY_STYLE_LABELS[decision.execution.entry_style]}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`,
-        reason: decision.execution.position_sizing.reason,
+        detail: normalizeExecutionDetail(
+          `${decision.execution.entry_style}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
+        ),
+        reason: normalizeRuleChainText(decision.execution.position_sizing.reason),
       };
     }),
   };

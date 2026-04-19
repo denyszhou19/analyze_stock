@@ -341,11 +341,60 @@ test('StructureExplainabilityPanel falls back gracefully when explainability is 
     })
   );
 
-  assert.match(html, /暂无 explainability 标注|prediction 回退/);
+  assert.match(html, /暂无 explainability 标注|预测信息回退/);
   assert.match(html, /第3个拐点/);
   assert.match(html, /结构完成，等待方向选择/);
   assert.doesNotMatch(html, /data-slot="topology-svg"/);
   assert.match(html, /暂无可视化拓扑/);
+});
+
+test('StructureExplainabilityPanel does not expose internal stage field names', async () => {
+  const { StructureExplainabilityPanel } = await importStructureExplainabilityPanel();
+
+  const html = renderQuietly(
+    React.createElement(StructureExplainabilityPanel, {
+      structure: {
+        structure_type: '复杂结构',
+        trend_direction: '震荡',
+        inflection_points: 3,
+        description: '等待更多拐点确认',
+        interpretation: {
+          focus_structure: {
+            display_reason: 'current_stage 无法映射，next_stage 等待确认',
+          },
+        },
+        structure_details: {
+          prediction: {
+            current_stage: '第3个拐点',
+            next_stage: '结构完成，等待方向选择',
+            prediction_alert: '当前结构仍未完成',
+            key_price_levels: [],
+            confidence: 'low',
+            action_hint: '先观察，不追单',
+          },
+        },
+      },
+      executionSummary: {
+        phaseLabel: null,
+        phaseReason: null,
+        actionLabel: '等待',
+        setupQuality: null,
+        executionReason: null,
+        timeframeCapLabel: null,
+        archetypeLabel: null,
+        archetypeReason: null,
+      },
+      setupQualityLabel: null,
+      structureColors: {},
+      getTrendStyle: (trend: string) => `trend-${trend}`,
+    })
+  );
+
+  assert.match(html, /当前阶段无法映射，下一阶段等待确认/);
+  assert.match(html, /当前阶段：第3个拐点/);
+  assert.match(html, /下一阶段：结构完成，等待方向选择/);
+  assert.doesNotMatch(html, /current_stage|next_stage|prediction 回退/);
+  assert.doesNotMatch(html, /当前阶段:|下一阶段:/);
 });
 
 test('StructureExplainabilityPanel does not mislabel null peak_type as valley shape', async () => {

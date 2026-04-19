@@ -593,7 +593,10 @@ export default function StockAnalysisPage() {
             </Card>
           ) : null}
 
-          <TrinityRuleChain items={pageViewModel.ruleChain.items} />
+          <TrinityRuleChain
+            sourceLabel={pageViewModel.ruleChain.sourceLabel}
+            items={pageViewModel.ruleChain.items}
+          />
 
           <AnalysisPeriodDetails sections={periodSections} />
         </div>

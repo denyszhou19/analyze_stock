@@ -54,6 +54,18 @@ const uiStubUrl = asDataModule(`
   export const CardHeader = slot('div', 'card-header');
   export const CardTitle = slot('div', 'card-title');
   export const Separator = slot('hr', 'separator');
+  export const TooltipProvider = ({ children, ...props }) =>
+    React.createElement('div', { ...props, 'data-slot': 'tooltip-provider' }, children);
+  export const Tooltip = ({ children, ...props }) =>
+    React.createElement('div', { ...props, 'data-slot': 'tooltip' }, children);
+  export const TooltipTrigger = slot('button', 'tooltip-trigger');
+  export const TooltipContent = slot('div', 'tooltip-content');
+`);
+
+const lucideStubUrl = asDataModule(`
+  import React from '${reactUrl}';
+  export const Info = ({ className, ...props }) =>
+    React.createElement('svg', { ...props, className, 'data-slot': 'icon-info' });
 `);
 
 const utilsStubUrl = asDataModule(`
@@ -76,6 +88,10 @@ function rewriteImports(code: string): string {
     .replaceAll("'@/components/ui/card'", `'${uiStubUrl}'`)
     .replaceAll('"@/components/ui/separator"', `'${uiStubUrl}'`)
     .replaceAll("'@/components/ui/separator'", `'${uiStubUrl}'`)
+    .replaceAll('"@/components/ui/tooltip"', `'${uiStubUrl}'`)
+    .replaceAll("'@/components/ui/tooltip'", `'${uiStubUrl}'`)
+    .replaceAll('"lucide-react"', `'${lucideStubUrl}'`)
+    .replaceAll("'lucide-react'", `'${lucideStubUrl}'`)
     .replaceAll('"@/lib/utils"', `'${utilsStubUrl}'`)
     .replaceAll("'@/lib/utils'", `'${utilsStubUrl}'`)
     .replaceAll('"../ui/accordion"', `'${uiStubUrl}'`)
@@ -87,7 +103,9 @@ function rewriteImports(code: string): string {
     .replaceAll('"../ui/card"', `'${uiStubUrl}'`)
     .replaceAll("'../ui/card'", `'${uiStubUrl}'`)
     .replaceAll('"../ui/separator"', `'${uiStubUrl}'`)
-    .replaceAll("'../ui/separator'", `'${uiStubUrl}'`);
+    .replaceAll("'../ui/separator'", `'${uiStubUrl}'`)
+    .replaceAll('"../ui/tooltip"', `'${uiStubUrl}'`)
+    .replaceAll("'../ui/tooltip'", `'${uiStubUrl}'`);
 }
 
 export async function importTsxModule<TModule>(relativePath: string): Promise<TModule> {

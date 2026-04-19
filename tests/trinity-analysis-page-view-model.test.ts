@@ -246,6 +246,10 @@ test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chai
     vm.ruleChain.items.map((item) => item.status),
     ['passed', 'warning', 'passed', 'info', 'warning', 'info']
   );
+  assert.equal(
+    vm.ruleChain.sourceLabel,
+    '本规则链默认按日线主判定展示；若日线缺失，则依次降级为周线、60分钟、30分钟、15分钟。'
+  );
 });
 
 test('status bar renders data ranges by configured level order and daily valid range', () => {
@@ -367,6 +371,67 @@ test('rule chain preserves failed status from judgment criteria', () => {
   assert.ok(volumeRule);
   assert.equal(volumeRule.status, 'failed');
   assert.equal(volumeRule.detail, '放量失衡，不满足确认条件');
+});
+
+test('rule chain sanitizes backend field names and avoids undefined execution labels', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.judgment_criteria = decision.judgment_criteria
+    .map((criterion) =>
+      criterion.category === 'structure'
+        ? {
+            ...criterion,
+            status: 'warning' as const,
+            detail:
+              '延伸结构停止标准编号，仅突出起点与当前段；current_stage 无法映射，已回退到最后确认点',
+          }
+        : criterion
+    )
+    .filter((criterion) => criterion.category !== 'execution');
+  (decision.execution as { entry_style: string }).entry_style = 'wait';
+  decision.execution.triggers = ['等待确认性触发'];
+  decision.execution.invalidation = ['原建仓级别失效立即退出'];
+  decision.execution.position_sizing.reason = '偏离均线过大';
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const structureRule = vm.ruleChain.items.find((item) => item.title === '结构资格');
+  const executionRule = vm.ruleChain.items.find((item) => item.title === '执行计划');
+  assert.ok(structureRule);
+  assert.ok(executionRule);
+  assert.equal(
+    structureRule.detail,
+    '延伸结构停止标准编号，仅突出起点与当前段；当前阶段无法映射，已回退到最后确认点'
+  );
+  assert.equal(
+    executionRule.detail,
+    '等待触发｜触发：等待确认性触发｜失效：原建仓级别失效立即退出'
+  );
+  assert.doesNotMatch(executionRule.detail, /undefined/);
+});
+
+test('rule chain source label explains downgrade when daily decision is missing', () => {
+  const result = createResult();
+  delete result.periods.daily.trinity_decision;
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.equal(
+    vm.ruleChain.sourceLabel,
+    '本规则链当前按周线主判定展示；因日线主判定缺失，已自动降级。'
+  );
 });
 
 test('loading and error states use unified Chinese labels', () => {

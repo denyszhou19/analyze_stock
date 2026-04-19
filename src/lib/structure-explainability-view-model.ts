@@ -152,12 +152,27 @@ function resolveAlternativeLabel(item: AlternativeCandidate): string | null {
 }
 
 function buildFallbackText(prediction?: PredictionSummary | null): string | null {
-  const current = prediction?.current_stage;
-  const next = prediction?.next_stage;
+  const current = normalizeStructureDisplayText(prediction?.current_stage);
+  const next = normalizeStructureDisplayText(prediction?.next_stage);
   if (!current && !next) {
     return '暂无 explainability 标注';
   }
-  return `prediction 回退: ${current ?? '未知'} / ${next ?? '未知'}`;
+  return normalizeStructureDisplayText(`预测信息回退：${current ?? '未知'} / ${next ?? '未知'}`);
+}
+
+export function normalizeStructureDisplayText(value?: string | null): string | null {
+  if (!value) {
+    return null;
+  }
+
+  const normalized = value
+    .replace(/\bcurrent_stage\b\s*/g, '当前阶段')
+    .replace(/\bnext_stage\b\s*/g, '下一阶段')
+    .replace(/prediction\s*回退\s*[:：]\s*/g, '预测信息回退：')
+    .replace(/当前阶段\s*[:：]\s*/g, '当前阶段：')
+    .replace(/下一阶段\s*[:：]\s*/g, '下一阶段：');
+
+  return normalized.trim() || null;
 }
 
 function mapMaturityToChineseLabel(maturity?: string | null): string | null {
@@ -229,9 +244,9 @@ function formatScenarioPathLabel(path?: {
     return null;
   }
   if (path.trigger) {
-    return `${path.label}：${path.trigger}`;
+    return normalizeStructureDisplayText(`${path.label}：${path.trigger}`);
   }
-  return path.label;
+  return normalizeStructureDisplayText(path.label);
 }
 
 function inferLiveLabel(currentLeg?: {
@@ -261,7 +276,9 @@ export function buildStructureExplainabilityViewModel(
   const referenceOriginAnchor = interpretation?.focus_structure?.reference_origin;
   const referenceOriginAnchorLabel = formatAnchorLabel(referenceOriginAnchor);
   const referenceOriginLabel = formatReferenceOriginLabel(referenceOriginAnchor);
-  const interpretationDisplayReason = interpretation?.focus_structure?.display_reason ?? null;
+  const interpretationDisplayReason = normalizeStructureDisplayText(
+    interpretation?.focus_structure?.display_reason
+  );
   const interpretationCurrentLegLabel = interpretation?.current_leg?.label ?? null;
   const interpretationNextConfirmationLabel = interpretation?.next_confirmation?.label ?? null;
   const interpretationGate = interpretation?.spacetime_gate ?? null;
@@ -280,11 +297,12 @@ export function buildStructureExplainabilityViewModel(
     !explainability?.structure_start_point_id &&
     Boolean(referenceOriginAnchorLabel);
 
-  const downgradeReason =
+  const downgradeReason = normalizeStructureDisplayText(
     interpretation?.focus_structure?.downgrade_reason ??
     interpretation?.focus_structure?.qualification_reason ??
     focusOriginAnalysis?.explainability_reason ??
-    null;
+    null
+  );
   const scenarioPathLabels = Array.isArray(interpretation?.scenario_paths)
     ? interpretation.scenario_paths
         .map((path) => formatScenarioPathLabel(path))
@@ -318,7 +336,8 @@ export function buildStructureExplainabilityViewModel(
         interpretationCurrentLegLabel ?? explainability?.current_segment?.label ?? null,
       nextSegmentLabel:
         interpretationNextConfirmationLabel ?? explainability?.next_segment_preview?.label ?? null,
-      displayReason: interpretationDisplayReason ?? explainability?.display_reason ?? null,
+      displayReason:
+        interpretationDisplayReason ?? normalizeStructureDisplayText(explainability?.display_reason) ?? null,
       fallbackText: explainability ? null : buildFallbackText(prediction),
     },
     interpretation: {
@@ -336,8 +355,8 @@ export function buildStructureExplainabilityViewModel(
             : interpretationGate?.structure_readiness === 'extended'
               ? '原型匹配但仍需确认'
             : '当前级别暂不操作',
-      waitReason: interpretationGate?.wait_reason ?? null,
-      requiredConfirmation: interpretationGate?.required_confirmation ?? null,
+      waitReason: normalizeStructureDisplayText(interpretationGate?.wait_reason),
+      requiredConfirmation: normalizeStructureDisplayText(interpretationGate?.required_confirmation),
       scenarioPathLabels,
       displayReason: interpretationDisplayReason,
       startAnchorSource,
@@ -347,7 +366,7 @@ export function buildStructureExplainabilityViewModel(
     archetype: {
       primaryLabel,
       alternativeLabels,
-      reason: archetype?.reason ?? structure?.description ?? null,
+      reason: normalizeStructureDisplayText(archetype?.reason ?? structure?.description ?? null),
     },
   };
 }

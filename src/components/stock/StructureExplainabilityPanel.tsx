@@ -14,7 +14,10 @@ import {
 import {
   StructureTopologySvg,
 } from './StructureTopologySvg';
-import { buildStructureExplainabilityViewModel } from '../../lib/structure-explainability-view-model';
+import {
+  buildStructureExplainabilityViewModel,
+  normalizeStructureDisplayText,
+} from '../../lib/structure-explainability-view-model';
 import type {
   StructureData,
   StructurePeakAnalysis,
@@ -303,7 +306,9 @@ function normalizeLiveText(value?: string | null): string | null {
     return null;
   }
 
-  return value.replaceAll('→live', '→进行中').replaceAll(' live ', ' 进行中 ');
+  return normalizeStructureDisplayText(
+    value.replaceAll('→live', '→进行中').replaceAll(' live ', ' 进行中 ')
+  );
 }
 
 function isInternalPointId(pointId?: string | null) {
@@ -343,6 +348,10 @@ export function StructureExplainabilityPanel({
   const warning = details?.left_structure_warning ?? null;
   const payload = details?.render_payload;
   const explainability = details?.explainability ?? null;
+  const predictionAlert = normalizeStructureDisplayText(prediction?.prediction_alert);
+  const predictionCurrentStage = normalizeStructureDisplayText(prediction?.current_stage);
+  const predictionNextStage = normalizeStructureDisplayText(prediction?.next_stage);
+  const predictionActionHint = normalizeStructureDisplayText(prediction?.action_hint);
   const payloadPoints = payload?.points ?? [];
   const lastConfirmedPointId =
     structure.interpretation?.current_leg?.from_point_id ?? explainability?.current_point_id ?? null;
@@ -354,18 +363,18 @@ export function StructureExplainabilityPanel({
   const visibleCurrent =
     normalizeLiveText(viewModel.topology.currentSegmentLabel) ??
     normalizeLiveText(viewModel.interpretation.currentLegLabel) ??
-    viewModel.topology.currentLabel ??
-    prediction?.current_stage ??
+    normalizeStructureDisplayText(viewModel.topology.currentLabel) ??
+    predictionCurrentStage ??
     '待确认';
   const visibleNext =
-    viewModel.topology.nextSegmentLabel ??
-    viewModel.interpretation.nextConfirmationLabel ??
-    prediction?.next_stage ??
+    normalizeStructureDisplayText(viewModel.topology.nextSegmentLabel) ??
+    normalizeStructureDisplayText(viewModel.interpretation.nextConfirmationLabel) ??
+    predictionNextStage ??
     '待确认';
   const visibleLastConfirmed =
     formatVisibleTopologyPoint(lastConfirmedPoint, 'labeled') ??
     viewModel.topology.lastConfirmedLabel ??
-    viewModel.topology.currentLabel ??
+    normalizeStructureDisplayText(viewModel.topology.currentLabel) ??
     '待确认';
   const visibleLivePoint =
     formatVisibleTopologyPoint(livePoint, 'price_only') ??
@@ -376,24 +385,27 @@ export function StructureExplainabilityPanel({
     viewModel.interpretation.executionStateLabel ?? executionSummary.phaseLabel ?? '等待确认';
   const isDowngraded = viewModel.interpretation.explainabilityStatus === 'downgraded';
   const standardQualification = viewModel.interpretation.standardQualification;
-  const topologyReason =
+  const topologyReason = normalizeStructureDisplayText(
     viewModel.interpretation.displayReason ??
     viewModel.topology.displayReason ??
     viewModel.topology.fallbackText ??
-    prediction?.prediction_alert ??
-    structure.description;
-  const visibleStateReason =
+    predictionAlert ??
+    structure.description
+  );
+  const visibleStateReason = normalizeStructureDisplayText(
     (isDowngraded ? viewModel.interpretation.downgradeReason : null) ??
     viewModel.interpretation.waitReason ??
     executionSummary.executionReason ??
-    topologyReason;
+    topologyReason
+  ) ?? '等待结构确认';
   const visibleRequiredConfirmation =
-    viewModel.interpretation.requiredConfirmation ??
-    executionSummary.phaseReason ??
-    '等待新的结构确认';
-  const archetypeContext =
+    normalizeStructureDisplayText(
+      viewModel.interpretation.requiredConfirmation ?? executionSummary.phaseReason
+    ) ?? '等待新的结构确认';
+  const archetypeContext = normalizeStructureDisplayText(
     (isDowngraded ? viewModel.interpretation.downgradeReason : null) ??
-    executionSummary.archetypeReason ?? viewModel.archetype.reason ?? structure.description;
+    executionSummary.archetypeReason ?? viewModel.archetype.reason ?? structure.description
+  );
   const visibleArchetypeLabel =
     isDowngraded
       ? '复杂结构'
@@ -434,7 +446,9 @@ export function StructureExplainabilityPanel({
         ? `备选：${viewModel.archetype.alternativeLabels.join(' / ')}`
         : archetypeContext);
   const maturityNote =
-    prediction?.current_stage ? `当前定位：${prediction.current_stage}` : executionSummary.phaseReason;
+    predictionCurrentStage
+      ? `当前定位：${predictionCurrentStage}`
+      : normalizeStructureDisplayText(executionSummary.phaseReason);
   const constraintNote = executionSummary.timeframeCapLabel
     ? `生效前提：${visibleRequiredConfirmation}`
     : '当前未给出明确补仓上限。';
@@ -576,7 +590,7 @@ export function StructureExplainabilityPanel({
                   <SummaryBlock
                     label="动作指令"
                     value={executionSummary.actionLabel}
-                    note={executionSummary.executionReason}
+                    note={normalizeStructureDisplayText(executionSummary.executionReason)}
                     tone={actionTone}
                   />
                 )}
@@ -584,7 +598,7 @@ export function StructureExplainabilityPanel({
                   <SummaryBlock
                     label="执行阶段"
                     value={executionSummary.phaseLabel}
-                    note={executionSummary.phaseReason}
+                    note={normalizeStructureDisplayText(executionSummary.phaseReason)}
                     tone={phaseTone}
                   />
                 )}
@@ -627,10 +641,14 @@ export function StructureExplainabilityPanel({
               >
                 <div className="text-sm font-semibold text-foreground">{path.label || '路径待确认'}</div>
                 {path.trigger && (
-                  <div className="mt-1 text-xs text-muted-foreground">触发条件: {path.trigger}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    触发条件：{normalizeStructureDisplayText(path.trigger)}
+                  </div>
                 )}
                 {path.effect && (
-                  <div className="mt-1 text-xs text-muted-foreground">改判结果: {path.effect}</div>
+                  <div className="mt-1 text-xs text-muted-foreground">
+                    改判结果：{normalizeStructureDisplayText(path.effect)}
+                  </div>
                 )}
               </div>
             ))}
@@ -641,19 +659,19 @@ export function StructureExplainabilityPanel({
       {prediction && (
         <SupportSection title="预测提示" tone={predictionTone}>
           <div className="space-y-2">
-            <div className="text-sm font-medium text-foreground">{prediction.prediction_alert}</div>
+            <div className="text-sm font-medium text-foreground">{predictionAlert}</div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-muted-foreground">
-              <span>当前阶段: {prediction.current_stage}</span>
-              <span>下一阶段: {prediction.next_stage}</span>
+              <span>当前阶段：{predictionCurrentStage ?? '待确认'}</span>
+              <span>下一阶段：{predictionNextStage ?? '待确认'}</span>
             </div>
-            {prediction.action_hint && (
-              <div className="text-xs font-medium text-primary">💡 {prediction.action_hint}</div>
+            {predictionActionHint && (
+              <div className="text-xs font-medium text-primary">💡 {predictionActionHint}</div>
             )}
             {prediction.key_price_levels.length > 0 && (
               <div className="flex flex-wrap gap-2">
                 {prediction.key_price_levels.map((level, index) => (
                   <Badge key={`${level.type}-${level.price}-${index}`} variant="outline" className="text-xs">
-                    {level.type}: {level.price} ({level.note})
+                    {normalizeStructureDisplayText(level.type)}：{level.price} ({normalizeStructureDisplayText(level.note)})
                   </Badge>
                 ))}
               </div>
@@ -676,10 +694,14 @@ export function StructureExplainabilityPanel({
                 <Badge variant="outline">峰值 {peakAnalysis.peak_price.toFixed(2)}</Badge>
               )}
             </div>
-            <div>{peakAnalysis.description}</div>
+            <div>{normalizeStructureDisplayText(peakAnalysis.description)}</div>
             <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs">
-              {peakAnalysis.left_structure && <span>左侧: {peakAnalysis.left_structure}</span>}
-              {peakAnalysis.right_structure && <span>右侧: {peakAnalysis.right_structure}</span>}
+              {peakAnalysis.left_structure && (
+                <span>左侧：{normalizeStructureDisplayText(peakAnalysis.left_structure)}</span>
+              )}
+              {peakAnalysis.right_structure && (
+                <span>右侧：{normalizeStructureDisplayText(peakAnalysis.right_structure)}</span>
+              )}
             </div>
           </div>
         </SupportSection>
@@ -705,15 +727,23 @@ export function StructureExplainabilityPanel({
             >
               {warning.title}
             </div>
-            {warning.warning && <div className="text-red-600">{warning.warning}</div>}
-            {warning.opportunity && <div className="text-green-600">{warning.opportunity}</div>}
+            {warning.warning && (
+              <div className="text-red-600">{normalizeStructureDisplayText(warning.warning)}</div>
+            )}
+            {warning.opportunity && (
+              <div className="text-green-600">{normalizeStructureDisplayText(warning.opportunity)}</div>
+            )}
             <div className="text-muted-foreground">
-              {warning.risk_description || warning.opportunity_description || '等待更多结构确认。'}
+              {normalizeStructureDisplayText(
+                warning.risk_description || warning.opportunity_description || '等待更多结构确认。'
+              )}
             </div>
             <div className="text-xs text-amber-700">
               {warning.key_defense || warning.key_resistance || '暂无关键防守位'}
             </div>
-            <div className="text-xs font-medium text-amber-700">提示：{warning.action_hint}</div>
+            <div className="text-xs font-medium text-amber-700">
+              提示：{normalizeStructureDisplayText(warning.action_hint)}
+            </div>
           </div>
         </SupportSection>
       )}
@@ -721,7 +751,7 @@ export function StructureExplainabilityPanel({
       {details?.judgment_criteria && (
         <SupportSection title="判定标准" tone="info">
           <pre className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
-            {details.judgment_criteria}
+            {normalizeStructureDisplayText(details.judgment_criteria)}
           </pre>
         </SupportSection>
       )}

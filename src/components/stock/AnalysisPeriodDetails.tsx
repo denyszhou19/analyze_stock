@@ -8,6 +8,7 @@ import { StructureExplainabilityPanel } from '@/components/stock/StructureExplai
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent } from '@/components/ui/card';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
+import { normalizeStructureDisplayText } from '@/lib/structure-explainability-view-model';
 import { formatDecisionActionLabel } from '@/lib/trinity-decision-labels';
 import type { PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
 
@@ -67,7 +68,7 @@ function resolveStructureEvidence(section: AnalysisPeriodSection) {
   const interpretation = structure?.interpretation;
   const prediction = structure?.structure_details?.prediction;
 
-  return [
+  const evidence = [
     structure?.structure_type,
     interpretation?.focus_structure?.archetype_label,
     interpretation?.focus_structure?.display_reason,
@@ -75,7 +76,9 @@ function resolveStructureEvidence(section: AnalysisPeriodSection) {
     prediction?.prediction_alert,
   ]
     .filter(Boolean)
-    .join('｜') || '当前周期暂无结构证据。';
+    .join('｜');
+
+  return normalizeStructureDisplayText(evidence) || '当前周期暂无结构证据。';
 }
 
 function resolveSpacetimeStatus(section: AnalysisPeriodSection) {
