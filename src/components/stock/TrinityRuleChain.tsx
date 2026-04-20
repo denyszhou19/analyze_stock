@@ -1,12 +1,8 @@
 import { Info } from 'lucide-react';
+import { SignalTagList } from '@/components/stock/SignalTagList';
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import { getDirectionMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
 import type { AnalysisPageRuleChainItem } from '@/lib/trinity-analysis-page-view-model';
@@ -95,55 +91,60 @@ export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) 
                 <div className="flex items-center gap-1.5">
                   <CardTitle className="text-sm leading-6">{item.title}</CardTitle>
                   {RULE_HINTS[item.title] ? (
-                    <TooltipProvider>
-                      <Tooltip>
-                        <TooltipTrigger
-                          asChild
-                          aria-label={`${item.title}释义`}
-                          className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground"
-                        >
-                          <span>
-                            <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
-                          </span>
-                        </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-sm text-sm leading-6">
-                          <div className="space-y-1">
-                            <div className="font-medium">{RULE_HINTS[item.title].title}</div>
-                            {RULE_HINTS[item.title].body.map((line) => (
-                              <p key={`${item.title}-${line}`}>{line}</p>
-                            ))}
-                          </div>
-                        </TooltipContent>
-                      </Tooltip>
-                    </TooltipProvider>
+                    <Tooltip>
+                      <TooltipTrigger
+                        asChild
+                        aria-label={`${item.title}释义`}
+                        className="inline-flex h-5 w-5 items-center justify-center rounded-full text-muted-foreground"
+                      >
+                        <span>
+                          <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                        </span>
+                      </TooltipTrigger>
+                      <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                        <div className="space-y-1">
+                          <div className="font-medium">{RULE_HINTS[item.title].title}</div>
+                          {RULE_HINTS[item.title].body.map((line) => (
+                            <p key={`${item.title}-${line}`}>{line}</p>
+                          ))}
+                        </div>
+                      </TooltipContent>
+                    </Tooltip>
                   ) : null}
                 </div>
-                <TooltipProvider>
-                  <Tooltip>
-                    <TooltipTrigger asChild>
-                      <Badge
-                        variant="outline"
-                        className={cn('cursor-help', directionMeta.badgeClassName)}
-                      >
-                        <span className="mr-1">{item.displayStatusIcon}</span>
-                        {item.displayStatusLabel}
-                      </Badge>
-                    </TooltipTrigger>
-                    <TooltipContent side="top" className="max-w-sm text-sm leading-6">
-                      <div className="space-y-1">
-                        <div className="font-medium">{item.displayStatusLabel}</div>
-                        <p>交易含义：{item.statusExplanation.tradeMeaning}</p>
-                        <p>规则状态：{item.statusExplanation.ruleState}</p>
-                        <p>当前方向：{item.statusExplanation.directionLabel}</p>
-                        <p>当前原因：{item.statusExplanation.reason}</p>
-                      </div>
-                    </TooltipContent>
-                  </Tooltip>
-                </TooltipProvider>
+                <Tooltip>
+                  <TooltipTrigger asChild>
+                    <Badge
+                      variant="outline"
+                      className={cn('cursor-help', directionMeta.badgeClassName)}
+                    >
+                      <span className="mr-1">{item.displayStatusIcon}</span>
+                      {item.displayStatusLabel}
+                    </Badge>
+                  </TooltipTrigger>
+                  <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                    <div className="space-y-1">
+                      <div className="font-medium">{item.detailHover.title}</div>
+                      <p>状态标签：{item.displayStatusLabel}</p>
+                      <p>交易含义：{item.statusExplanation.tradeMeaning}</p>
+                      <p>规则状态：{item.statusExplanation.ruleState}</p>
+                      <p>当前方向：{item.statusExplanation.directionLabel}</p>
+                      {item.detailHover.items.map((detailItem) => (
+                        <p key={`${item.title}-${detailItem.label}`}>
+                          {detailItem.label}：{detailItem.value}
+                        </p>
+                      ))}
+                    </div>
+                  </TooltipContent>
+                </Tooltip>
               </CardHeader>
               <CardContent className="space-y-2 px-4 text-sm leading-6 text-muted-foreground">
-                <p>{item.detail}</p>
-                <p className="text-xs text-foreground/75">判定依据：{item.reason}</p>
+                <p className="text-foreground">{item.summary}</p>
+                <p>{item.recommendation}</p>
+                <SignalTagList tags={item.signalTags} />
+                <p className="text-xs text-foreground/75">
+                  判定依据：{item.statusExplanation.reason}
+                </p>
               </CardContent>
             </Card>
           );

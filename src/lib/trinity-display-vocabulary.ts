@@ -1,5 +1,6 @@
 export type ActionStatus = 'passed' | 'info' | 'warning' | 'failed';
 export type DirectionTone = 'bullish' | 'bearish' | 'neutral';
+export type SignalTagTone = 'bullish' | 'bearish' | 'warning' | 'neutral';
 export type ActionStatusLabel = '可执行' | '观察中' | '谨慎看' | '暂不做';
 export type ActionRuleState = '已满足' | '待确认' | '有约束' | '不成立';
 type StructureFamily =
@@ -36,6 +37,10 @@ export interface StructureTagMeta {
   className: string;
   explanation: string;
   tradeMeaning: string;
+}
+
+export interface SignalTagToneMeta {
+  badgeClassName: string;
 }
 
 interface StatusExplanationInput {
@@ -106,6 +111,21 @@ const DIRECTION_META: Record<DirectionTone, DirectionMeta> = {
     badgeClassName: NEUTRAL_CLASS_NAME,
     cardClassName: 'border-slate-200 bg-slate-50 text-slate-900',
     textClassName: 'text-slate-700',
+  },
+};
+
+export const SIGNAL_TAG_TONE_META: Record<SignalTagTone, SignalTagToneMeta> = {
+  bullish: {
+    badgeClassName: 'border-rose-200 bg-rose-50 text-rose-700',
+  },
+  bearish: {
+    badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700',
+  },
+  warning: {
+    badgeClassName: 'border-amber-200 bg-amber-50 text-amber-800',
+  },
+  neutral: {
+    badgeClassName: NEUTRAL_CLASS_NAME,
   },
 };
 
@@ -275,6 +295,10 @@ export function getActionStatusMeta(status?: ActionStatus | string | null): Acti
 
 export function getDirectionMeta(direction?: DirectionTone | string | null): DirectionMeta {
   return DIRECTION_META[normalizeDirection(direction)];
+}
+
+export function getSignalTagToneMeta(tone: SignalTagTone): SignalTagToneMeta {
+  return SIGNAL_TAG_TONE_META[tone];
 }
 
 export function getStructureTagMeta(tag?: string | null): StructureTagMeta {

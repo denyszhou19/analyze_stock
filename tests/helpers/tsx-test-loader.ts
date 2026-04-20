@@ -178,10 +178,120 @@ const displayVocabularyStubUrl = asDataModule(`
       tradeMeaning: '等待更多结构证据后再决定。',
     };
   }
+
+  export function getSignalTagToneMeta(tone) {
+    if (tone === 'bullish') {
+      return { badgeClassName: 'border-rose-200 bg-rose-50 text-rose-700' };
+    }
+    if (tone === 'bearish') {
+      return { badgeClassName: 'border-emerald-200 bg-emerald-50 text-emerald-700' };
+    }
+    if (tone === 'warning') {
+      return { badgeClassName: 'border-amber-200 bg-amber-50 text-amber-800' };
+    }
+    return { badgeClassName: 'border-slate-200 bg-slate-50 text-slate-700' };
+  }
 `);
 
-function rewriteImports(code: string): string {
-  return code
+const moduleUrlCache = new Map<string, Promise<string>>();
+
+async function buildTsxDataModule(filePath: string): Promise<string> {
+  const normalizedPath = path.resolve(filePath);
+  const cachedPromise = moduleUrlCache.get(normalizedPath);
+  if (cachedPromise) {
+    return cachedPromise;
+  }
+
+  const moduleUrlPromise = (async () => {
+    const source = await fs.readFile(normalizedPath, 'utf8');
+    const transpiled = ts.transpileModule(source, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+        jsx: ts.JsxEmit.ReactJSX,
+        esModuleInterop: true,
+      },
+      fileName: normalizedPath,
+    });
+
+    return asDataModule(await rewriteImports(transpiled.outputText, normalizedPath));
+  })();
+
+  moduleUrlCache.set(normalizedPath, moduleUrlPromise);
+  return moduleUrlPromise;
+}
+
+async function rewriteImports(code: string, filePath?: string): Promise<string> {
+  const fileDir = filePath ? path.dirname(filePath) : process.cwd();
+  let rewrittenCode = code;
+  const stockComponentAliases = [
+    {
+      specifier: '@/components/stock/SignalTagList',
+      target: path.resolve(process.cwd(), 'src/components/stock/SignalTagList.tsx'),
+    },
+    {
+      specifier: '@/components/stock/ExplainableFact',
+      target: path.resolve(process.cwd(), 'src/components/stock/ExplainableFact.tsx'),
+    },
+  ];
+
+  for (const item of stockComponentAliases) {
+    if (
+      filePath !== item.target &&
+      (rewrittenCode.includes(`"${item.specifier}"`) || rewrittenCode.includes(`'${item.specifier}'`))
+    ) {
+      const targetUrl = await buildTsxDataModule(item.target);
+      rewrittenCode = rewrittenCode
+        .replaceAll(`"${item.specifier}"`, `'${targetUrl}'`)
+        .replaceAll(`'${item.specifier}'`, `'${targetUrl}'`);
+    }
+  }
+
+  if (filePath) {
+    const relativeStockImports = [
+      {
+        specifier: './SignalTagList',
+        target: path.resolve(fileDir, 'SignalTagList.tsx'),
+      },
+      {
+        specifier: './ExplainableFact',
+        target: path.resolve(fileDir, 'ExplainableFact.tsx'),
+      },
+    ];
+
+    for (const item of relativeStockImports) {
+      if (
+        filePath !== item.target &&
+        (rewrittenCode.includes(`"${item.specifier}"`) || rewrittenCode.includes(`'${item.specifier}'`))
+      ) {
+        const targetUrl = await buildTsxDataModule(item.target);
+        rewrittenCode = rewrittenCode
+          .replaceAll(`"${item.specifier}"`, `'${targetUrl}'`)
+          .replaceAll(`'${item.specifier}'`, `'${targetUrl}'`);
+      }
+    }
+  }
+
+  const sharedLibAliases = [
+    {
+      specifier: '@/lib/trinity-signal-tags',
+      target: path.resolve(process.cwd(), 'src/lib/trinity-signal-tags.ts'),
+    },
+  ];
+
+  for (const item of sharedLibAliases) {
+    if (
+      filePath !== item.target &&
+      (rewrittenCode.includes(`"${item.specifier}"`) || rewrittenCode.includes(`'${item.specifier}'`))
+    ) {
+      const targetUrl = await buildTsxDataModule(item.target);
+      rewrittenCode = rewrittenCode
+        .replaceAll(`"${item.specifier}"`, `'${targetUrl}'`)
+        .replaceAll(`'${item.specifier}'`, `'${targetUrl}'`);
+    }
+  }
+
+  return rewrittenCode
     .replaceAll('"react/jsx-runtime"', `'${jsxRuntimeStubUrl}'`)
     .replaceAll("'react/jsx-runtime'", `'${jsxRuntimeStubUrl}'`)
     .replaceAll('"@/components/ui/accordion"', `'${uiStubUrl}'`)
@@ -230,18 +340,7 @@ function rewriteImports(code: string): string {
 
 export async function importTsxModule<TModule>(relativePath: string): Promise<TModule> {
   const filePath = path.resolve(process.cwd(), relativePath);
-  const source = await fs.readFile(filePath, 'utf8');
-  const transpiled = ts.transpileModule(source, {
-    compilerOptions: {
-      module: ts.ModuleKind.ESNext,
-      target: ts.ScriptTarget.ES2022,
-      jsx: ts.JsxEmit.ReactJSX,
-      esModuleInterop: true,
-    },
-    fileName: filePath,
-  });
-
-  return import(asDataModule(rewriteImports(transpiled.outputText))) as Promise<TModule>;
+  return import(await buildTsxDataModule(filePath)) as Promise<TModule>;
 }
 
 export function renderQuietly(element: React.ReactElement): string {

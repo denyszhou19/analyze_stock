@@ -1,5 +1,7 @@
 import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
+import { ExplainableFact } from '@/components/stock/ExplainableFact';
+import { SignalTagList } from '@/components/stock/SignalTagList';
 import type { AnalysisPageTradingCombinationViewModel } from '@/lib/trinity-analysis-page-view-model';
 import { getDirectionMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
@@ -44,25 +46,19 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
               </CardHeader>
 
               <CardContent className="space-y-3 px-4 text-sm">
-                <p className="leading-6 text-muted-foreground">{combination.explanation}</p>
+                <div className="space-y-2">
+                  <p className="leading-6 text-foreground">{combination.summary}</p>
+                  <p className="leading-6 text-muted-foreground">{combination.recommendation}</p>
+                  <p className="text-xs text-muted-foreground">{combination.relationHint}</p>
+                </div>
+
+                <SignalTagList tags={combination.signalTags} />
 
                 <div className="grid gap-2 text-xs text-muted-foreground">
-                  <div className="rounded-lg border bg-background/70 p-2">
-                    <span className="font-medium text-foreground">父级约束：</span>
-                    {combination.parentConstraint}
-                  </div>
-                  <div className="rounded-lg border bg-background/70 p-2">
-                    <span className="font-medium text-foreground">触发级别：</span>
-                    {combination.triggerLevelLabel}
-                  </div>
-                  <div className="rounded-lg border bg-background/70 p-2">
-                    <span className="font-medium text-foreground">适合动作：</span>
-                    {combination.suitableAction}
-                  </div>
-                  <div className="rounded-lg border bg-background/70 p-2">
-                    <span className="font-medium text-foreground">主要风险：</span>
-                    {combination.majorRisk}
-                  </div>
+                  <ExplainableFact fact={combination.parentConstraint} />
+                  <ExplainableFact fact={combination.triggerLevel} />
+                  <ExplainableFact fact={combination.suitableAction} />
+                  <ExplainableFact fact={combination.majorRisk} />
                 </div>
               </CardContent>
             </Card>

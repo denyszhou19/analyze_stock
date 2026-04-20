@@ -562,7 +562,7 @@ test('missing parent constraint downgrades combination and prevents false execut
   const shortline = vm.tradingCombinations.find((item) => item.label === '短线执行组合｜日线 → 30分钟');
   assert.ok(shortline);
   assert.equal(shortline.actionLabel, '观察中');
-  assert.equal(shortline.parentConstraint, '日线缺失');
+  assert.equal(shortline.parentConstraint.value, '日线缺失');
   assert.notEqual(vm.globalStrategy.primaryCombinationLabel, '短线执行组合｜日线 → 30分钟');
 });
 
@@ -711,7 +711,10 @@ test('english reasons are cleaned across summary global strategy and combination
   assert.notEqual(guardrailGate.value, 'Wait for daily breakout');
   assert.notEqual(vm.globalStrategy.primaryReason, 'Wait for daily breakout');
   assert.notEqual(vm.globalStrategy.guardrail, 'Wait for daily breakout');
-  assert.doesNotMatch(shortline.parentConstraint, /Wait for daily breakout|English trade qualification|Position sizing pending/);
+  assert.doesNotMatch(
+    shortline.parentConstraint.value,
+    /Wait for daily breakout|English trade qualification|Position sizing pending/
+  );
 });
 
 test('mixed language reason chain prefers later chinese candidate instead of generic fallback', () => {
@@ -739,8 +742,8 @@ test('mixed language reason chain prefers later chinese candidate instead of gen
   assert.equal(guardrailGate.value, '只允许轻仓等待确认');
   assert.equal(vm.globalStrategy.primaryReason, '只允许轻仓等待确认');
   assert.equal(vm.globalStrategy.guardrail, '只允许轻仓等待确认');
-  assert.match(shortline.parentConstraint, /只允许轻仓等待确认/);
-  assert.doesNotMatch(shortline.parentConstraint, /暂无额外约束/);
+  assert.match(shortline.parentConstraint.value, /只允许轻仓等待确认/);
+  assert.doesNotMatch(shortline.parentConstraint.value, /暂无额外约束/);
 });
 
 test('rule chain items expose trading labels, direction and status explanation', () => {
@@ -760,4 +763,120 @@ test('rule chain items expose trading labels, direction and status explanation',
   assert.equal(spacetimeRule.directionLabel, '偏多');
   assert.equal(spacetimeRule.statusExplanation.ruleState, '有约束');
   assert.match(spacetimeRule.statusExplanation.reason, /MACD 时空|等待时空/);
+});
+
+test('view model exposes concise summaries and hover payloads for combinations and rule chain', () => {
+  const result = createResult();
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'wait',
+        action_label: '等待确认',
+        bias: 'bullish',
+        confidence: 'medium',
+        can_trade: false,
+        wait_reason: '等待 30 分钟确认触发',
+      },
+      execution: {
+        entry_style: 'pullback_confirm' as never,
+        triggers: ['30分钟重新站上平台上沿'],
+        invalidation: ['30分钟跌回平台下沿'],
+        confirmation: ['30分钟放量确认突破有效'],
+        position_sizing: { max_ratio: 0.2, reason: '日线仍未完全放行' },
+        risk_flags: ['30分钟确认失败会回到等待'],
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+  const structureRule = vm.ruleChain.items.find((item) => item.title === '结构资格');
+
+  assert.ok(shortline);
+  assert.ok(structureRule);
+  assert.equal(shortline.summary, '日线还没完全放行，30分钟先看确认');
+  assert.equal(shortline.recommendation, '先等重新站上平台上沿');
+  assert.deepEqual(
+    shortline.signalTags.map((tag) => tag.label).slice(0, 3),
+    ['时空｜中偏强', '突破/跌破｜有效突破', '量能｜突破量弱']
+  );
+  assert.equal(shortline.parentConstraint.hoverTitle, '父级约束说明');
+  assert.equal(shortline.parentConstraint.hoverItems[0].label, '这句话是什么意思');
+  assert.match(shortline.parentConstraint.hoverItems[1].value, /等待 C 结构边界确认|结构边界未触发/);
+
+  assert.equal(structureRule.summary, 'A原型成立，但仍需等待更明确确认');
+  assert.equal(structureRule.recommendation, '先按结构边界和确认节奏继续跟踪');
+  assert.ok(structureRule.signalTags.some((tag) => tag.label.startsWith('结构｜')));
+  assert.equal(structureRule.detailHover.title, '结构资格说明');
+  assert.equal(structureRule.detailHover.items[2].label, '当前限制');
+});
+
+test('failed structure rule uses blocking summary instead of observable wording', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.structure.explainability = {
+    status: 'failed',
+    reason: '关键结构条件不成立',
+    evidence: ['关键节点缺失'],
+  };
+  decision.judgment_criteria = decision.judgment_criteria.filter((criterion) => criterion.category !== 'structure');
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const structureRule = vm.ruleChain.items.find((item) => item.title === '结构资格');
+  assert.ok(structureRule);
+  assert.equal(structureRule.status, 'failed');
+  assert.doesNotMatch(structureRule.summary, /可观察/);
+  assert.match(structureRule.summary, /不成立|不放行|不能按结构交易/);
+});
+
+test('non-structure rule hover basis and signal tags stay category-safe', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+  if (!decision.level_nesting) {
+    throw new Error('missing level nesting');
+  }
+
+  decision.structure.explainability.evidence = ['结构证据：五段式成立'];
+  decision.level_nesting.permission.reason = '父级未放行，子级只能等待';
+  decision.execution.position_sizing.reason = '执行层先控制仓位';
+  decision.judgment_criteria = decision.judgment_criteria.filter(
+    (criterion) => criterion.category !== 'level_nesting' && criterion.category !== 'execution'
+  );
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const levelRule = vm.ruleChain.items.find((item) => item.title === '级别权限');
+  const executionRule = vm.ruleChain.items.find((item) => item.title === '执行计划');
+
+  assert.ok(levelRule);
+  assert.ok(executionRule);
+  assert.deepEqual(levelRule.signalTags, []);
+  assert.deepEqual(executionRule.signalTags, []);
+  assert.doesNotMatch(levelRule.detailHover.items[4].value, /结构证据：五段式成立/);
+  assert.doesNotMatch(executionRule.detailHover.items[4].value, /结构证据：五段式成立/);
+  assert.match(levelRule.detailHover.items[4].value, /父级未放行|级别权限|父子级别/);
+  assert.match(executionRule.detailHover.items[4].value, /执行层先控制仓位|触发|失效/);
 });
