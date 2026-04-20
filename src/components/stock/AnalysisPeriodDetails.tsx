@@ -1,3 +1,6 @@
+import fs from 'node:fs/promises';
+import path from 'node:path';
+
 import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
 import { SignalTagList } from '@/components/stock/SignalTagList';
 import { Badge } from '@/components/ui/badge';
@@ -18,6 +21,7 @@ import {
   getStructureTagMeta,
 } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
+import { createRequire } from 'node:module';
 
 export interface AnalysisPeriodSection {
   key: string;
@@ -130,158 +134,70 @@ function resolvePeriodDecisionSource(section: AnalysisPeriodSection) {
     : '来源：结构解释链路回退';
 }
 
-type SignalTagTone = 'bullish' | 'bearish' | 'warning' | 'neutral';
+const require = createRequire(path.resolve(process.cwd(), 'src/components/stock/AnalysisPeriodDetails.tsx'));
+const ts = require('typescript') as typeof import('typescript');
 
-type PeriodSignalTag = {
-  key: 'spacetime' | 'breakthrough' | 'volume' | 'moving_average' | 'structure' | 'divergence';
-  category: '时空' | '突破/跌破' | '量能' | '均线' | '结构' | '背离';
-  result: string;
-  label: string;
-  tone: SignalTagTone;
-  hover: {
-    title: string;
-    items: Array<{ label: string; value: string }>;
-  };
-};
+const signalTagsSource = await fs.readFile(
+  path.resolve(process.cwd(), 'src/lib/trinity-signal-tags.ts'),
+  'utf8'
+);
+const signalTagsModule = await import(
+  `data:text/javascript;base64,${Buffer.from(
+    ts.transpileModule(signalTagsSource, {
+      compilerOptions: {
+        module: ts.ModuleKind.ESNext,
+        target: ts.ScriptTarget.ES2022,
+        jsx: ts.JsxEmit.ReactJSX,
+        esModuleInterop: true,
+      },
+      fileName: 'src/lib/trinity-signal-tags.ts',
+    }).outputText
+  ).toString('base64')}`
+);
 
-function createSignalTag(
-  key: PeriodSignalTag['key'],
-  category: PeriodSignalTag['category'],
-  result: string,
-  tone: SignalTagTone,
-  items: Array<{ label: string; value: string }>
-): PeriodSignalTag | null {
-  const cleanedResult = result.trim();
-  if (!cleanedResult) {
-    return null;
-  }
+const { buildDecisionSignalTags, buildPeriodSignalTags } = signalTagsModule as typeof import('../../lib/trinity-signal-tags');
 
-  const label = `${category}｜${cleanedResult}`;
-  return {
-    key,
-    category,
-    result: cleanedResult,
-    label,
-    tone,
-    hover: {
-      title: label,
-      items,
-    },
-  };
-}
-
-function resolveBreakthroughLabel(section: AnalysisPeriodSection) {
-  const state = section.period?.trinity_decision?.moving_average?.breakthrough_state;
-  if (state === 'breakout_pending') {
-    return '突破候选';
-  }
-  if (state === 'valid_breakout') {
-    return '有效突破';
-  }
-  if (state === 'pullback_confirmed') {
-    return '突破后回踩确认';
-  }
-  if (state === 'false_breakout') {
-    return '假突破风险';
-  }
-  if (state === 'breakdown_pending') {
-    return '跌破候选';
-  }
-  if (state === 'valid_breakdown') {
-    return '有效跌破';
-  }
-  if (state === 'pullback_breakdown_confirmed') {
-    return '跌破后反抽确认';
-  }
-  if (state === 'false_breakdown') {
-    return '假跌破风险';
-  }
-
-  const patternName =
-    typeof section.period?.breakthrough?.pattern_name === 'string'
-      ? section.period.breakthrough.pattern_name.trim()
-      : '';
-  const patternType =
-    typeof section.period?.breakthrough?.pattern_type === 'string'
-      ? section.period.breakthrough.pattern_type.trim()
-      : '';
-  return patternName || patternType || '';
-}
-
-function resolveVolumeLabel(section: AnalysisPeriodSection) {
-  const volume = section.period?.trinity_decision?.volume_confirmation?.breakout_volume;
-  if (volume === 'confirmed') {
-    return '突破放量确认';
-  }
-  if (volume === 'weak') {
-    return '突破量弱';
-  }
-  if (volume === 'climax_risk') {
-    return '突破量能过热';
-  }
-  return '';
-}
+type SignalTag = ReturnType<typeof buildDecisionSignalTags>[number];
 
 function buildPeriodSummarySignalTags(section: AnalysisPeriodSection) {
-  const structureMeta = getStructureTagMeta(
-    section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null
-  );
-  const spacetime = createSignalTag(
-    'spacetime',
-    '时空',
-    section.period?.trinity_decision?.spacetime.status ?? section.period?.macd?.status ?? '',
-    'neutral',
-    [
-      {
-        label: '信号含义',
-        value: section.period?.trinity_decision?.spacetime.status ?? section.period?.macd?.status ?? '暂无',
-      },
-      {
-        label: '交易含义',
-        value: section.period?.structure?.interpretation?.spacetime_gate?.wait_reason ?? '等待当前级别确认',
-      },
-    ]
-  );
-  const structure = createSignalTag(
-    'structure',
-    '结构',
-    section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? '',
-    'neutral',
-    [
-      { label: '信号含义', value: structureMeta.explanation },
-      { label: '交易含义', value: structureMeta.tradeMeaning },
-    ]
-  );
-  const breakthrough = createSignalTag(
-    'breakthrough',
-    '突破/跌破',
-    resolveBreakthroughLabel(section),
-    'warning',
-    [
-      {
-        label: '信号含义',
-        value: section.period?.trinity_decision?.moving_average?.ma_gate.reason ?? '等待突破确认',
-      },
-      {
-        label: '交易含义',
-        value: section.period?.structure?.execution?.wait_reason ?? '继续等待确认',
-      },
-    ]
-  );
-  const volume = createSignalTag('volume', '量能', resolveVolumeLabel(section), 'warning', [
-    {
-      label: '信号含义',
-      value: section.period?.trinity_decision?.volume_confirmation?.volume_gate.reason ?? '突破量能待确认',
-    },
-    {
-      label: '交易含义',
-      value: section.period?.structure?.execution?.wait_reason ?? '量能不足时继续等待',
-    },
-  ]);
+  const tags = [
+    ...buildDecisionSignalTags(section.period?.trinity_decision),
+    ...buildPeriodSignalTags(section.period),
+  ];
 
-  return [spacetime, structure, breakthrough, volume].filter(
-    (tag): tag is PeriodSignalTag => Boolean(tag)
-  );
+  const selectedTags = new Map<SignalTag['key'], SignalTag>();
+  const preferredOrder: SignalTag['key'][] = ['spacetime', 'structure', 'breakthrough', 'volume'];
+
+  tags.forEach((tag) => {
+    if (!selectedTags.has(tag.key)) {
+      selectedTags.set(tag.key, tag);
+    }
+  });
+
+  return preferredOrder
+    .map((key) => selectedTags.get(key))
+    .filter((tag): tag is SignalTag => Boolean(tag))
+    .map((tag) => {
+      if (tag.key !== 'structure') {
+        return tag;
+      }
+
+      const structureMeta = getStructureTagMeta(
+        section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null
+      );
+
+      return {
+        ...tag,
+        hover: {
+          title: tag.hover.title,
+          items: [
+            { label: '信号含义', value: structureMeta.explanation },
+            { label: '交易含义', value: structureMeta.tradeMeaning },
+            ...tag.hover.items,
+          ],
+        },
+      };
+    });
 }
 
 function resolvePeriodHeadline(section: AnalysisPeriodSection) {
