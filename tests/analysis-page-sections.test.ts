@@ -439,10 +439,23 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
           rangeLabel: '近 240 根',
           summary: '日线等待确认',
           topologyTitle: '日线结构证据',
-          period: {
-            period: 'daily',
-            trinity_decision: {
-              level: 'daily',
+            period: {
+              period: 'daily',
+              macd: {
+                status: '中偏弱',
+                divergence_note: '注意顶背离',
+              },
+              breakthrough: {
+                pattern_type: '普通突破',
+                pattern_name: '普通突破',
+                direction: 'up',
+                is_valid: false,
+              },
+              moving_averages: {
+                ma_status: '站上MA55',
+              },
+              trinity_decision: {
+                level: 'daily',
               conclusion: {
                 action: 'wait',
                 action_label: '等待',
@@ -451,11 +464,53 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
                 can_trade: false,
                 wait_reason: '等待30分钟触发',
               },
+              spacetime: {
+                status: '中偏弱',
+                direction_bias: 'neutral',
+                expected_structures: {
+                  up: ['C单平台式'],
+                  down: ['D三段式'],
+                },
+                structure_match: true,
+                mismatch_reason: null,
+                divergence_policy: {
+                  top_divergence_valid: false,
+                  bottom_divergence_valid: false,
+                  reason: '注意顶背离',
+                },
+              },
               structure: {
                 type: 'C单平台式',
                 qualification: 'standard',
                 direction: 'flat',
                 explainability: { status: 'passed', reason: 'C平台成立', evidence: [] },
+              },
+              moving_average: {
+                ma55_role: 'support',
+                ma233_role: 'neutral',
+                price_position: {
+                  above_ma55: true,
+                  above_ma233: false,
+                },
+                breakthrough_state: 'breakout_pending',
+                ma_gate: {
+                  allow_long: false,
+                  allow_short: false,
+                  reason: '站上MA55',
+                },
+              },
+              volume_confirmation: {
+                volume_state: 'expanding',
+                breakout_volume: 'weak',
+                breakdown_volume: 'not_applicable',
+                pullback_volume: 'normal',
+                volume_gate: {
+                  supports_breakout: false,
+                  supports_breakdown: false,
+                  supports_pullback_confirmation: false,
+                  confidence_adjustment: 'neutral',
+                  reason: '突破量弱',
+                },
               },
               execution: {
                 triggers: ['30分钟放量突破'],
@@ -513,11 +568,22 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
   assert.match(html, /周期详情/);
   assert.match(html, /日线/);
   assert.match(html, /该级别简明决策/);
+  assert.match(html, /日线等待30分钟触发/);
+  assert.match(html, /先等30分钟放量突破/);
+  assert.match(html, /时空｜中偏弱/);
+  assert.match(html, /结构｜C单平台式/);
+  assert.match(html, /突破\/跌破｜突破候选/);
+  assert.match(html, /量能｜突破量弱/);
+  assert.match(html, /信号含义/);
+  assert.match(html, /交易含义/);
   assert.match(html, /规则摘要/);
   assert.match(html, /证据区/);
   assert.match(html, /来源：日线三位一体判定/);
   assert.match(html, /触发条件/);
   assert.match(html, /风险条件/);
+  assert.match(html, /注意顶背离/);
+  assert.match(html, /普通突破/);
+  assert.match(html, /站上MA55/);
   assert.match(html, /风控约束/);
   assert.match(html, /结构类型/);
   assert.match(html, /标准C类结构/);

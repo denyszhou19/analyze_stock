@@ -1,4 +1,5 @@
 import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
+import { SignalTagList } from '@/components/stock/SignalTagList';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import {
@@ -127,6 +128,188 @@ function resolvePeriodDecisionSource(section: AnalysisPeriodSection) {
   return section.period?.trinity_decision
     ? `来源：${section.label}三位一体判定`
     : '来源：结构解释链路回退';
+}
+
+type SignalTagTone = 'bullish' | 'bearish' | 'warning' | 'neutral';
+
+type PeriodSignalTag = {
+  key: 'spacetime' | 'breakthrough' | 'volume' | 'moving_average' | 'structure' | 'divergence';
+  category: '时空' | '突破/跌破' | '量能' | '均线' | '结构' | '背离';
+  result: string;
+  label: string;
+  tone: SignalTagTone;
+  hover: {
+    title: string;
+    items: Array<{ label: string; value: string }>;
+  };
+};
+
+function createSignalTag(
+  key: PeriodSignalTag['key'],
+  category: PeriodSignalTag['category'],
+  result: string,
+  tone: SignalTagTone,
+  items: Array<{ label: string; value: string }>
+): PeriodSignalTag | null {
+  const cleanedResult = result.trim();
+  if (!cleanedResult) {
+    return null;
+  }
+
+  const label = `${category}｜${cleanedResult}`;
+  return {
+    key,
+    category,
+    result: cleanedResult,
+    label,
+    tone,
+    hover: {
+      title: label,
+      items,
+    },
+  };
+}
+
+function resolveBreakthroughLabel(section: AnalysisPeriodSection) {
+  const state = section.period?.trinity_decision?.moving_average?.breakthrough_state;
+  if (state === 'breakout_pending') {
+    return '突破候选';
+  }
+  if (state === 'valid_breakout') {
+    return '有效突破';
+  }
+  if (state === 'pullback_confirmed') {
+    return '突破后回踩确认';
+  }
+  if (state === 'false_breakout') {
+    return '假突破风险';
+  }
+  if (state === 'breakdown_pending') {
+    return '跌破候选';
+  }
+  if (state === 'valid_breakdown') {
+    return '有效跌破';
+  }
+  if (state === 'pullback_breakdown_confirmed') {
+    return '跌破后反抽确认';
+  }
+  if (state === 'false_breakdown') {
+    return '假跌破风险';
+  }
+
+  const patternName =
+    typeof section.period?.breakthrough?.pattern_name === 'string'
+      ? section.period.breakthrough.pattern_name.trim()
+      : '';
+  const patternType =
+    typeof section.period?.breakthrough?.pattern_type === 'string'
+      ? section.period.breakthrough.pattern_type.trim()
+      : '';
+  return patternName || patternType || '';
+}
+
+function resolveVolumeLabel(section: AnalysisPeriodSection) {
+  const volume = section.period?.trinity_decision?.volume_confirmation?.breakout_volume;
+  if (volume === 'confirmed') {
+    return '突破放量确认';
+  }
+  if (volume === 'weak') {
+    return '突破量弱';
+  }
+  if (volume === 'climax_risk') {
+    return '突破量能过热';
+  }
+  return '';
+}
+
+function buildPeriodSummarySignalTags(section: AnalysisPeriodSection) {
+  const structureMeta = getStructureTagMeta(
+    section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null
+  );
+  const spacetime = createSignalTag(
+    'spacetime',
+    '时空',
+    section.period?.trinity_decision?.spacetime.status ?? section.period?.macd?.status ?? '',
+    'neutral',
+    [
+      {
+        label: '信号含义',
+        value: section.period?.trinity_decision?.spacetime.status ?? section.period?.macd?.status ?? '暂无',
+      },
+      {
+        label: '交易含义',
+        value: section.period?.structure?.interpretation?.spacetime_gate?.wait_reason ?? '等待当前级别确认',
+      },
+    ]
+  );
+  const structure = createSignalTag(
+    'structure',
+    '结构',
+    section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? '',
+    'neutral',
+    [
+      { label: '信号含义', value: structureMeta.explanation },
+      { label: '交易含义', value: structureMeta.tradeMeaning },
+    ]
+  );
+  const breakthrough = createSignalTag(
+    'breakthrough',
+    '突破/跌破',
+    resolveBreakthroughLabel(section),
+    'warning',
+    [
+      {
+        label: '信号含义',
+        value: section.period?.trinity_decision?.moving_average?.ma_gate.reason ?? '等待突破确认',
+      },
+      {
+        label: '交易含义',
+        value: section.period?.structure?.execution?.wait_reason ?? '继续等待确认',
+      },
+    ]
+  );
+  const volume = createSignalTag('volume', '量能', resolveVolumeLabel(section), 'warning', [
+    {
+      label: '信号含义',
+      value: section.period?.trinity_decision?.volume_confirmation?.volume_gate.reason ?? '突破量能待确认',
+    },
+    {
+      label: '交易含义',
+      value: section.period?.structure?.execution?.wait_reason ?? '量能不足时继续等待',
+    },
+  ]);
+
+  return [spacetime, structure, breakthrough, volume].filter(
+    (tag): tag is PeriodSignalTag => Boolean(tag)
+  );
+}
+
+function resolvePeriodHeadline(section: AnalysisPeriodSection) {
+  const waitReason =
+    section.period?.trinity_decision?.conclusion.wait_reason ||
+    section.period?.structure?.execution?.wait_reason ||
+    section.summary ||
+    '当前级别暂无明确结论。';
+
+  const cleanedReason = waitReason.trim();
+  if (!cleanedReason) {
+    return '当前级别暂无明确结论。';
+  }
+
+  return cleanedReason.startsWith(section.label) ? cleanedReason : `${section.label}${cleanedReason}`;
+}
+
+function resolvePeriodRecommendation(section: AnalysisPeriodSection) {
+  const trigger = resolvePeriodTriggers(section)[0];
+  if (trigger) {
+    return `先等${trigger}`;
+  }
+
+  return (
+    section.period?.trinity_decision?.execution.position_sizing.reason ||
+    section.period?.structure?.execution?.wait_reason ||
+    '继续等待确认'
+  );
 }
 
 function resolveLevelLabel(level?: string | null) {
@@ -262,20 +445,21 @@ function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
   const structureTag = getStructureTagMeta(
     section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null
   );
+  const signalTags = buildPeriodSummarySignalTags(section);
 
   return (
-    <section className={cn('rounded-xl border p-4 shadow-none', directionMeta.cardClassName)}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-foreground">该级别简明决策</h3>
-          <p className="text-xs text-muted-foreground">{resolvePeriodDecisionSource(section)}</p>
-        </div>
-        <div className="flex flex-wrap gap-2">
-          <Badge variant="outline" className={directionMeta.badgeClassName}>
-            {directionMeta.label}
-          </Badge>
-          <Badge variant="outline">{actionMeta.label}</Badge>
-          <TooltipProvider>
+    <TooltipProvider>
+      <section className={cn('rounded-xl border p-4 shadow-none', directionMeta.cardClassName)}>
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div className="space-y-1">
+            <h3 className="text-sm font-semibold text-foreground">该级别简明决策</h3>
+            <p className="text-xs text-muted-foreground">{resolvePeriodDecisionSource(section)}</p>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Badge variant="outline" className={directionMeta.badgeClassName}>
+              {directionMeta.label}
+            </Badge>
+            <Badge variant="outline">{actionMeta.label}</Badge>
             <Tooltip>
               <TooltipTrigger asChild>
                 <Badge variant="outline" className={cn('cursor-help', structureTag.className)}>
@@ -290,27 +474,33 @@ function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
                 </div>
               </TooltipContent>
             </Tooltip>
-          </TooltipProvider>
+          </div>
         </div>
-      </div>
 
-      <p className="mt-4 text-sm leading-6 text-muted-foreground">{resolveSummary(section)}</p>
+        <div className="mt-4 space-y-3 rounded-lg border bg-background/70 p-3">
+          <div className="space-y-1">
+            <p className="text-sm font-medium leading-6 text-foreground">{resolvePeriodHeadline(section)}</p>
+            <p className="text-sm leading-6 text-muted-foreground">{resolvePeriodRecommendation(section)}</p>
+          </div>
+          <SignalTagList tags={signalTags} />
+        </div>
 
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
-          <div className="text-xs font-medium text-muted-foreground">触发条件</div>
-          <LabelList fallback="暂无明确触发条件" items={resolvePeriodTriggers(section)} />
+        <div className="mt-4 grid gap-3 lg:grid-cols-3">
+          <div className="space-y-2 rounded-lg border bg-background/70 p-3">
+            <div className="text-xs font-medium text-muted-foreground">触发条件</div>
+            <LabelList fallback="暂无明确触发条件" items={resolvePeriodTriggers(section)} />
+          </div>
+          <div className="space-y-2 rounded-lg border bg-background/70 p-3">
+            <div className="text-xs font-medium text-muted-foreground">风险条件</div>
+            <LabelList fallback="暂无明确风险条件" items={resolvePeriodRisks(section)} />
+          </div>
+          <div className="space-y-2 rounded-lg border bg-background/70 p-3">
+            <div className="text-xs font-medium text-muted-foreground">风控约束</div>
+            <p className="text-sm leading-6 text-foreground">{resolvePeriodGuardrail(section)}</p>
+          </div>
         </div>
-        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
-          <div className="text-xs font-medium text-muted-foreground">风险条件</div>
-          <LabelList fallback="暂无明确风险条件" items={resolvePeriodRisks(section)} />
-        </div>
-        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
-          <div className="text-xs font-medium text-muted-foreground">风控约束</div>
-          <p className="text-sm leading-6 text-foreground">{resolvePeriodGuardrail(section)}</p>
-        </div>
-      </div>
-    </section>
+      </section>
+    </TooltipProvider>
   );
 }
 
