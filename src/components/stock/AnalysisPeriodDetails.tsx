@@ -188,25 +188,39 @@ function enrichStructureSignalTag(
   };
 }
 
-function buildPeriodSummarySignalTags(section: AnalysisPeriodSection) {
-  const selectedTags = new Map<SignalTag['key'], SignalTag>();
-  const preferredOrder: SignalTag['key'][] = ['spacetime', 'structure', 'breakthrough', 'volume'];
-
-  [...buildDecisionSignalTags(section.period?.trinity_decision), ...buildPeriodSignalTags(section.period)].forEach(
-    (tag) => {
-      if (!selectedTags.has(tag.key)) {
-        selectedTags.set(tag.key, tag);
-      }
-    }
-  );
-
-  const fallbackStructureTag = buildStructureSummaryTag(section);
-  if (fallbackStructureTag && !selectedTags.has('structure')) {
-    selectedTags.set('structure', fallbackStructureTag);
+function resolvePreferredBreakthroughTag(
+  periodTag?: SignalTag,
+  decisionTag?: SignalTag
+): SignalTag | undefined {
+  if (!periodTag) {
+    return decisionTag;
   }
 
-  return preferredOrder
-    .map((key) => selectedTags.get(key))
+  if (!decisionTag) {
+    return periodTag;
+  }
+
+  return periodTag.tone === 'neutral' ? decisionTag : periodTag;
+}
+
+function buildPeriodSummarySignalTags(section: AnalysisPeriodSection) {
+  const decisionTags = new Map(
+    buildDecisionSignalTags(section.period?.trinity_decision).map((tag) => [tag.key, tag] as const)
+  );
+  const periodTags = new Map(
+    buildPeriodSignalTags(section.period).map((tag) => [tag.key, tag] as const)
+  );
+  const fallbackStructureTag = buildStructureSummaryTag(section);
+
+  return [
+    periodTags.get('spacetime') ?? decisionTags.get('spacetime'),
+    decisionTags.get('structure') ?? fallbackStructureTag,
+    resolvePreferredBreakthroughTag(
+      periodTags.get('breakthrough'),
+      decisionTags.get('breakthrough')
+    ),
+    decisionTags.get('volume') ?? periodTags.get('volume'),
+  ]
     .filter((tag): tag is SignalTag => Boolean(tag))
     .map((tag) => enrichStructureSignalTag(section, tag))
     .slice(0, 4);

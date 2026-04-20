@@ -592,3 +592,113 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
   assert.match(html, /当前级别：日线/);
   assert.doesNotMatch(html, /周期摘要/);
 });
+
+test('AnalysisPeriodDetails prefers period breakthrough risk over broader decision candidate tags', async () => {
+  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
+    'src/components/stock/AnalysisPeriodDetails.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisPeriodDetails, {
+      defaultLevelKey: 'hour30',
+      sections: [
+        {
+          key: 'hour30',
+          label: '30分钟',
+          defaultOpen: true,
+          summary: '30分钟等待确认',
+          period: {
+            period: 'hour30',
+            macd: {
+              status: '中偏弱',
+            },
+            breakthrough: {
+              pattern_type: '假突破',
+              pattern_name: '假突破',
+              direction: 'up',
+              is_valid: false,
+            },
+            trinity_decision: {
+              level: 'hour30',
+              conclusion: {
+                action: 'wait',
+                action_label: '等待',
+                bias: 'neutral',
+                confidence: 'medium',
+                can_trade: false,
+                wait_reason: '等待15分钟进一步确认',
+              },
+              spacetime: {
+                status: '中偏弱',
+                direction_bias: 'neutral',
+                expected_structures: {
+                  up: ['C单平台式'],
+                  down: ['D三段式'],
+                },
+                structure_match: true,
+                mismatch_reason: null,
+                divergence_policy: {
+                  top_divergence_valid: false,
+                  bottom_divergence_valid: false,
+                  reason: '注意顶背离',
+                },
+              },
+              structure: {
+                type: 'C单平台式',
+                qualification: 'standard',
+                direction: 'flat',
+                explainability: { status: 'passed', reason: 'C平台成立', evidence: [] },
+              },
+              moving_average: {
+                ma55_role: 'support',
+                ma233_role: 'neutral',
+                price_position: {
+                  above_ma55: true,
+                  above_ma233: false,
+                },
+                breakthrough_state: 'breakout_pending',
+                ma_gate: {
+                  allow_long: false,
+                  allow_short: false,
+                  reason: '等待突破确认',
+                },
+              },
+              volume_confirmation: {
+                volume_state: 'normal',
+                breakout_volume: 'weak',
+                breakdown_volume: 'not_applicable',
+                pullback_volume: 'normal',
+                volume_gate: {
+                  supports_breakout: false,
+                  supports_breakdown: false,
+                  supports_pullback_confirmation: false,
+                  confidence_adjustment: 'neutral',
+                  reason: '突破量弱',
+                },
+              },
+              execution: {
+                triggers: ['15分钟进一步确认'],
+                risk_flags: ['再次跌回平台下沿'],
+                position_sizing: { reason: '先保持轻仓观察' },
+              },
+              trade_qualification: {
+                position_permission: 'light_probe',
+                trade_mode: 'wait_confirmation',
+                reason: ['等待确认'],
+              },
+              judgment_criteria: [],
+            },
+            structure: {
+              structure_type: 'C单平台式',
+              inflection_points: 6,
+              description: '30分钟假突破风险正在增加',
+            },
+          } as any,
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /突破\/跌破｜假突破风险/);
+  assert.doesNotMatch(html, /突破\/跌破｜突破候选/);
+});
