@@ -19,7 +19,7 @@ export function SignalTagList({ tags }: SignalTagListProps) {
         const toneMeta = getSignalTagToneMeta(tag.tone);
 
         return (
-          <Tooltip key={tag.key}>
+          <Tooltip key={`${tag.key}-${tag.label}`}>
             <TooltipTrigger asChild>
               <Badge
                 variant="outline"
