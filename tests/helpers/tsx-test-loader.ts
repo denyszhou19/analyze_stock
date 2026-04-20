@@ -272,6 +272,25 @@ async function rewriteImports(code: string, filePath?: string): Promise<string> 
     }
   }
 
+  const sharedLibAliases = [
+    {
+      specifier: '@/lib/trinity-signal-tags',
+      target: path.resolve(process.cwd(), 'src/lib/trinity-signal-tags.ts'),
+    },
+  ];
+
+  for (const item of sharedLibAliases) {
+    if (
+      filePath !== item.target &&
+      (rewrittenCode.includes(`"${item.specifier}"`) || rewrittenCode.includes(`'${item.specifier}'`))
+    ) {
+      const targetUrl = await buildTsxDataModule(item.target);
+      rewrittenCode = rewrittenCode
+        .replaceAll(`"${item.specifier}"`, `'${targetUrl}'`)
+        .replaceAll(`'${item.specifier}'`, `'${targetUrl}'`);
+    }
+  }
+
   return rewrittenCode
     .replaceAll('"react/jsx-runtime"', `'${jsxRuntimeStubUrl}'`)
     .replaceAll("'react/jsx-runtime'", `'${jsxRuntimeStubUrl}'`)
