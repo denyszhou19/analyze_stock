@@ -1,4 +1,8 @@
-import type { PeriodAnalysisData, TrinityDecision } from '@/lib/stock-structure-types';
+import type {
+  PeriodAnalysisData,
+  TrinityDecision,
+  TrinityLevelNestingDecision,
+} from '@/lib/stock-structure-types';
 import type { SignalTagTone } from '@/lib/trinity-display-vocabulary';
 
 export interface SignalTagHover {
@@ -9,12 +13,14 @@ export interface SignalTagHover {
 export interface TrinitySignalTag {
   key:
     | 'spacetime'
+    | 'divergence'
     | 'breakthrough'
     | 'volume'
     | 'moving_average'
     | 'structure'
-    | 'divergence';
-  category: '时空' | '突破/跌破' | '量能' | '均线' | '结构' | '背离';
+    | 'level_nesting'
+    | 'execution';
+  category: '时空' | '背离' | '突破/跌破' | '量能' | '均线' | '结构' | '级别' | '执行';
   result: string;
   label: string;
   tone: SignalTagTone;
@@ -24,6 +30,19 @@ export interface TrinitySignalTag {
 interface BuildSignalTagOptions {
   max?: number;
 }
+
+const SIGNAL_TAG_ORDER: TrinitySignalTag['key'][] = [
+  'spacetime',
+  'divergence',
+  'breakthrough',
+  'volume',
+  'moving_average',
+  'structure',
+  'level_nesting',
+  'execution',
+];
+
+const SIGNAL_TAG_ORDER_INDEX = new Map(SIGNAL_TAG_ORDER.map((key, index) => [key, index]));
 
 function cleanText(value?: string | null): string {
   return typeof value === 'string' ? value.trim() : '';
@@ -77,6 +96,14 @@ function applyMax(tags: TrinitySignalTag[], options?: BuildSignalTagOptions): Tr
     return tags;
   }
   return tags.slice(0, max);
+}
+
+export function sortSignalTags(tags: TrinitySignalTag[]): TrinitySignalTag[] {
+  return [...tags].sort((left, right) => {
+    const leftIndex = SIGNAL_TAG_ORDER_INDEX.get(left.key) ?? SIGNAL_TAG_ORDER.length;
+    const rightIndex = SIGNAL_TAG_ORDER_INDEX.get(right.key) ?? SIGNAL_TAG_ORDER.length;
+    return leftIndex - rightIndex;
+  });
 }
 
 function structureLabel(type?: string | null): string {
@@ -228,6 +255,93 @@ function breakthroughPeriodTone(patternType?: string | null, direction?: string 
   return 'neutral';
 }
 
+function levelNestingLabel(resonance?: TrinityLevelNestingDecision['resonance']): string {
+  switch (resonance) {
+    case 'aligned':
+      return '共振一致';
+    case 'child_countertrend':
+      return '子级逆势';
+    case 'conflict':
+      return '级别冲突';
+    case 'parent_unclear':
+      return '父级不明';
+    default:
+      return '';
+  }
+}
+
+function levelNestingTone(
+  resonance?: TrinityLevelNestingDecision['resonance'],
+  parentBias?: TrinityLevelNestingDecision['parent_bias']
+): SignalTagTone {
+  switch (resonance) {
+    case 'aligned':
+      if (parentBias === 'bullish') {
+        return 'bullish';
+      }
+      if (parentBias === 'bearish') {
+        return 'bearish';
+      }
+      return 'neutral';
+    case 'child_countertrend':
+    case 'conflict':
+      return 'warning';
+    case 'parent_unclear':
+      return 'neutral';
+    default:
+      return 'neutral';
+  }
+}
+
+function executionLabel(
+  entryStyle?: TrinityDecision['execution']['entry_style'],
+  canTrade?: boolean
+): string {
+  switch (entryStyle) {
+    case 'pullback':
+      return '回踩执行';
+    case 'breakout':
+      return '突破执行';
+    case 't_trade':
+      return 'T交易';
+    case 'node':
+      return '节点执行';
+    default:
+      return canTrade ? '执行跟踪' : '等待触发';
+  }
+}
+
+function executionTone(
+  entryStyle?: TrinityDecision['execution']['entry_style'],
+  canTrade?: boolean,
+  bias?: TrinityDecision['conclusion']['bias']
+): SignalTagTone {
+  if (!canTrade) {
+    return 'neutral';
+  }
+
+  if (entryStyle === 't_trade') {
+    return 'warning';
+  }
+
+  if (bias === 'bullish') {
+    return 'bullish';
+  }
+  if (bias === 'bearish') {
+    return 'bearish';
+  }
+  return 'neutral';
+}
+
+function buildExecutionHoverItems(decision: TrinityDecision): Array<{ label: string; value?: string | null }> {
+  return [
+    { label: '说明', value: decision.level_nesting?.permission.reason ?? decision.conclusion.wait_reason },
+    { label: '先手点', value: decision.execution.triggers[0] },
+    { label: '确认点', value: decision.execution.confirmation[0] },
+    { label: '失效点', value: decision.execution.invalidation[0] },
+  ];
+}
+
 export function buildDecisionSignalTags(
   decision?: TrinityDecision | null,
   options?: BuildSignalTagOptions
@@ -261,9 +375,23 @@ export function buildDecisionSignalTags(
       { label: '解释', value: decision.structure.explainability.reason },
       ...decision.structure.explainability.evidence.map((item) => ({ label: '证据', value: item })),
     ]),
+    buildTag(
+      'level_nesting',
+      '级别',
+      levelNestingLabel(decision.level_nesting?.resonance),
+      levelNestingTone(decision.level_nesting?.resonance, decision.level_nesting?.parent_bias),
+      buildExecutionHoverItems(decision)
+    ),
+    buildTag(
+      'execution',
+      '执行',
+      executionLabel(decision.execution.entry_style, decision.conclusion.can_trade),
+      executionTone(decision.execution.entry_style, decision.conclusion.can_trade, decision.conclusion.bias),
+      buildExecutionHoverItems(decision)
+    ),
   ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
 
-  return applyMax(tags, options);
+  return applyMax(sortSignalTags(tags), options);
 }
 
 export function buildPeriodSignalTags(

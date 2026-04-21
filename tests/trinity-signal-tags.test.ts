@@ -144,6 +144,37 @@ test('buildDecisionSignalTags builds short structured tags with stable hover pay
   assert.deepEqual(tags[2]?.hover.items, [{ label: '说明', value: '突破量能偏弱' }]);
 });
 
+test('buildDecisionSignalTags includes level nesting and execution tags by default', () => {
+  const tags = signalTags.buildDecisionSignalTags(createDecision());
+
+  assert.deepEqual(
+    tags.map((tag) => tag.label),
+    [
+      '时空｜中偏强',
+      '突破/跌破｜突破候选',
+      '量能｜突破量弱',
+      '均线｜MA55支撑',
+      '结构｜延伸C',
+      '级别｜子级逆势',
+      '执行｜回踩执行',
+    ]
+  );
+  assert.equal(tags[5]?.key, 'level_nesting');
+  assert.deepEqual(tags[5]?.hover.items, [
+    { label: '说明', value: '父级偏多但子级等待确认' },
+    { label: '先手点', value: '重新站上平台上沿' },
+    { label: '确认点', value: '回踩 MA55 不破' },
+    { label: '失效点', value: '跌回平台下沿' },
+  ]);
+  assert.equal(tags[6]?.key, 'execution');
+  assert.deepEqual(tags[6]?.hover.items, [
+    { label: '说明', value: '父级偏多但子级等待确认' },
+    { label: '先手点', value: '重新站上平台上沿' },
+    { label: '确认点', value: '回踩 MA55 不破' },
+    { label: '失效点', value: '跌回平台下沿' },
+  ]);
+});
+
 test('buildPeriodSignalTags combines period signals into capped tags', () => {
   const tags = signalTags.buildPeriodSignalTags(createPeriod(), { max: 4 });
 
@@ -164,6 +195,20 @@ test('buildDecisionSignalTags obeys options.max when natural output is longer', 
 
   assert.deepEqual(tags.map((tag) => tag.label), ['时空｜中偏强', '突破/跌破｜突破候选', '量能｜突破量弱']);
   assert.equal(tags.length, 3);
+});
+
+test('buildDecisionSignalTags keeps unified order stable when max truncates later tags', () => {
+  const tags = signalTags.buildDecisionSignalTags(createDecision(), { max: 6 });
+
+  assert.deepEqual(tags.map((tag) => tag.key), [
+    'spacetime',
+    'breakthrough',
+    'volume',
+    'moving_average',
+    'structure',
+    'level_nesting',
+  ]);
+  assert.equal(tags.at(-1)?.label, '级别｜子级逆势');
 });
 
 test('buildPeriodSignalTags falls back to neutral tone when valid breakthrough direction is missing or unknown', () => {
