@@ -788,7 +788,7 @@ function buildSpacetimeSummary(decision: TrinityDecision): string {
 
 function buildStructureSummary(decision: TrinityDecision): string {
   const detail = resolveChineseReason(
-    [decision.structure.explainability.reason, decision.conclusion.wait_reason],
+    [decision.structure.explainability.reason],
     '继续等待结构确认'
   );
   return `结构：${decision.structure.type}，${detail}`;
