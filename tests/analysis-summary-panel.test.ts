@@ -25,6 +25,27 @@ function gate(label: string, value: string, source: string) {
   };
 }
 
+function createSignalTag(
+  label: string,
+  tone: 'bullish' | 'bearish' | 'warning' | 'neutral'
+) {
+  const [category = '结构', result = label] = label.split('｜');
+  return {
+    key: 'structure' as const,
+    category: category as AnalysisPageSummaryViewModel['signalTags'][number]['category'],
+    result,
+    label,
+    tone,
+    hover: {
+      title: `${label}说明`,
+      items: [
+        { label: '这句话是什么意思', value: `${label}的补充说明` },
+        { label: '为什么这么判断', value: `${label}对应的判定依据` },
+      ],
+    },
+  };
+}
+
 const summaryViewModel: AnalysisPageSummaryViewModel = {
   mode: 'idle',
   headline: '等待',
@@ -38,7 +59,10 @@ const summaryViewModel: AnalysisPageSummaryViewModel = {
   spacetimeSummary: '时空：中偏强，等待 C 结构边界确认',
   structureSummary: '结构：A五段式，A原型成立',
   executionSummary: '现在怎么做：先看重新站上平台上沿，确认看回踩 MA55 不破，失效看跌回平台下沿',
-  signalTags: [],
+  signalTags: [
+    createSignalTag('级别｜子级逆势', 'warning'),
+    createSignalTag('执行｜回踩执行', 'neutral'),
+  ],
   hardGateTitle: '主策略硬门控',
   hardGateSourceLabel: '当前硬门控来自主判定级别：日线；当前优先组合：短线执行组合｜日线 → 30分钟',
   hardGates: [
@@ -103,6 +127,13 @@ test('AnalysisSummaryPanel idle renders generation CTA and backend gates', async
 
   assert.match(html, /AI 综合判断尚未生成/);
   assert.match(html, /生成 AI 综合判断/);
+  assert.match(html, /严格等待/);
+  assert.match(html, /父级强冲突，子级逆父级/);
+  assert.match(html, /时空：中偏强，等待 C 结构边界确认/);
+  assert.match(html, /结构：A五段式，A原型成立/);
+  assert.match(html, /现在怎么做：先看重新站上平台上沿，确认看回踩 MA55 不破，失效看跌回平台下沿/);
+  assert.match(html, /级别｜子级逆势/);
+  assert.match(html, /执行｜回踩执行/);
   assert.match(html, /后端最终动作/);
 });
 
@@ -129,6 +160,8 @@ test('AnalysisSummaryPanel ready renders AI headline without backend enum leakag
   );
 
   assert.match(html, /AI 判断：等待缩量回踩后的二次确认/);
+  assert.match(html, /严格等待/);
+  assert.match(html, /父级强冲突，子级逆父级/);
   assert.doesNotMatch(html, /wait_confirmation/);
 });
 

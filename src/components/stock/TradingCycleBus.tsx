@@ -40,13 +40,16 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                     <Badge variant="outline" className={directionMeta.badgeClassName}>
                       {combination.directionLabel}
                     </Badge>
-                    <Badge variant="outline">状态：{combination.actionLabel}</Badge>
+                    <Badge variant="secondary">{combination.judgmentLabel}</Badge>
                   </div>
                 </div>
               </CardHeader>
 
               <CardContent className="space-y-3 px-4 text-sm">
                 <div className="space-y-2">
+                  <p className="font-medium text-foreground">
+                    父子关系：{combination.relationLabel}
+                  </p>
                   <p className="leading-6 text-foreground">{combination.summary}</p>
                   <p className="leading-6 text-muted-foreground">{combination.recommendation}</p>
                   <p className="text-xs text-muted-foreground">{combination.relationHint}</p>

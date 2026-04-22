@@ -11,6 +11,7 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
+import { SignalTagList } from '@/components/stock/SignalTagList';
 import {
   Tooltip,
   TooltipContent,
@@ -185,11 +186,33 @@ export function AnalysisSummaryPanel({
             {viewModel.headline}
           </h2>
           <div className="mt-3 flex flex-wrap items-center gap-2">
+            <Badge variant="secondary">{viewModel.judgmentLabel}</Badge>
+            <Badge variant="outline">{viewModel.relationLabel}</Badge>
             <Badge variant="outline">后端最终动作：{viewModel.primaryActionLabel}</Badge>
             <span className="text-sm text-muted-foreground">
               {viewModel.primaryReason}
             </span>
           </div>
+          <div className="mt-4 grid gap-3 text-sm leading-6">
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">时空怎么看</div>
+              <p className="text-muted-foreground">{viewModel.spacetimeSummary}</p>
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">结构怎么看</div>
+              <p className="text-muted-foreground">{viewModel.structureSummary}</p>
+            </div>
+            <div className="space-y-1">
+              <div className="text-xs text-muted-foreground">现在怎么做</div>
+              <p className="text-muted-foreground">{viewModel.executionSummary}</p>
+            </div>
+          </div>
+          {viewModel.signalTags.length ? (
+            <div className="mt-4 space-y-2">
+              <div className="text-xs text-muted-foreground">关键信号标签</div>
+              <SignalTagList tags={viewModel.signalTags} />
+            </div>
+          ) : null}
         </section>
 
         <ScopeBlock globalStrategy={globalStrategy} />

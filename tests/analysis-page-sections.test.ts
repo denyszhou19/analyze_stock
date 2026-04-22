@@ -117,7 +117,10 @@ test('TradingCycleBus renders three trading combinations with direction and trig
           relationHint: '周线看背景，日线看执行',
           summary: '周线偏多，日线等待确认',
           recommendation: '先等日线确认',
-          signalTags: [],
+          signalTags: [
+            createSignalTag('结构｜C单平台式', 'neutral'),
+            createSignalTag('执行｜等待触发', 'warning'),
+          ],
           parentConstraint: createExplainableField('父级约束', '周线：大方向偏多'),
           triggerLevel: createExplainableField('触发级别', '日线：等待确认'),
           triggerLevelLabel: '日线',
@@ -137,7 +140,10 @@ test('TradingCycleBus renders three trading combinations with direction and trig
           relationHint: '日线看背景，30分钟看执行',
           summary: '日线还没完全放行，30分钟先看确认',
           recommendation: '先等30分钟放量突破平台上沿',
-          signalTags: [createSignalTag('时空｜中偏弱', 'warning')],
+          signalTags: [
+            createSignalTag('时空｜中偏弱', 'warning'),
+            createSignalTag('级别｜子级逆势', 'warning'),
+          ],
           parentConstraint: {
             label: '父级约束',
             value: '日线：仍未完全放行',
@@ -165,7 +171,7 @@ test('TradingCycleBus renders three trading combinations with direction and trig
           relationHint: '60分钟看背景，15分钟看执行',
           summary: '60分钟偏弱，15分钟不单独放行',
           recommendation: '先继续等待',
-          signalTags: [],
+          signalTags: [createSignalTag('执行｜空仓等待', 'bearish')],
           parentConstraint: createExplainableField('父级约束', '60分钟：偏弱'),
           triggerLevel: createExplainableField('触发级别', '15分钟：等待确认'),
           triggerLevelLabel: '15分钟',
@@ -182,17 +188,24 @@ test('TradingCycleBus renders three trading combinations with direction and trig
   assert.match(html, /短线执行组合｜日线 → 30分钟/);
   assert.match(html, /超短线 \/ T 组合｜60分钟 → 15分钟/);
   assert.match(html, /触发级别/);
-  assert.match(html, /状态：观察中/);
+  assert.match(html, /严格等待/);
+  assert.match(html, /候选可试/);
+  assert.match(html, /父级支持，子级顺父级/);
+  assert.match(html, /父级强冲突，子级逆父级/);
   assert.match(html, /适合动作/);
   assert.match(html, /主要风险/);
   assert.match(html, /周线：大方向偏多/);
   assert.match(html, /日线还没完全放行，30分钟先看确认/);
   assert.match(html, /先等30分钟放量突破平台上沿/);
   assert.match(html, /时空｜中偏弱/);
+  assert.match(html, /结构｜C单平台式/);
+  assert.match(html, /级别｜子级逆势/);
+  assert.match(html, /执行｜空仓等待/);
   assert.match(html, /父级约束说明/);
   assert.match(html, /这句话是什么意思/);
   assert.doesNotMatch(html, /日线定约束，30分钟给触发/);
   assert.doesNotMatch(html, /维度一/);
+  assert.doesNotMatch(html, /状态：观察中/);
 });
 
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {
@@ -327,6 +340,9 @@ test('TrinityRuleChain renders six rule items and keeps failed status plus reaso
   assert.match(html, /观察中/);
   assert.match(html, /谨慎看/);
   assert.match(html, /暂不做/);
+  assert.match(html, /当前状态：可执行/);
+  assert.match(html, /当前状态：观察中/);
+  assert.match(html, /当前状态：暂不做/);
   assert.match(html, /交易含义/);
   assert.match(html, /规则状态/);
   assert.match(html, /当前方向/);
@@ -385,7 +401,10 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
         spacetimeSummary: '时空：中偏强，等待时空确认',
         structureSummary: '结构：A五段式，A原型成立',
         executionSummary: '现在怎么做：先看30分钟放量突破平台上沿，确认看回踩不破平台上沿，失效看跌回日线平台下沿',
-        signalTags: [],
+        signalTags: [
+          createSignalTag('级别｜子级逆势', 'warning'),
+          createSignalTag('执行｜回踩执行', 'neutral'),
+        ],
         hardGateTitle: '主策略硬门控',
         hardGateSourceLabel: '当前硬门控来自主判定级别：日线',
         hardGates: [
@@ -429,6 +448,13 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
   assert.match(html, /短线执行组合｜日线 → 30分钟/);
   assert.match(html, /主约束级别/);
   assert.match(html, /触发级别/);
+  assert.match(html, /候选可试/);
+  assert.match(html, /父级强冲突，子级逆父级/);
+  assert.match(html, /时空：中偏强，等待时空确认/);
+  assert.match(html, /结构：A五段式，A原型成立/);
+  assert.match(html, /现在怎么做：先看30分钟放量突破平台上沿，确认看回踩不破平台上沿，失效看跌回日线平台下沿/);
+  assert.match(html, /级别｜子级逆势/);
+  assert.match(html, /执行｜回踩执行/);
   assert.match(html, /主策略硬门控/);
   assert.match(html, /仓位权限/);
   assert.match(html, /后端允许的最大仓位动作范围/);

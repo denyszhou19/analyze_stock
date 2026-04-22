@@ -139,6 +139,9 @@ export function TrinityRuleChain({ sourceLabel, items }: TrinityRuleChainProps) 
                 </Tooltip>
               </CardHeader>
               <CardContent className="space-y-2 px-4 text-sm leading-6 text-muted-foreground">
+                <p className="font-medium text-foreground">
+                  当前状态：{item.displayStatusLabel}
+                </p>
                 <p className="text-foreground">{item.summary}</p>
                 <p>{item.recommendation}</p>
                 <SignalTagList tags={item.signalTags} />

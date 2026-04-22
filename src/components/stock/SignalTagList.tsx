@@ -23,7 +23,10 @@ export function SignalTagList({ tags }: SignalTagListProps) {
             <TooltipTrigger asChild>
               <Badge
                 variant="outline"
-                className={cn('cursor-help whitespace-nowrap', toneMeta.badgeClassName)}
+                className={cn(
+                  'h-auto max-w-full cursor-help whitespace-normal break-words py-1 text-left leading-5',
+                  toneMeta.badgeClassName
+                )}
               >
                 {tag.label}
               </Badge>
