@@ -137,6 +137,55 @@ const sampleDecision: TrinityDecision = {
     },
     risk_flags: ['等待确认'],
   },
+  candidate_structure: {
+    candidate_type: 'trend_continuation',
+    candidate_label: 'A延续候选',
+    current_leg: '30分钟回抽段',
+    direction: 'up',
+    reason: '父级支持，但次级别仍在等待回抽确认',
+    upgrade_condition: '30分钟回抽不破并重新放量上拐',
+    invalidation: '30分钟回抽跌破关键确认低点',
+  },
+  wait_state: {
+    wait_type: '等待回抽确认',
+    wait_label: '等待回抽确认',
+    current_block: '30分钟回抽段尚未完成止跌确认',
+    next_confirmation_action: '观察30分钟止跌并重新转强',
+    reason: '30分钟结构尚未完成确认',
+  },
+  zero_axis_signal: {
+    formed: true,
+    signal_type: 'zero_axis_pullback',
+    signal_label: '零轴上方回抽',
+    reason: '零轴上方回抽后若再度上拐，通常有利于延续',
+    impact_on_judgment: 'promote',
+  },
+  resonance_state: {
+    status: 'supportive',
+    reason: '周线支持日线，但30分钟信号尚未闭合',
+    impact_on_judgment: 'promote',
+    is_hard_constraint: false,
+  },
+  divergence_weight: {
+    status: 'neutral',
+    label: '背离影响中性',
+    reason: '暂无足够背离强化或削弱信号',
+    impact_on_judgment: 'neutral',
+  },
+  judgment: {
+    level: 'candidate_probe',
+    label: '候选可试',
+    current_best_action: '轻仓试探，等待30分钟确认后再加仓',
+    critical_reason: '父级支持但30分钟仍待确认',
+    supporting_factors: ['周线方向支持', '日线结构仍有延续可能', '零轴信号偏正向'],
+    limiting_factors: ['30分钟尚未确认止跌', '回抽完成前不能放大仓位'],
+  },
+  execution_plan: {
+    probe_entry: '日线支撑位附近轻仓试探',
+    confirm_entry: '30分钟回抽确认后加仓',
+    invalidation: '跌破日线确认低点离场',
+    current_position_action: '维持轻仓观察，不提前追价',
+  },
   judgment_criteria: [],
   ai_summary_facts: ['A五段式，趋势 + 中继平台 + 趋势'],
 };
@@ -192,4 +241,49 @@ test('AiSummaryCard action and bias stay aligned with TrinityDecision conclusion
   assert.equal(summary.action, 'wait');
   assert.equal(summary.bias, 'neutral');
   assert.equal(summary.guardrail, '等待 C 结构边界确认');
+});
+
+test('TrinityDecision supports phase-two judgment contract fields', () => {
+  assert.equal(sampleDecision.candidate_structure?.candidate_label, 'A延续候选');
+  assert.equal(sampleDecision.candidate_structure?.current_leg, '30分钟回抽段');
+  assert.equal(
+    sampleDecision.candidate_structure?.upgrade_condition,
+    '30分钟回抽不破并重新放量上拐'
+  );
+  assert.equal(
+    sampleDecision.candidate_structure?.invalidation,
+    '30分钟回抽跌破关键确认低点'
+  );
+  assert.equal(sampleDecision.wait_state?.wait_type, '等待回抽确认');
+  assert.equal(sampleDecision.wait_state?.wait_label, '等待回抽确认');
+  assert.equal(sampleDecision.wait_state?.current_block, '30分钟回抽段尚未完成止跌确认');
+  assert.equal(sampleDecision.wait_state?.next_confirmation_action, '观察30分钟止跌并重新转强');
+  assert.equal(sampleDecision.zero_axis_signal?.formed, true);
+  assert.equal(sampleDecision.zero_axis_signal?.signal_type, 'zero_axis_pullback');
+  assert.equal(sampleDecision.zero_axis_signal?.impact_on_judgment, 'promote');
+  assert.equal(sampleDecision.resonance_state?.status, 'supportive');
+  assert.equal(sampleDecision.divergence_weight?.label, '背离影响中性');
+  assert.equal(sampleDecision.judgment?.label, '候选可试');
+  assert.equal(sampleDecision.judgment?.level, 'candidate_probe');
+  assert.equal(
+    sampleDecision.judgment?.current_best_action,
+    '轻仓试探，等待30分钟确认后再加仓'
+  );
+  assert.equal(sampleDecision.judgment?.critical_reason, '父级支持但30分钟仍待确认');
+  assert.deepEqual(sampleDecision.judgment?.supporting_factors, [
+    '周线方向支持',
+    '日线结构仍有延续可能',
+    '零轴信号偏正向',
+  ]);
+  assert.deepEqual(sampleDecision.judgment?.limiting_factors, [
+    '30分钟尚未确认止跌',
+    '回抽完成前不能放大仓位',
+  ]);
+  assert.equal(sampleDecision.execution_plan?.probe_entry, '日线支撑位附近轻仓试探');
+  assert.equal(sampleDecision.execution_plan?.confirm_entry, '30分钟回抽确认后加仓');
+  assert.equal(sampleDecision.execution_plan?.invalidation, '跌破日线确认低点离场');
+  assert.equal(
+    sampleDecision.execution_plan?.current_position_action,
+    '维持轻仓观察，不提前追价'
+  );
 });

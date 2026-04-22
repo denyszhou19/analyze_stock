@@ -349,6 +349,13 @@ function summarizePeriod(periodData: PeriodAnalysisData, level: string): AiDecis
           level_nesting: periodData.trinity_decision.level_nesting,
           trade_qualification: periodData.trinity_decision.trade_qualification,
           execution: periodData.trinity_decision.execution,
+          candidate_structure: periodData.trinity_decision.candidate_structure,
+          wait_state: periodData.trinity_decision.wait_state,
+          zero_axis_signal: periodData.trinity_decision.zero_axis_signal,
+          resonance_state: periodData.trinity_decision.resonance_state,
+          divergence_weight: periodData.trinity_decision.divergence_weight,
+          judgment: periodData.trinity_decision.judgment,
+          execution_plan: periodData.trinity_decision.execution_plan,
           judgment_criteria: periodData.trinity_decision.judgment_criteria,
           ai_summary_facts: periodData.trinity_decision.ai_summary_facts,
         })
