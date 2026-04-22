@@ -1,3 +1,6 @@
+import path from 'node:path';
+import { pathToFileURL } from 'node:url';
+
 import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
 import { SignalTagList } from '@/components/stock/SignalTagList';
 import { Badge } from '@/components/ui/badge';
@@ -16,6 +19,16 @@ import {
   getStructureTagMeta,
 } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
+
+const judgmentDisplayModule = await import(
+  pathToFileURL(path.resolve(process.cwd(), 'src/lib/trinity-judgment-display.ts')).href
+);
+
+const {
+  buildExecutionPreview,
+  resolveJudgmentLabel,
+  resolveRelationLabel,
+} = judgmentDisplayModule;
 
 export interface AnalysisPeriodSection {
   key: string;
@@ -134,60 +147,6 @@ function resolvePeriodDecisionSource(section: AnalysisPeriodSection) {
 
 type SignalTag = TrinitySignalTag;
 
-function resolveJudgmentLabel(decision?: PeriodAnalysisData['trinity_decision']): string {
-  if (!decision) {
-    return '严格等待';
-  }
-
-  const canTrade = decision.conclusion?.can_trade === true;
-  const positionPermission = decision.trade_qualification?.position_permission;
-  const breakthroughState = decision.moving_average?.breakthrough_state;
-
-  if (canTrade && (positionPermission === 'full_signal' || positionPermission === 'half_position')) {
-    return '确认执行';
-  }
-
-  if (
-    positionPermission === 'light_probe' ||
-    positionPermission === 't_trade_only' ||
-    breakthroughState === 'breakout_pending' ||
-    breakthroughState === 'breakdown_pending'
-  ) {
-    return '候选可试';
-  }
-
-  return '严格等待';
-}
-
-function resolveRelationLabel(
-  levelNesting?: PeriodAnalysisData['trinity_decision']['level_nesting']
-): string {
-  if (!levelNesting) {
-    return '父级未明，子级先看确认';
-  }
-
-  if (levelNesting.resonance === 'aligned') {
-    return '父级支持，子级顺父级';
-  }
-
-  if (
-    levelNesting.resonance === 'child_countertrend' ||
-    levelNesting.resonance === 'conflict'
-  ) {
-    return '父级强冲突，子级逆父级';
-  }
-
-  return '父级未明，子级先看确认';
-}
-
-function buildExecutionPreview(decision?: PeriodAnalysisData['trinity_decision']) {
-  return {
-    probeEntry: decision?.execution?.triggers[0] ?? '继续等待触发',
-    confirmEntry: decision?.execution?.confirmation[0] ?? '等待进一步确认',
-    invalidation: decision?.execution?.invalidation[0] ?? '若条件失效则取消',
-  };
-}
-
 function buildStructureSummaryTag(section: AnalysisPeriodSection): SignalTag | null {
   const structureType =
     section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null;
@@ -239,23 +198,40 @@ function enrichStructureSignalTag(
   };
 }
 
+function resolvePreferredBreakthroughTag(
+  periodTag?: SignalTag,
+  decisionTag?: SignalTag
+): SignalTag | undefined {
+  if (!periodTag) {
+    return decisionTag;
+  }
+
+  if (!decisionTag) {
+    return periodTag;
+  }
+
+  return periodTag.tone === 'neutral' ? decisionTag : periodTag;
+}
+
 function buildPeriodSummarySignalTags(section: AnalysisPeriodSection) {
   const periodTags = buildPeriodSignalTags(section.period);
   const decisionTags = buildDecisionSignalTags(section.period?.trinity_decision);
   const fallbackStructureTag = buildStructureSummaryTag(section);
-  const tagByKey = new Map<string, SignalTag>();
+  const tags = [
+    periodTags.find((tag) => tag.key === 'divergence'),
+    resolvePreferredBreakthroughTag(
+      periodTags.find((tag) => tag.key === 'breakthrough'),
+      decisionTags.find((tag) => tag.key === 'breakthrough')
+    ),
+    periodTags.find((tag) => tag.key === 'spacetime') ?? decisionTags.find((tag) => tag.key === 'spacetime'),
+    decisionTags.find((tag) => tag.key === 'volume') ?? periodTags.find((tag) => tag.key === 'volume'),
+    decisionTags.find((tag) => tag.key === 'moving_average') ?? periodTags.find((tag) => tag.key === 'moving_average'),
+    decisionTags.find((tag) => tag.key === 'structure') ?? fallbackStructureTag,
+    decisionTags.find((tag) => tag.key === 'level_nesting') ?? periodTags.find((tag) => tag.key === 'level_nesting'),
+    decisionTags.find((tag) => tag.key === 'execution') ?? periodTags.find((tag) => tag.key === 'execution'),
+  ].filter((tag): tag is SignalTag => Boolean(tag));
 
-  for (const tag of [...periodTags, ...decisionTags]) {
-    if (!tagByKey.has(tag.key)) {
-      tagByKey.set(tag.key, tag);
-    }
-  }
-
-  if (fallbackStructureTag && !tagByKey.has(fallbackStructureTag.key)) {
-    tagByKey.set(fallbackStructureTag.key, fallbackStructureTag);
-  }
-
-  return Array.from(tagByKey.values()).map((tag) => enrichStructureSignalTag(section, tag));
+  return tags.map((tag) => enrichStructureSignalTag(section, tag));
 }
 
 function resolveLevelLabel(level?: string | null) {

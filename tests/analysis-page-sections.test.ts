@@ -621,7 +621,8 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
   assert.match(html, /时空｜中偏弱/);
   assert.match(html, /背离｜顶背离/);
   assert.match(html, /结构｜C单平台式/);
-  assert.match(html, /突破\/跌破｜普通突破/);
+  assert.match(html, /突破\/跌破｜突破候选/);
+  assert.doesNotMatch(html, /突破\/跌破｜普通突破/);
   assert.match(html, /量能｜突破量弱/);
   assert.match(html, /均线｜MA55支撑/);
   assert.match(html, /级别｜共振一致/);
