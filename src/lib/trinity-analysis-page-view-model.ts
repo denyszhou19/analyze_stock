@@ -792,6 +792,18 @@ function buildSpacetimeSummary(decision: TrinityDecision): string {
 }
 
 function buildStructureSummary(decision: TrinityDecision): string {
+  const candidateStructure = decision.candidate_structure;
+  if (candidateStructure?.candidate_label) {
+    const structureLabel = [candidateStructure.candidate_label, candidateStructure.current_leg]
+      .filter(Boolean)
+      .join('｜');
+    const detail = resolveChineseReason(
+      [candidateStructure.reason, decision.structure.explainability.reason],
+      '继续等待结构确认'
+    );
+    return `结构：${structureLabel}，${detail}`;
+  }
+
   const detail = resolveChineseReason(
     [decision.structure.explainability.reason],
     '继续等待结构确认'

@@ -111,6 +111,32 @@ function structureLabel(type?: string | null): string {
   return cleaned.endsWith('类') ? cleaned.slice(0, -1) : cleaned;
 }
 
+function structureTagResult(decision?: TrinityDecision | null): string {
+  const candidateLabel = cleanText(decision?.candidate_structure?.candidate_label);
+  if (candidateLabel) {
+    return candidateLabel;
+  }
+
+  return structureLabel(decision?.structure.type);
+}
+
+function buildStructureHoverItems(decision: TrinityDecision): Array<{ label: string; value?: string | null }> {
+  const candidateStructure = decision.candidate_structure;
+  if (candidateStructure?.candidate_label) {
+    return [
+      { label: '当前阶段', value: candidateStructure.current_leg },
+      { label: '说明', value: candidateStructure.reason ?? decision.structure.explainability.reason },
+      { label: '升级条件', value: candidateStructure.upgrade_condition },
+      { label: '失效条件', value: candidateStructure.invalidation },
+    ];
+  }
+
+  return [
+    { label: '解释', value: decision.structure.explainability.reason },
+    ...decision.structure.explainability.evidence.map((item) => ({ label: '证据', value: item })),
+  ];
+}
+
 function maRoleLabel(role?: TrinityDecision['moving_average']['ma55_role']): string {
   if (role === 'support') {
     return 'MA55支撑';
@@ -426,6 +452,17 @@ function buildLevelNestingHoverItems(
   ];
 }
 
+function buildFallbackStructureTag(period?: PeriodAnalysisData | null): TrinitySignalTag | null {
+  const structureType = cleanText(period?.structure?.structure_type);
+  if (!structureType) {
+    return null;
+  }
+
+  return buildTag('structure', '结构', structureLabel(structureType), 'neutral', [
+    { label: '解释', value: period?.structure?.description },
+  ]);
+}
+
 export function buildDecisionSignalTags(
   decision?: TrinityDecision | null,
   options?: BuildSignalTagOptions
@@ -478,10 +515,7 @@ export function buildDecisionSignalTags(
     buildTag('moving_average', '均线', maRoleLabel(decision.moving_average.ma55_role), maRoleTone(decision.moving_average.ma55_role), [
       { label: '说明', value: decision.moving_average.ma_gate.reason },
     ]),
-    buildTag('structure', '结构', structureLabel(decision.structure.type), 'neutral', [
-      { label: '解释', value: decision.structure.explainability.reason },
-      ...decision.structure.explainability.evidence.map((item) => ({ label: '证据', value: item })),
-    ]),
+    buildTag('structure', '结构', structureTagResult(decision), 'neutral', buildStructureHoverItems(decision)),
     buildTag(
       'level_nesting',
       '级别',
@@ -499,6 +533,40 @@ export function buildDecisionSignalTags(
   ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
 
   return applyMax(sortSignalTags(tags), options);
+}
+
+export function buildPeriodSummarySignalTags(
+  period?: PeriodAnalysisData | null,
+  options?: BuildSignalTagOptions
+): TrinitySignalTag[] {
+  if (!period) {
+    return [];
+  }
+
+  const periodTags = buildPeriodSignalTags(period);
+  const decisionTags = buildDecisionSignalTags(period.trinity_decision);
+  const tags = [
+    decisionTags.find((tag) => tag.key === 'divergence') ?? periodTags.find((tag) => tag.key === 'divergence'),
+    (() => {
+      const periodTag = periodTags.find((tag) => tag.key === 'breakthrough');
+      const decisionTag = decisionTags.find((tag) => tag.key === 'breakthrough');
+      if (!periodTag) {
+        return decisionTag;
+      }
+      if (!decisionTag) {
+        return periodTag;
+      }
+      return periodTag.tone === 'neutral' ? decisionTag : periodTag;
+    })(),
+    periodTags.find((tag) => tag.key === 'spacetime') ?? decisionTags.find((tag) => tag.key === 'spacetime'),
+    decisionTags.find((tag) => tag.key === 'volume') ?? periodTags.find((tag) => tag.key === 'volume'),
+    decisionTags.find((tag) => tag.key === 'moving_average') ?? periodTags.find((tag) => tag.key === 'moving_average'),
+    decisionTags.find((tag) => tag.key === 'structure') ?? buildFallbackStructureTag(period),
+    decisionTags.find((tag) => tag.key === 'level_nesting') ?? periodTags.find((tag) => tag.key === 'level_nesting'),
+    decisionTags.find((tag) => tag.key === 'execution') ?? periodTags.find((tag) => tag.key === 'execution'),
+  ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
+
+  return applyMax(tags, options);
 }
 
 export function buildPeriodSignalTags(

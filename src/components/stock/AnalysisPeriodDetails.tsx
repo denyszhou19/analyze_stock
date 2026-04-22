@@ -13,6 +13,7 @@ import {
 import {
   buildDecisionSignalTags,
   buildPeriodSignalTags,
+  buildPeriodSummarySignalTags,
   type TrinitySignalTag,
 } from '@/lib/trinity-signal-tags';
 import {
@@ -65,8 +66,14 @@ function resolveSummary(section: AnalysisPeriodSection) {
     return '当前级别暂无周期数据。';
   }
 
+  const candidateStructure = section.period?.trinity_decision?.candidate_structure;
+  const candidateSummary = [candidateStructure?.candidate_label, candidateStructure?.current_leg]
+    .filter(Boolean)
+    .join('｜');
+
   return (
     section.summary ||
+    candidateSummary ||
     section.period?.structure?.description ||
     section.period?.structure?.execution?.wait_reason ||
     section.period?.trinity_decision?.conclusion.wait_reason ||
@@ -79,6 +86,22 @@ function resolveTopologyTitle(section: AnalysisPeriodSection) {
 }
 
 function resolveStructureEvidence(section: AnalysisPeriodSection) {
+  const candidateStructure = section.period?.trinity_decision?.candidate_structure;
+  if (candidateStructure?.candidate_label) {
+    return (
+      normalizeStructureDisplayText(
+        [
+          candidateStructure.candidate_label,
+          candidateStructure.current_leg,
+          candidateStructure.reason,
+          candidateStructure.upgrade_condition,
+        ]
+          .filter(Boolean)
+          .join('｜')
+      ) || '当前周期暂无结构证据。'
+    );
+  }
+
   const structure = section.period?.structure;
   const interpretation = structure?.interpretation;
   const prediction = structure?.structure_details?.prediction;
@@ -144,30 +167,6 @@ function resolvePeriodDecisionSource(section: AnalysisPeriodSection) {
 
 type SignalTag = TrinitySignalTag;
 
-function buildStructureSummaryTag(section: AnalysisPeriodSection): SignalTag | null {
-  const structureType =
-    section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null;
-  if (!structureType) {
-    return null;
-  }
-
-  const structureMeta = getStructureTagMeta(structureType);
-  return {
-    key: 'structure',
-    category: '结构',
-    result: structureMeta.label,
-    label: `结构｜${structureMeta.label}`,
-    tone: 'neutral',
-    hover: {
-      title: `结构｜${structureMeta.label}`,
-      items: [
-        { label: '信号含义', value: structureMeta.explanation },
-        { label: '交易含义', value: structureMeta.tradeMeaning },
-      ],
-    },
-  };
-}
-
 function enrichStructureSignalTag(
   section: AnalysisPeriodSection,
   tag: SignalTag
@@ -177,7 +176,10 @@ function enrichStructureSignalTag(
   }
 
   const structureMeta = getStructureTagMeta(
-    section.period?.trinity_decision?.structure.type ?? section.period?.structure?.structure_type ?? null
+    section.period?.trinity_decision?.structure.standard_candidate ??
+      section.period?.trinity_decision?.structure.type ??
+      section.period?.structure?.structure_type ??
+      null
   );
 
   return {
@@ -193,42 +195,6 @@ function enrichStructureSignalTag(
       ],
     },
   };
-}
-
-function resolvePreferredBreakthroughTag(
-  periodTag?: SignalTag,
-  decisionTag?: SignalTag
-): SignalTag | undefined {
-  if (!periodTag) {
-    return decisionTag;
-  }
-
-  if (!decisionTag) {
-    return periodTag;
-  }
-
-  return periodTag.tone === 'neutral' ? decisionTag : periodTag;
-}
-
-function buildPeriodSummarySignalTags(section: AnalysisPeriodSection) {
-  const periodTags = buildPeriodSignalTags(section.period);
-  const decisionTags = buildDecisionSignalTags(section.period?.trinity_decision);
-  const fallbackStructureTag = buildStructureSummaryTag(section);
-  const tags = [
-    periodTags.find((tag) => tag.key === 'divergence') ?? decisionTags.find((tag) => tag.key === 'divergence'),
-    resolvePreferredBreakthroughTag(
-      periodTags.find((tag) => tag.key === 'breakthrough'),
-      decisionTags.find((tag) => tag.key === 'breakthrough')
-    ),
-    periodTags.find((tag) => tag.key === 'spacetime') ?? decisionTags.find((tag) => tag.key === 'spacetime'),
-    decisionTags.find((tag) => tag.key === 'volume') ?? periodTags.find((tag) => tag.key === 'volume'),
-    decisionTags.find((tag) => tag.key === 'moving_average') ?? periodTags.find((tag) => tag.key === 'moving_average'),
-    decisionTags.find((tag) => tag.key === 'structure') ?? fallbackStructureTag,
-    decisionTags.find((tag) => tag.key === 'level_nesting') ?? periodTags.find((tag) => tag.key === 'level_nesting'),
-    decisionTags.find((tag) => tag.key === 'execution') ?? periodTags.find((tag) => tag.key === 'execution'),
-  ].filter((tag): tag is SignalTag => Boolean(tag));
-
-  return tags.map((tag) => enrichStructureSignalTag(section, tag));
 }
 
 function resolveLevelLabel(level?: string | null) {
@@ -286,10 +252,10 @@ function resolvePeriodGuardrail(section: AnalysisPeriodSection) {
   const decision = section.period?.trinity_decision;
 
   return (
+    decision?.judgment?.critical_reason ??
     decision?.wait_state?.reason ??
     decision?.execution.position_sizing.reason ??
     section.period?.structure?.execution?.wait_reason ??
-    decision?.judgment?.critical_reason ??
     '暂无明确风控约束'
   );
 }
@@ -367,7 +333,9 @@ function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
   const decision = section.period?.trinity_decision ?? undefined;
   const judgmentLabel = resolveJudgmentLabel(decision);
   const relationLabel = resolveRelationLabel(section.period?.trinity_decision?.level_nesting);
-  const signalTags = buildPeriodSummarySignalTags(section);
+  const signalTags = buildPeriodSummarySignalTags(section.period).map((tag) =>
+    enrichStructureSignalTag(section, tag)
+  );
   const executionPreview = buildExecutionPreview(decision);
   const hasSignalTags = signalTags.length > 0;
 

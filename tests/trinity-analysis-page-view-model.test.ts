@@ -391,6 +391,35 @@ test('summary prefers backend judgment critical reason and execution plan', () =
   assert.match(vm.summary.executionSummary, /30分钟回抽确认后加仓/);
 });
 
+test('summary prefers candidate structure label and current leg over legacy structure copy', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.candidate_structure = {
+    candidate_type: 'A延续',
+    candidate_label: 'A延续候选',
+    current_leg: 'a3进行中',
+    direction: 'up',
+    reason: 'live 段仍按上涨原型处理',
+    upgrade_condition: '确认 a4 后继续突破前高',
+    invalidation: '跌破 a3 起涨低点',
+  };
+  decision.structure.type = 'A五段式';
+  decision.structure.explainability.reason = '旧结构解释';
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.equal(vm.summary.structureSummary, '结构：A延续候选｜a3进行中，live 段仍按上涨原型处理');
+  assert.ok(vm.summary.signalTags.some((tag) => tag.label === '结构｜A延续候选'));
+});
+
 test('rule chain preserves failed status from judgment criteria', () => {
   const result = createResult();
   if (!result.periods.daily.trinity_decision) {
