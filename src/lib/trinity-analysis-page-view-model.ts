@@ -12,6 +12,11 @@ import {
   preferChineseText,
 } from './trinity-decision-labels.ts';
 import {
+  buildExecutionPreview,
+  resolveJudgmentLabel,
+  resolveRelationLabel,
+} from './trinity-judgment-display.ts';
+import {
   buildDecisionSignalTags,
   type TrinitySignalTag,
 } from './trinity-signal-tags.ts';
@@ -75,10 +80,16 @@ export interface AnalysisPageSummaryViewModel {
   errorMessage?: string | null;
   headline: string;
   primaryActionLabel: string;
+  judgmentLabel: string;
+  relationLabel: string;
   primaryReason: string;
   triggerLabels: string[];
   riskLabels: string[];
   guardrail: string;
+  spacetimeSummary: string;
+  structureSummary: string;
+  executionSummary: string;
+  signalTags: AnalysisPageSignalTagViewModel[];
   hardGateTitle: string;
   hardGateSourceLabel: string;
   hardGates: AnalysisPageSummaryGate[];
@@ -131,6 +142,8 @@ export interface AnalysisPageTradingCombinationViewModel {
   direction: DirectionTone;
   directionLabel: string;
   actionLabel: string;
+  judgmentLabel: string;
+  relationLabel: string;
   relationHint: string;
   summary: string;
   recommendation: string;
@@ -433,15 +446,11 @@ function buildCombinationSignalTags(
   major: TrinityDecision | null,
   minor: TrinityDecision | null
 ): AnalysisPageSignalTagViewModel[] {
-  const majorTags = buildDecisionSignalTags(major, { max: 3 });
-  if (majorTags.length >= 3) {
-    return majorTags;
-  }
-
-  const minorTags = buildDecisionSignalTags(minor, { max: 3 }).filter(
+  const majorTags = buildDecisionSignalTags(major);
+  const minorTags = buildDecisionSignalTags(minor).filter(
     (tag) => !majorTags.some((majorTag) => majorTag.key === tag.key && majorTag.label === tag.label)
   );
-  return [...majorTags, ...minorTags].slice(0, 3);
+  return [...majorTags, ...minorTags];
 }
 
 function buildCategorySignalTags(
@@ -454,14 +463,15 @@ function buildCategorySignalTags(
     spacetime: ['spacetime'],
     moving_average: ['breakthrough', 'moving_average'],
     volume: ['volume'],
+    level_nesting: ['level_nesting'],
+    execution: ['execution'],
   };
   const keys = byCategory[category];
   if (!keys) {
     return [];
   }
 
-  const selected = tags.filter((tag) => keys.includes(tag.key));
-  return selected.slice(0, 2);
+  return tags.filter((tag) => keys.includes(tag.key));
 }
 
 function buildStructureRuleSummary(decision: TrinityDecision): string {
@@ -768,6 +778,27 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
   ];
 }
 
+function buildSpacetimeSummary(decision: TrinityDecision): string {
+  const detail = resolveChineseReason(
+    [decision.spacetime.mismatch_reason, decision.spacetime.divergence_policy.reason],
+    '继续等待时空共振确认'
+  );
+  return `时空：${decision.spacetime.status}，${detail}`;
+}
+
+function buildStructureSummary(decision: TrinityDecision): string {
+  const detail = resolveChineseReason(
+    [decision.structure.explainability.reason, decision.conclusion.wait_reason],
+    '继续等待结构确认'
+  );
+  return `结构：${decision.structure.type}，${detail}`;
+}
+
+function buildExecutionSummary(decision: TrinityDecision): string {
+  const preview = buildExecutionPreview(decision);
+  return `现在怎么做：先看${compactTriggerText(preview.probeEntry)}，确认看${compactTriggerText(preview.confirmEntry)}，失效看${compactTriggerText(preview.invalidation)}`;
+}
+
 function buildSummary(
   decision: TrinityDecision,
   hardGateDecision: TrinityDecision,
@@ -791,10 +822,16 @@ function buildSummary(
     errorMessage,
     headline: preferChineseText(readySummary?.headline, actionLabel),
     primaryActionLabel: actionLabel,
+    judgmentLabel: resolveJudgmentLabel(decision),
+    relationLabel: resolveRelationLabel(decision.level_nesting),
     primaryReason: resolveChineseReason([readySummary?.primary_reason, backendReason], backendReason),
     triggerLabels: preferChineseList(readySummary?.triggers, decision.execution.triggers),
     riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
     guardrail: resolveChineseReason([readySummary?.guardrail, backendReason], backendReason),
+    spacetimeSummary: buildSpacetimeSummary(decision),
+    structureSummary: buildStructureSummary(decision),
+    executionSummary: buildExecutionSummary(decision),
+    signalTags: buildDecisionSignalTags(decision),
     hardGateTitle: '主策略硬门控',
     hardGateSourceLabel: primaryLevelSourceLabel(
       hardGateDecision,
@@ -876,6 +913,8 @@ function buildCombination({
     direction,
     directionLabel,
     actionLabel: statusMeta.label,
+    judgmentLabel: resolveJudgmentLabel(minor ?? major ?? undefined),
+    relationLabel: resolveRelationLabel(minor?.level_nesting ?? major?.level_nesting),
     relationHint: `${majorLabel}看背景，${minorLabel}看执行`,
     summary: buildCombinationSummary(majorLevel, minorLevel, major, minor),
     recommendation: buildCombinationRecommendation(majorLevel, major, minor),

@@ -228,8 +228,15 @@ test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chai
   assert.equal(vm.summary.mode, 'idle');
   assert.equal(vm.summary.headline, '等待');
   assert.equal(vm.summary.primaryActionLabel, '等待');
+  assert.equal(vm.summary.judgmentLabel, '严格等待');
+  assert.equal(vm.summary.relationLabel, '父级强冲突，子级逆父级');
+  assert.match(vm.summary.spacetimeSummary, /^时空：/);
+  assert.match(vm.summary.structureSummary, /^结构：/);
+  assert.match(vm.summary.executionSummary, /^现在怎么做：先看/);
   assert.deepEqual(vm.summary.triggerLabels, ['重新站上平台上沿']);
   assert.equal(vm.summary.guardrail, '等待 C 结构边界确认');
+  assert.ok(vm.summary.signalTags.some((tag) => tag.label === '级别｜子级逆势'));
+  assert.ok(vm.summary.signalTags.some((tag) => tag.label === '执行｜回踩执行'));
   assert.equal(vm.summary.hardGates[0].label, '后端最终动作');
   assert.equal(vm.summary.hardGates[0].value, '等待');
   assert.equal(vm.bus.dimensions.length, 3);
@@ -801,12 +808,20 @@ test('view model exposes concise summaries and hover payloads for combinations a
 
   assert.ok(shortline);
   assert.ok(structureRule);
+  assert.equal(shortline.judgmentLabel, '严格等待');
+  assert.equal(shortline.relationLabel, '父级强冲突，子级逆父级');
   assert.equal(shortline.summary, '日线还没完全放行，30分钟先看确认');
   assert.equal(shortline.recommendation, '先等重新站上平台上沿');
-  assert.deepEqual(
-    shortline.signalTags.map((tag) => tag.label).slice(0, 3),
-    ['时空｜中偏强', '突破/跌破｜有效突破', '量能｜突破量弱']
-  );
+  assert.deepEqual(shortline.signalTags.map((tag) => tag.label), [
+    '时空｜中偏强',
+    '突破/跌破｜有效突破',
+    '量能｜突破量弱',
+    '均线｜MA55支撑',
+    '结构｜A五段式',
+    '级别｜子级逆势',
+    '执行｜回踩执行',
+    '执行｜等待触发',
+  ]);
   assert.equal(shortline.parentConstraint.hoverTitle, '父级约束说明');
   assert.equal(shortline.parentConstraint.hoverItems[0].label, '这句话是什么意思');
   assert.match(shortline.parentConstraint.hoverItems[1].value, /等待 C 结构边界确认|结构边界未触发/);
@@ -873,8 +888,8 @@ test('non-structure rule hover basis and signal tags stay category-safe', () => 
 
   assert.ok(levelRule);
   assert.ok(executionRule);
-  assert.deepEqual(levelRule.signalTags, []);
-  assert.deepEqual(executionRule.signalTags, []);
+  assert.deepEqual(levelRule.signalTags.map((tag) => tag.label), ['级别｜子级逆势']);
+  assert.deepEqual(executionRule.signalTags.map((tag) => tag.label), ['执行｜回踩执行']);
   assert.doesNotMatch(levelRule.detailHover.items[4].value, /结构证据：五段式成立/);
   assert.doesNotMatch(executionRule.detailHover.items[4].value, /结构证据：五段式成立/);
   assert.match(levelRule.detailHover.items[4].value, /父级未放行|级别权限|父子级别/);
