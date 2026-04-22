@@ -108,6 +108,11 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
         self.assertFalse(decision['moving_average']['ma_gate']['allow_short'])
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
         self.assertEqual(decision['execution']['entry_style'], 'pullback')
+        self.assertIn('candidate_structure', decision)
+        self.assertIn('wait_state', decision)
+        self.assertIn('judgment', decision)
+        self.assertIn('execution_plan', decision)
+        self.assertEqual(decision['judgment']['label'], '严格等待')
 
     def test_build_trinity_decision_keeps_hour30_level_value(self) -> None:
         decision = self.analyzer._build_trinity_decision(
