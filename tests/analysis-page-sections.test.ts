@@ -494,6 +494,7 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
                 ma_status: '站上MA55',
               },
               trinity_decision: {
+                version: 'v2',
                 level: 'daily',
               conclusion: {
                 action: 'wait',
@@ -519,9 +520,14 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
                 },
               },
               structure: {
+                family: 'standard',
                 type: 'C单平台式',
                 qualification: 'standard',
-                direction: 'flat',
+                direction: 'neutral',
+                boundaries: {},
+                node_map: {},
+                can_trade_by_structure_nodes: false,
+                can_trade_by_boundaries: true,
                 explainability: { status: 'passed', reason: 'C平台成立', evidence: [] },
               },
               moving_average: {
@@ -562,6 +568,7 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
               trade_qualification: {
                 position_permission: 'light_probe',
                 trade_mode: 'wait_confirmation',
+                confidence: 'medium',
                 reason: ['等待确认'],
               },
               level_nesting: {
@@ -578,6 +585,7 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
                 },
               },
               judgment_criteria: [],
+              ai_summary_facts: [],
             },
             structure: {
               structure_type: 'C单平台式',
@@ -598,6 +606,7 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
                   prediction_alert: '等待平台边界确认',
                   key_price_levels: [],
                   confidence: 'medium',
+                  action_hint: '等待平台边界确认',
                 },
               },
             },
@@ -673,6 +682,7 @@ test('AnalysisPeriodDetails prefers period breakthrough risk over broader decisi
               is_valid: false,
             },
             trinity_decision: {
+              version: 'v2',
               level: 'hour30',
               conclusion: {
                 action: 'wait',
@@ -698,9 +708,14 @@ test('AnalysisPeriodDetails prefers period breakthrough risk over broader decisi
                 },
               },
               structure: {
+                family: 'standard',
                 type: 'C单平台式',
                 qualification: 'standard',
-                direction: 'flat',
+                direction: 'neutral',
+                boundaries: {},
+                node_map: {},
+                can_trade_by_structure_nodes: false,
+                can_trade_by_boundaries: true,
                 explainability: { status: 'passed', reason: 'C平台成立', evidence: [] },
               },
               moving_average: {
@@ -741,9 +756,11 @@ test('AnalysisPeriodDetails prefers period breakthrough risk over broader decisi
               trade_qualification: {
                 position_permission: 'light_probe',
                 trade_mode: 'wait_confirmation',
+                confidence: 'medium',
                 reason: ['等待确认'],
               },
               judgment_criteria: [],
+              ai_summary_facts: [],
             },
             structure: {
               structure_type: 'C单平台式',

@@ -1,6 +1,3 @@
-import path from 'node:path';
-import { pathToFileURL } from 'node:url';
-
 import { StructureExplainabilityPanel } from '@/components/stock/StructureExplainabilityPanel';
 import { SignalTagList } from '@/components/stock/SignalTagList';
 import { Badge } from '@/components/ui/badge';
@@ -8,6 +5,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
 import type { PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
 import { normalizeStructureDisplayText } from '@/lib/structure-explainability-view-model';
+import {
+  buildExecutionPreview,
+  resolveJudgmentLabel,
+  resolveRelationLabel,
+} from '@/lib/trinity-judgment-display';
 import {
   buildDecisionSignalTags,
   buildPeriodSignalTags,
@@ -19,16 +21,6 @@ import {
   getStructureTagMeta,
 } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
-
-const judgmentDisplayModule = await import(
-  pathToFileURL(path.resolve(process.cwd(), 'src/lib/trinity-judgment-display.ts')).href
-);
-
-const {
-  buildExecutionPreview,
-  resolveJudgmentLabel,
-  resolveRelationLabel,
-} = judgmentDisplayModule;
 
 export interface AnalysisPeriodSection {
   key: string;
@@ -349,10 +341,11 @@ function LabelList({
 function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
   const direction = resolvePeriodDirection(section);
   const directionMeta = getDirectionMeta(direction);
-  const judgmentLabel = resolveJudgmentLabel(section.period?.trinity_decision);
+  const decision = section.period?.trinity_decision ?? undefined;
+  const judgmentLabel = resolveJudgmentLabel(decision);
   const relationLabel = resolveRelationLabel(section.period?.trinity_decision?.level_nesting);
   const signalTags = buildPeriodSummarySignalTags(section);
-  const executionPreview = buildExecutionPreview(section.period?.trinity_decision);
+  const executionPreview = buildExecutionPreview(decision);
   const hasSignalTags = signalTags.length > 0;
 
   return (

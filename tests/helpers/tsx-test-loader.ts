@@ -277,6 +277,10 @@ async function rewriteImports(code: string, filePath?: string): Promise<string> 
       specifier: '@/lib/trinity-signal-tags',
       target: path.resolve(process.cwd(), 'src/lib/trinity-signal-tags.ts'),
     },
+    {
+      specifier: '@/lib/trinity-judgment-display',
+      target: path.resolve(process.cwd(), 'src/lib/trinity-judgment-display.ts'),
+    },
   ];
 
   for (const item of sharedLibAliases) {
