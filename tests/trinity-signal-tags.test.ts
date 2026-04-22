@@ -161,18 +161,95 @@ test('buildDecisionSignalTags includes level nesting and execution tags by defau
   );
   assert.equal(tags[5]?.key, 'level_nesting');
   assert.deepEqual(tags[5]?.hover.items, [
+    { label: '父级偏向', value: '父级偏多' },
+    { label: '共振状态', value: '子级逆势' },
     { label: '说明', value: '父级偏多但子级等待确认' },
-    { label: '先手点', value: '重新站上平台上沿' },
-    { label: '确认点', value: '回踩 MA55 不破' },
-    { label: '失效点', value: '跌回平台下沿' },
   ]);
+  assert.ok(tags[5]?.hover.items.every((item) => !['先手点', '确认点', '失效点'].includes(item.label)));
   assert.equal(tags[6]?.key, 'execution');
   assert.deepEqual(tags[6]?.hover.items, [
-    { label: '说明', value: '父级偏多但子级等待确认' },
+    { label: '说明', value: '等待 C 结构边界确认' },
     { label: '先手点', value: '重新站上平台上沿' },
     { label: '确认点', value: '回踩 MA55 不破' },
     { label: '失效点', value: '跌回平台下沿' },
   ]);
+});
+
+test('buildDecisionSignalTags maps boundary entry style to explicit execution label', () => {
+  const tags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      conclusion: {
+        action: 'hold',
+        action_label: '持有',
+        bias: 'bullish',
+        confidence: 'medium',
+        can_trade: true,
+      },
+      execution: {
+        entry_style: 'boundary',
+        triggers: ['等待平台边界确认'],
+        invalidation: ['边界失效'],
+        confirmation: ['边界确认后再执行'],
+        position_sizing: { max_ratio: 0.3, reason: '按边界执行' },
+        risk_flags: ['边界失败重新等待'],
+      },
+    })
+  );
+
+  assert.equal(tags.at(-1)?.key, 'execution');
+  assert.equal(tags.at(-1)?.label, '执行｜边界执行');
+  assert.deepEqual(tags.at(-1)?.hover.items, [
+    { label: '说明', value: '按边界执行' },
+    { label: '先手点', value: '等待平台边界确认' },
+    { label: '确认点', value: '边界确认后再执行' },
+    { label: '失效点', value: '边界失效' },
+  ]);
+});
+
+test('buildDecisionSignalTags keeps parent bias hover labels in Chinese across branches', () => {
+  const bearishTags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      level_nesting: {
+        parent_level: 'weekly',
+        child_level: 'daily',
+        parent_bias: 'bearish',
+        child_signal: 'short',
+        resonance: 'conflict',
+        permission: {
+          allow_position_increase: false,
+          allow_t_trade: true,
+          allow_only_light_probe: true,
+          reason: '父级偏空，子级仍需确认',
+        },
+      },
+    })
+  );
+  const neutralTags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      level_nesting: {
+        parent_level: 'weekly',
+        child_level: 'daily',
+        parent_bias: 'neutral',
+        child_signal: 'wait',
+        resonance: 'parent_unclear',
+        permission: {
+          allow_position_increase: false,
+          allow_t_trade: false,
+          allow_only_light_probe: false,
+          reason: '父级方向不明',
+        },
+      },
+    })
+  );
+  const fallbackTags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      level_nesting: undefined,
+    })
+  );
+
+  assert.equal(bearishTags[5]?.hover.items[0]?.value, '父级偏空');
+  assert.equal(neutralTags[5]?.hover.items[0]?.value, '父级中性');
+  assert.ok(!fallbackTags.some((tag) => tag.key === 'level_nesting'));
 });
 
 test('buildPeriodSignalTags combines period signals into capped tags', () => {
@@ -238,6 +315,13 @@ test('buildPeriodSignalTags falls back to neutral tone when valid breakthrough d
 
   assert.equal(missingDirectionTags[1]?.tone, 'neutral');
   assert.equal(unknownDirectionTags[1]?.tone, 'neutral');
+});
+
+test('buildPeriodSignalTags applies max after keeping period ordering stable', () => {
+  const tags = signalTags.buildPeriodSignalTags(createPeriod(), { max: 2 });
+
+  assert.deepEqual(tags.map((tag) => tag.key), ['divergence', 'breakthrough']);
+  assert.deepEqual(tags.map((tag) => tag.label), ['背离｜顶背离', '突破/跌破｜假突破风险']);
 });
 
 test('buildPeriodSignalTags falls back hover items to conclusion when no structured items remain', () => {

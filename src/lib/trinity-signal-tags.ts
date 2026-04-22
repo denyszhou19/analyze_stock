@@ -293,11 +293,28 @@ function levelNestingTone(
   }
 }
 
+function parentBiasLabel(
+  parentBias?: TrinityLevelNestingDecision['parent_bias']
+): string {
+  switch (parentBias) {
+    case 'bullish':
+      return '父级偏多';
+    case 'bearish':
+      return '父级偏空';
+    case 'neutral':
+      return '父级中性';
+    default:
+      return '父级未明';
+  }
+}
+
 function executionLabel(
   entryStyle?: TrinityDecision['execution']['entry_style'],
   canTrade?: boolean
 ): string {
   switch (entryStyle) {
+    case 'boundary':
+      return '边界执行';
     case 'pullback':
       return '回踩执行';
     case 'breakout':
@@ -335,10 +352,21 @@ function executionTone(
 
 function buildExecutionHoverItems(decision: TrinityDecision): Array<{ label: string; value?: string | null }> {
   return [
-    { label: '说明', value: decision.level_nesting?.permission.reason ?? decision.conclusion.wait_reason },
+    { label: '说明', value: decision.execution.position_sizing.reason ?? decision.conclusion.wait_reason },
     { label: '先手点', value: decision.execution.triggers[0] },
     { label: '确认点', value: decision.execution.confirmation[0] },
     { label: '失效点', value: decision.execution.invalidation[0] },
+  ];
+}
+
+function buildLevelNestingHoverItems(
+  decision: TrinityDecision
+): Array<{ label: string; value?: string | null }> {
+  const levelNesting = decision.level_nesting;
+  return [
+    { label: '父级偏向', value: parentBiasLabel(levelNesting?.parent_bias) },
+    { label: '共振状态', value: levelNestingLabel(levelNesting?.resonance) },
+    { label: '说明', value: levelNesting?.permission.reason ?? decision.conclusion.wait_reason },
   ];
 }
 
@@ -380,7 +408,7 @@ export function buildDecisionSignalTags(
       '级别',
       levelNestingLabel(decision.level_nesting?.resonance),
       levelNestingTone(decision.level_nesting?.resonance, decision.level_nesting?.parent_bias),
-      buildExecutionHoverItems(decision)
+      buildLevelNestingHoverItems(decision)
     ),
     buildTag(
       'execution',
