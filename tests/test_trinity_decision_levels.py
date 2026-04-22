@@ -238,6 +238,8 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'standard_node_trade')
         self.assertEqual(decision['trade_qualification']['position_permission'], 'half_position')
         self.assertEqual(decision['execution']['entry_style'], 'pullback_confirm')
+        self.assertEqual(decision['judgment']['level'], 'confirmed_execute')
+        self.assertEqual(decision['judgment']['current_best_action'], 'sell')
 
     def test_build_trinity_decision_keeps_position_sizing_details_and_boundary_consistency(self) -> None:
         decision = self.analyzer._build_trinity_decision(

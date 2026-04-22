@@ -84,6 +84,7 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
         )
 
         self.assertEqual(decision['candidate_structure']['candidate_label'], 'A延续候选')
+        self.assertEqual(decision['candidate_structure']['candidate_type'], 'A延续')
         self.assertEqual(decision['candidate_structure']['current_leg'], 'a3→live 上行形成中')
         self.assertEqual(decision['wait_state']['wait_type'], '等待回抽确认')
         self.assertEqual(decision['wait_state']['next_confirmation_action'], '观察30分钟回抽不破 MA55')

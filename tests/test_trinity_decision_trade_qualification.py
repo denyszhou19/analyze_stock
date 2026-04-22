@@ -191,6 +191,8 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(decision['trade_qualification']['position_permission'], 'light_probe')
         self.assertTrue(decision['conclusion']['can_trade'])
         self.assertEqual(decision['conclusion']['action'], 'buy')
+        self.assertEqual(decision['judgment']['level'], 'confirmed_execute')
+        self.assertEqual(decision['judgment']['current_best_action'], 'buy')
 
     def test_standard_node_trade_requires_volume_gate_support(self) -> None:
         decision = self.analyzer._build_trinity_trade_qualification(

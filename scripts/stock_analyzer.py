@@ -3840,11 +3840,17 @@ class TrinityStockAnalyzer:
             return None
 
         candidate_type_map = {
-            ('A', 'up'): 'trend_continuation',
-            ('A', 'down'): 'trend_correction',
-            ('B', 'neutral'): 'double_platform',
-            ('C', 'neutral'): 'single_platform',
-            ('D', 'down'): 'downtrend_continuation',
+            ('A', 'up'): 'A延续',
+            ('A', 'down'): 'A修正',
+            ('B', 'up'): 'B',
+            ('B', 'down'): 'B',
+            ('B', 'neutral'): 'B',
+            ('C', 'up'): 'C',
+            ('C', 'down'): 'C',
+            ('C', 'neutral'): 'C',
+            ('D', 'down'): 'D延续',
+            ('D', 'up'): 'D反抽',
+            ('D', 'neutral'): 'D',
         }
         candidate_label_map = {
             ('A', 'up'): 'A延续候选',
@@ -4079,29 +4085,18 @@ class TrinityStockAnalyzer:
         hard_block = bool((resonance_state or {}).get('is_hard_constraint')) or (
             (divergence_weight or {}).get('status') == 'hard_block'
         )
-        position_permission = trade_qualification.get('position_permission')
-        confirmation_list = execution_payload.get('confirmation') if isinstance(execution_payload, dict) else None
-        confirmation_list = confirmation_list if isinstance(confirmation_list, list) else []
-
         if hard_block or trade_qualification.get('trade_mode') in {'wait_confirmation', 'no_trade'}:
             level = 'strict_wait'
             label = '严格等待'
-            current_best_action = (wait_state or {}).get('next_confirmation_action') or '继续等待'
-        elif position_permission in {'light_probe', 't_trade_only'}:
-            level = 'candidate_probe'
-            label = '候选可试'
-            if confirmation_list:
-                current_best_action = f"轻仓试探，等待{confirmation_list[0]}后再加仓"
-            else:
-                current_best_action = '轻仓试探'
-        else:
+            current_best_action = '继续等待'
+        elif execution_payload.get('can_trade') and not wait_state:
             level = 'confirmed_execute'
             label = '确认执行'
-            current_best_action = (
-                execution_payload.get('rationale')
-                or (confirmation_list[0] if confirmation_list else None)
-                or '按计划执行'
-            )
+            current_best_action = execution_payload.get('action') or 'wait'
+        else:
+            level = 'candidate_probe'
+            label = '候选可试'
+            current_best_action = '轻仓试'
 
         supporting_factors = [
             item for item in [
