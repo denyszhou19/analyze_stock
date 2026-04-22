@@ -108,6 +108,11 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
         self.assertFalse(decision['moving_average']['ma_gate']['allow_short'])
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
         self.assertEqual(decision['execution']['entry_style'], 'pullback')
+        self.assertIn('candidate_structure', decision)
+        self.assertIn('wait_state', decision)
+        self.assertIn('judgment', decision)
+        self.assertIn('execution_plan', decision)
+        self.assertEqual(decision['judgment']['label'], '严格等待')
 
     def test_build_trinity_decision_keeps_hour30_level_value(self) -> None:
         decision = self.analyzer._build_trinity_decision(
@@ -233,6 +238,79 @@ class TrinityDecisionLevelsTest(unittest.TestCase):
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'standard_node_trade')
         self.assertEqual(decision['trade_qualification']['position_permission'], 'half_position')
         self.assertEqual(decision['execution']['entry_style'], 'pullback_confirm')
+        self.assertEqual(decision['judgment']['level'], 'confirmed_execute')
+        self.assertEqual(decision['judgment']['current_best_action'], 'sell')
+
+    def test_neutral_divergence_reason_does_not_override_confirmed_execute_critical_reason(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour60',
+            structure_payload={
+                'structure_type': 'A五段式',
+                'structure_stage': '上涨延续',
+                'trend_direction': '上涨',
+                'description': '执行条件满足，但没有有效背离约束',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                        'summary': '标准多头结构',
+                        'qualification_reason': 'A 原型成立',
+                    },
+                    'spacetime_gate': {
+                        'parent_status': '中偏强',
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'structure_readiness': 'ready',
+                        'wait_reason': None,
+                        'required_confirmation': None,
+                    },
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'standard_qualification': 'standard',
+                        'qualification_reason': 'A 原型成立',
+                    },
+                    'explainability': {
+                        'a4_price': 21.6,
+                    },
+                },
+            },
+            macd_payload={
+                'status': '中偏强',
+                'top_divergence': False,
+                'bottom_divergence': False,
+            },
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={
+                'pattern_type': '突破确认',
+                'direction': 'up',
+                'is_valid': True,
+            },
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'pullback_confirm',
+                'trigger': ['回踩后买入'],
+                'invalidation': ['跌破确认低点'],
+                'confirmation': ['放量继续上攻'],
+                'position_sizing': {'initial': '20%-30%'},
+                'risk_flags': ['执行中注意量价节奏'],
+                'rationale': '结构节点存在，执行条件满足',
+            },
+            level_nesting_payload=None,
+            period_payload={'volume_ratio_5': 1.2, 'volume_ratio_20': 1.1, 'amount_ratio_20': 1.05},
+        )
+
+        self.assertEqual(decision['divergence_weight']['status'], 'neutral')
+        self.assertEqual(decision['judgment']['level'], 'confirmed_execute')
+        self.assertEqual(decision['judgment']['critical_reason'], '结构节点存在，执行条件满足')
+        self.assertNotEqual(decision['judgment']['critical_reason'], '沿用现有 MACD 背离字段')
 
     def test_build_trinity_decision_keeps_position_sizing_details_and_boundary_consistency(self) -> None:
         decision = self.analyzer._build_trinity_decision(

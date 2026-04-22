@@ -111,6 +111,32 @@ function structureLabel(type?: string | null): string {
   return cleaned.endsWith('类') ? cleaned.slice(0, -1) : cleaned;
 }
 
+function structureTagResult(decision?: TrinityDecision | null): string {
+  const candidateLabel = cleanText(decision?.candidate_structure?.candidate_label);
+  if (candidateLabel) {
+    return candidateLabel;
+  }
+
+  return structureLabel(decision?.structure.type);
+}
+
+function buildStructureHoverItems(decision: TrinityDecision): Array<{ label: string; value?: string | null }> {
+  const candidateStructure = decision.candidate_structure;
+  if (candidateStructure?.candidate_label) {
+    return [
+      { label: '当前阶段', value: candidateStructure.current_leg },
+      { label: '说明', value: candidateStructure.reason ?? decision.structure.explainability.reason },
+      { label: '升级条件', value: candidateStructure.upgrade_condition },
+      { label: '失效条件', value: candidateStructure.invalidation },
+    ];
+  }
+
+  return [
+    { label: '解释', value: decision.structure.explainability.reason },
+    ...decision.structure.explainability.evidence.map((item) => ({ label: '证据', value: item })),
+  ];
+}
+
 function maRoleLabel(role?: TrinityDecision['moving_average']['ma55_role']): string {
   if (role === 'support') {
     return 'MA55支撑';
@@ -219,6 +245,52 @@ function divergenceTone(label: string): SignalTagTone {
     return 'bullish';
   }
   return 'neutral';
+}
+
+function zeroAxisTone(
+  impact?: NonNullable<TrinityDecision['zero_axis_signal']>['impact_on_judgment'],
+  fallback: SignalTagTone = 'neutral'
+): SignalTagTone {
+  if (impact === 'promote') {
+    return 'bullish';
+  }
+  if (impact === 'suppress') {
+    return 'warning';
+  }
+  return fallback;
+}
+
+function divergenceDecisionTone(
+  divergenceWeight?: TrinityDecision['divergence_weight']
+): SignalTagTone {
+  if (divergenceWeight?.status === 'supportive') {
+    return 'bullish';
+  }
+  if (divergenceWeight?.status === 'neutral') {
+    return 'neutral';
+  }
+  if (divergenceWeight) {
+    return 'bearish';
+  }
+  return 'neutral';
+}
+
+function resolveExecutionPreview(decision: TrinityDecision): {
+  probeEntry: string;
+  confirmEntry: string;
+  invalidation: string;
+} {
+  return {
+    probeEntry: decision.execution_plan?.probe_entry ?? decision.execution.triggers[0] ?? '继续等待触发',
+    confirmEntry:
+      decision.execution_plan?.confirm_entry ??
+      decision.execution.confirmation[0] ??
+      '等待进一步确认',
+    invalidation:
+      decision.execution_plan?.invalidation ??
+      decision.execution.invalidation[0] ??
+      '若条件失效则取消',
+  };
 }
 
 function normalizeBreakthroughPatternType(patternType?: string | null): string {
@@ -351,11 +423,21 @@ function executionTone(
 }
 
 function buildExecutionHoverItems(decision: TrinityDecision): Array<{ label: string; value?: string | null }> {
+  const preview = resolveExecutionPreview(decision);
+
   return [
-    { label: '说明', value: decision.execution.position_sizing.reason ?? decision.conclusion.wait_reason },
-    { label: '先手点', value: decision.execution.triggers[0] },
-    { label: '确认点', value: decision.execution.confirmation[0] },
-    { label: '失效点', value: decision.execution.invalidation[0] },
+    {
+      label: '说明',
+      value:
+        decision.execution_plan?.current_position_action ??
+        decision.judgment?.current_best_action ??
+        decision.wait_state?.reason ??
+        decision.execution.position_sizing.reason ??
+        decision.conclusion.wait_reason,
+    },
+    { label: '先手点', value: preview.probeEntry },
+    { label: '确认点', value: preview.confirmEntry },
+    { label: '失效点', value: preview.invalidation },
   ];
 }
 
@@ -370,6 +452,17 @@ function buildLevelNestingHoverItems(
   ];
 }
 
+function buildFallbackStructureTag(period?: PeriodAnalysisData | null): TrinitySignalTag | null {
+  const structureType = cleanText(period?.structure?.structure_type);
+  if (!structureType) {
+    return null;
+  }
+
+  return buildTag('structure', '结构', structureLabel(structureType), 'neutral', [
+    { label: '解释', value: period?.structure?.description },
+  ]);
+}
+
 export function buildDecisionSignalTags(
   decision?: TrinityDecision | null,
   options?: BuildSignalTagOptions
@@ -379,13 +472,36 @@ export function buildDecisionSignalTags(
   }
 
   const tags = [
-    buildTag('spacetime', '时空', decision.spacetime.status, decision.spacetime.direction_bias, [
-      {
-        label: '结构匹配',
-        value: decision.spacetime.structure_match ? '时空与结构匹配' : decision.spacetime.mismatch_reason,
-      },
-      { label: '背离策略', value: decision.spacetime.divergence_policy.reason },
-    ]),
+    buildTag(
+      'spacetime',
+      '时空',
+      decision.zero_axis_signal?.signal_label ?? decision.spacetime.status,
+      zeroAxisTone(decision.zero_axis_signal?.impact_on_judgment, decision.spacetime.direction_bias),
+      [
+        {
+          label: '说明',
+          value: decision.zero_axis_signal?.reason ?? decision.spacetime.divergence_policy.reason,
+        },
+        decision.zero_axis_signal
+          ? {
+              label: '信号状态',
+              value: decision.zero_axis_signal.formed ? '零轴强信号已形成' : '零轴强信号尚未形成',
+            }
+          : {
+              label: '结构匹配',
+              value: decision.spacetime.structure_match ? '时空与结构匹配' : decision.spacetime.mismatch_reason,
+            },
+      ]
+    ),
+    buildTag(
+      'divergence',
+      '背离',
+      decision.divergence_weight?.label ?? divergenceLabel(decision.spacetime.divergence_policy.reason),
+      decision.divergence_weight
+        ? divergenceDecisionTone(decision.divergence_weight)
+        : divergenceTone(divergenceLabel(decision.spacetime.divergence_policy.reason)),
+      [{ label: '说明', value: decision.divergence_weight?.reason ?? decision.spacetime.divergence_policy.reason }]
+    ),
     buildTag(
       'breakthrough',
       '突破/跌破',
@@ -399,10 +515,7 @@ export function buildDecisionSignalTags(
     buildTag('moving_average', '均线', maRoleLabel(decision.moving_average.ma55_role), maRoleTone(decision.moving_average.ma55_role), [
       { label: '说明', value: decision.moving_average.ma_gate.reason },
     ]),
-    buildTag('structure', '结构', structureLabel(decision.structure.type), 'neutral', [
-      { label: '解释', value: decision.structure.explainability.reason },
-      ...decision.structure.explainability.evidence.map((item) => ({ label: '证据', value: item })),
-    ]),
+    buildTag('structure', '结构', structureTagResult(decision), 'neutral', buildStructureHoverItems(decision)),
     buildTag(
       'level_nesting',
       '级别',
@@ -420,6 +533,40 @@ export function buildDecisionSignalTags(
   ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
 
   return applyMax(sortSignalTags(tags), options);
+}
+
+export function buildPeriodSummarySignalTags(
+  period?: PeriodAnalysisData | null,
+  options?: BuildSignalTagOptions
+): TrinitySignalTag[] {
+  if (!period) {
+    return [];
+  }
+
+  const periodTags = buildPeriodSignalTags(period);
+  const decisionTags = buildDecisionSignalTags(period.trinity_decision);
+  const tags = [
+    decisionTags.find((tag) => tag.key === 'divergence') ?? periodTags.find((tag) => tag.key === 'divergence'),
+    (() => {
+      const periodTag = periodTags.find((tag) => tag.key === 'breakthrough');
+      const decisionTag = decisionTags.find((tag) => tag.key === 'breakthrough');
+      if (!periodTag) {
+        return decisionTag;
+      }
+      if (!decisionTag) {
+        return periodTag;
+      }
+      return periodTag.tone === 'neutral' ? decisionTag : periodTag;
+    })(),
+    periodTags.find((tag) => tag.key === 'spacetime') ?? decisionTags.find((tag) => tag.key === 'spacetime'),
+    decisionTags.find((tag) => tag.key === 'volume') ?? periodTags.find((tag) => tag.key === 'volume'),
+    decisionTags.find((tag) => tag.key === 'moving_average') ?? periodTags.find((tag) => tag.key === 'moving_average'),
+    decisionTags.find((tag) => tag.key === 'structure') ?? buildFallbackStructureTag(period),
+    decisionTags.find((tag) => tag.key === 'level_nesting') ?? periodTags.find((tag) => tag.key === 'level_nesting'),
+    decisionTags.find((tag) => tag.key === 'execution') ?? periodTags.find((tag) => tag.key === 'execution'),
+  ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
+
+  return applyMax(tags, options);
 }
 
 export function buildPeriodSignalTags(
@@ -445,9 +592,22 @@ export function buildPeriodSignalTags(
     buildTag(
       'spacetime',
       '时空',
-      period.trinity_decision?.spacetime.status ?? period.macd?.status,
-      period.trinity_decision?.spacetime.direction_bias ?? 'neutral',
-      [{ label: '说明', value: period.macd?.description }]
+      period.trinity_decision?.zero_axis_signal?.signal_label ??
+        period.trinity_decision?.spacetime.status ??
+        period.macd?.status,
+      zeroAxisTone(
+        period.trinity_decision?.zero_axis_signal?.impact_on_judgment,
+        period.trinity_decision?.spacetime.direction_bias ?? 'neutral'
+      ),
+      [
+        {
+          label: '说明',
+          value:
+            period.trinity_decision?.zero_axis_signal?.reason ??
+            period.macd?.description ??
+            period.trinity_decision?.spacetime.divergence_policy.reason,
+        },
+      ]
     ),
   ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
 

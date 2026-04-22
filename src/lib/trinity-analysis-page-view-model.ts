@@ -438,7 +438,7 @@ function buildCombinationRecommendation(
     return `先等${LEVEL_LABELS[majorLevel]}数据补齐`;
   }
 
-  const primaryTrigger = compactTriggerText(minor?.execution.triggers?.[0] ?? major.execution.triggers?.[0]);
+  const primaryTrigger = minor ? resolvePrimaryTriggerText(minor) : resolvePrimaryTriggerText(major);
   return `先等${primaryTrigger}`;
 }
 
@@ -508,6 +508,9 @@ function buildRuleDetailHover(
         '当前限制',
         resolveChineseReason(
           [
+            decision.wait_state?.current_block,
+            decision.wait_state?.reason,
+            decision.judgment?.critical_reason,
             decision.conclusion.wait_reason,
             decision.trade_qualification.reason?.[0],
             decision.execution.position_sizing.reason,
@@ -517,7 +520,10 @@ function buildRuleDetailHover(
       ),
       createHoverItem(
         '下一步条件',
-        formatList([...decision.execution.triggers, ...decision.execution.confirmation], '继续等待下一步信号')
+        formatList(
+          [...resolveDecisionTriggerLabels(decision), ...resolveDecisionConfirmationLabels(decision)],
+          '继续等待下一步信号'
+        )
       ),
       createHoverItem(
         '判定依据',
@@ -780,13 +786,30 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
 
 function buildSpacetimeSummary(decision: TrinityDecision): string {
   const detail = resolveChineseReason(
-    [decision.spacetime.mismatch_reason, decision.spacetime.divergence_policy.reason],
+    [
+      decision.zero_axis_signal?.reason,
+      decision.divergence_weight?.reason,
+      decision.spacetime.mismatch_reason,
+      decision.spacetime.divergence_policy.reason,
+    ],
     '继续等待时空共振确认'
   );
-  return `时空：${decision.spacetime.status}，${detail}`;
+  return `时空：${decision.zero_axis_signal?.signal_label ?? decision.spacetime.status}，${detail}`;
 }
 
 function buildStructureSummary(decision: TrinityDecision): string {
+  const candidateStructure = decision.candidate_structure;
+  if (candidateStructure?.candidate_label) {
+    const structureLabel = [candidateStructure.candidate_label, candidateStructure.current_leg]
+      .filter(Boolean)
+      .join('｜');
+    const detail = resolveChineseReason(
+      [candidateStructure.reason, decision.structure.explainability.reason],
+      '继续等待结构确认'
+    );
+    return `结构：${structureLabel}，${detail}`;
+  }
+
   const detail = resolveChineseReason(
     [decision.structure.explainability.reason],
     '继续等待结构确认'
@@ -796,7 +819,106 @@ function buildStructureSummary(decision: TrinityDecision): string {
 
 function buildExecutionSummary(decision: TrinityDecision): string {
   const preview = buildExecutionPreview(decision);
-  return `现在怎么做：先看${compactTriggerText(preview.probeEntry)}，确认看${compactTriggerText(preview.confirmEntry)}，失效看${compactTriggerText(preview.invalidation)}`;
+  const probeEntry = decision.execution_plan?.probe_entry ?? compactTriggerText(preview.probeEntry);
+  const confirmEntry = decision.execution_plan?.confirm_entry ?? compactTriggerText(preview.confirmEntry);
+  const invalidation = decision.execution_plan?.invalidation ?? compactTriggerText(preview.invalidation);
+
+  return `现在怎么做：先看${probeEntry}，确认看${confirmEntry}，失效看${invalidation}`;
+}
+
+function resolveDecisionTriggerLabels(decision?: TrinityDecision | null): string[] {
+  if (!decision) {
+    return [];
+  }
+
+  const phase2Triggers = [
+    decision.execution_plan?.probe_entry,
+    decision.execution_plan?.confirm_entry,
+    decision.wait_state?.next_confirmation_action,
+  ].filter((item): item is string => Boolean(item));
+
+  if (phase2Triggers.length > 0) {
+    return phase2Triggers;
+  }
+
+  return decision.execution.triggers;
+}
+
+function resolvePrimaryTriggerText(decision?: TrinityDecision | null): string {
+  const primaryTrigger = resolveDecisionTriggerLabels(decision).at(0);
+  if (!primaryTrigger) {
+    return '等待确认信号';
+  }
+
+  if (
+    decision?.execution_plan?.probe_entry ||
+    decision?.execution_plan?.confirm_entry ||
+    decision?.wait_state?.next_confirmation_action
+  ) {
+    return normalizeRuleChainText(primaryTrigger) || '等待确认信号';
+  }
+
+  return compactTriggerText(primaryTrigger);
+}
+
+function resolveDecisionConfirmationLabels(decision?: TrinityDecision | null): string[] {
+  if (!decision) {
+    return [];
+  }
+
+  const phase2Confirmations = [
+    decision.execution_plan?.confirm_entry,
+    decision.wait_state?.next_confirmation_action,
+  ].filter((item): item is string => Boolean(item));
+
+  if (phase2Confirmations.length > 0) {
+    return phase2Confirmations;
+  }
+
+  return decision.execution.confirmation;
+}
+
+function resolveDecisionInvalidationLabels(decision?: TrinityDecision | null): string[] {
+  if (!decision) {
+    return [];
+  }
+
+  if (decision.execution_plan?.invalidation) {
+    return [decision.execution_plan.invalidation];
+  }
+
+  return decision.execution.invalidation;
+}
+
+function resolveDecisionRiskLabels(decision?: TrinityDecision | null): string[] {
+  if (!decision) {
+    return [];
+  }
+
+  if (decision.execution_plan?.invalidation) {
+    return [decision.execution_plan.invalidation];
+  }
+
+  return decision.execution.risk_flags;
+}
+
+function resolveDecisionActionReason(decision?: TrinityDecision | null): string {
+  if (!decision) {
+    return '';
+  }
+
+  const phase2ActionReason = [
+    decision.execution_plan?.current_position_action,
+    decision.wait_state?.reason,
+    decision.wait_state?.current_block,
+    decision.judgment?.critical_reason,
+  ].filter((item): item is string => Boolean(item));
+
+  if (phase2ActionReason.length > 0) {
+    return phase2ActionReason.join('｜');
+  }
+
+  return decision.execution.position_sizing.reason;
 }
 
 function buildSummary(
@@ -812,6 +934,8 @@ function buildSummary(
     decision.conclusion.action_label
   );
   const backendReason = resolveChineseReason([
+    decision.judgment?.critical_reason,
+    decision.wait_state?.current_block,
     decision.conclusion.wait_reason,
     decision.trade_qualification.reason[0],
     decision.execution.position_sizing.reason,
@@ -825,8 +949,8 @@ function buildSummary(
     judgmentLabel: resolveJudgmentLabel(decision),
     relationLabel: resolveRelationLabel(decision.level_nesting),
     primaryReason: resolveChineseReason([readySummary?.primary_reason, backendReason], backendReason),
-    triggerLabels: preferChineseList(readySummary?.triggers, decision.execution.triggers),
-    riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
+    triggerLabels: preferChineseList(readySummary?.triggers, resolveDecisionTriggerLabels(decision)),
+    riskLabels: preferChineseList(readySummary?.risks, resolveDecisionRiskLabels(decision)),
     guardrail: resolveChineseReason([readySummary?.guardrail, backendReason], backendReason),
     spacetimeSummary: buildSpacetimeSummary(decision),
     structureSummary: buildStructureSummary(decision),
@@ -892,6 +1016,9 @@ function buildCombination({
   const parentConstraintValue = major
     ? `${majorLabel}：${resolveChineseReason(
         [
+          major.wait_state?.current_block,
+          major.wait_state?.reason,
+          major.judgment?.critical_reason,
           major.conclusion.wait_reason,
           major.trade_qualification.reason[0],
           major.execution.position_sizing.reason,
@@ -902,8 +1029,14 @@ function buildCombination({
   const suitableActionValue = minor
     ? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
     : '等待数据补齐';
-  const majorRiskValue = minor?.execution.risk_flags?.[0] ?? major?.execution.risk_flags?.[0] ?? '暂无明确风险';
-  const triggerValue = minor?.execution.triggers?.[0] ?? major?.execution.triggers?.[0] ?? `${minorLabel}等待触发`;
+  const majorRiskValue =
+    resolveDecisionRiskLabels(minor).at(0) ??
+    resolveDecisionRiskLabels(major).at(0) ??
+    '暂无明确风险';
+  const triggerValue =
+    (minor ? resolvePrimaryTriggerText(minor) : '') ||
+    (major ? resolvePrimaryTriggerText(major) : '') ||
+    `${minorLabel}等待触发`;
 
   return {
     key,
@@ -930,6 +1063,9 @@ function buildCombination({
           major
             ? resolveChineseReason(
                 [
+                  major.wait_state?.current_block,
+                  major.wait_state?.reason,
+                  major.judgment?.critical_reason,
                   major.conclusion.wait_reason,
                   major.trade_qualification.reason[0],
                   major.execution.position_sizing.reason,
@@ -944,13 +1080,13 @@ function buildCombination({
         ),
         createHoverItem(
           '下一步条件',
-          major ? formatList(major.execution.triggers, '等待父级确认信号') : `先补齐${majorLabel}主判定`
+          major ? formatList(resolveDecisionTriggerLabels(major), '等待父级确认信号') : `先补齐${majorLabel}主判定`
         ),
       ],
     }),
     triggerLevel: buildExplainableField({
       label: '触发级别',
-      value: `${minorLabel}：${compactTriggerText(triggerValue)}`,
+      value: `${minorLabel}：${triggerValue}`,
       hoverTitle: '触发级别说明',
       hoverItems: [
         createHoverItem('这句话是什么意思', `${minorLabel}负责给出更具体的执行触发。`),
@@ -958,7 +1094,7 @@ function buildCombination({
         createHoverItem('当前限制', major ? parentConstraintValue : `${majorLabel}缺失`),
         createHoverItem(
           '下一步条件',
-          minor ? formatList(minor.execution.confirmation, '等待更明确确认') : `先补齐${minorLabel}主判定`
+          minor ? formatList(resolveDecisionConfirmationLabels(minor), '等待更明确确认') : `先补齐${minorLabel}主判定`
         ),
       ],
     }),
@@ -969,9 +1105,17 @@ function buildCombination({
       hoverTitle: '适合动作说明',
       hoverItems: [
         createHoverItem('这句话是什么意思', '这是在当前父子级别约束下更适合采用的动作。'),
-        createHoverItem('为什么这么判断', minor?.execution.position_sizing.reason ?? major?.execution.position_sizing.reason),
+        createHoverItem('为什么这么判断', resolveDecisionActionReason(minor) || resolveDecisionActionReason(major)),
         createHoverItem('当前限制', parentConstraintValue),
-        createHoverItem('下一步条件', formatList(minor?.execution.triggers ?? major?.execution.triggers, '等待进一步确认')),
+        createHoverItem(
+          '下一步条件',
+          formatList(
+            resolveDecisionTriggerLabels(minor).length > 0
+              ? resolveDecisionTriggerLabels(minor)
+              : resolveDecisionTriggerLabels(major),
+            '等待进一步确认'
+          )
+        ),
       ],
     }),
     majorRisk: buildExplainableField({
@@ -980,9 +1124,25 @@ function buildCombination({
       hoverTitle: '主要风险说明',
       hoverItems: [
         createHoverItem('这句话是什么意思', '这是当前组合最需要优先防守的风险点。'),
-        createHoverItem('为什么这么判断', formatList(minor?.execution.risk_flags ?? major?.execution.risk_flags, majorRiskValue)),
+        createHoverItem(
+          '为什么这么判断',
+          formatList(
+            resolveDecisionRiskLabels(minor).length > 0
+              ? resolveDecisionRiskLabels(minor)
+              : resolveDecisionRiskLabels(major),
+            majorRiskValue
+          )
+        ),
         createHoverItem('当前限制', parentConstraintValue),
-        createHoverItem('下一步条件', formatList(minor?.execution.invalidation ?? major?.execution.invalidation, '等待失效条件明确')),
+        createHoverItem(
+          '下一步条件',
+          formatList(
+            resolveDecisionInvalidationLabels(minor).length > 0
+              ? resolveDecisionInvalidationLabels(minor)
+              : resolveDecisionInvalidationLabels(major),
+            '等待失效条件明确'
+          )
+        ),
       ],
     }),
     explanation: `${majorLabel}定约束，${minorLabel}给触发；${statusMeta.tradeMeaning}`,
@@ -1077,8 +1237,10 @@ function buildGlobalStrategy({
     actionLabel: primaryCombination.actionLabel,
     headline: `${primaryCombination.label}｜${structureMeta.label}｜${primaryCombination.directionLabel}${primaryCombination.actionLabel}`,
     primaryReason: explanation.reason,
-    triggerLabels: triggerDecision?.execution.triggers ?? [],
-    riskLabels: triggerDecision?.execution.risk_flags ?? constraintDecision?.execution.risk_flags ?? [],
+    triggerLabels: resolveDecisionTriggerLabels(triggerDecision),
+    riskLabels: resolveDecisionRiskLabels(triggerDecision).length
+      ? resolveDecisionRiskLabels(triggerDecision)
+      : resolveDecisionRiskLabels(constraintDecision),
     guardrail: resolveChineseReason(
       [
         constraintDecision?.conclusion.wait_reason,
@@ -1300,12 +1462,13 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
         });
       }
 
+      const executionPreview = buildExecutionPreview(decision);
       const detail = normalizeExecutionDetail(
-        `${decision.execution.entry_style}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
+        `${decision.execution.entry_style}｜触发：${formatList(resolveDecisionTriggerLabels(decision), executionPreview.probeEntry)}｜失效：${formatList(resolveDecisionInvalidationLabels(decision), executionPreview.invalidation)}`
       );
-      const reason = normalizeRuleChainText(decision.execution.position_sizing.reason);
+      const reason = normalizeRuleChainText(resolveDecisionActionReason(decision));
       const basis = normalizeRuleChainText(
-        `${decision.execution.position_sizing.reason}｜触发：${formatList(decision.execution.triggers)}｜失效：${formatList(decision.execution.invalidation)}`
+        `${resolveDecisionActionReason(decision)}｜触发：${formatList(resolveDecisionTriggerLabels(decision), executionPreview.probeEntry)}｜确认：${formatList(resolveDecisionConfirmationLabels(decision), executionPreview.confirmEntry)}｜失效：${formatList(resolveDecisionInvalidationLabels(decision), executionPreview.invalidation)}`
       );
       return decorateRuleChainItem({
         title,
@@ -1314,7 +1477,7 @@ function buildRuleChain(decision: TrinityDecision): AnalysisPageViewModel['ruleC
         detail,
         reason,
         summary: detail,
-        recommendation: `先等${compactTriggerText(decision.execution.triggers[0])}`,
+        recommendation: `先等${resolvePrimaryTriggerText(decision)}`,
         signalTags: buildCategorySignalTags(category, decision),
         detailHover: buildRuleDetailHover(title, detail, detail, reason, decision, basis),
       });

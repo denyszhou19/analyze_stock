@@ -252,6 +252,77 @@ test('buildDecisionSignalTags keeps parent bias hover labels in Chinese across b
   assert.ok(!fallbackTags.some((tag) => tag.key === 'level_nesting'));
 });
 
+test('buildDecisionSignalTags exposes zero-axis and divergence decisions from phase2 blocks', () => {
+  const tags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      zero_axis_signal: {
+        formed: true,
+        signal_type: 'zero_axis_golden_cross',
+        signal_label: '零轴金叉',
+        reason: '零轴附近快速金叉',
+        impact_on_judgment: 'promote',
+      },
+      divergence_weight: {
+        status: 'suppressive',
+        label: '顶背离压制',
+        reason: '顶背离仍在压制',
+        impact_on_judgment: 'suppress',
+      },
+    })
+  );
+
+  assert.ok(tags.some((tag) => tag.label === '时空｜零轴金叉'));
+  assert.ok(tags.some((tag) => tag.label === '背离｜顶背离压制'));
+});
+
+test('buildDecisionSignalTags prefers candidate structure label and hover details from phase2 block', () => {
+  const tags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      candidate_structure: {
+        candidate_type: 'A延续',
+        candidate_label: 'A延续候选',
+        current_leg: 'a3进行中',
+        direction: 'up',
+        reason: 'live 段仍按上涨原型处理',
+        upgrade_condition: '确认 a4 后继续突破前高',
+        invalidation: '跌破 a3 起涨低点',
+      },
+    })
+  );
+
+  const structureTag = tags.find((tag) => tag.key === 'structure');
+  assert.ok(structureTag);
+  assert.equal(structureTag.label, '结构｜A延续候选');
+  assert.ok(structureTag.hover.items.some((item) => item.label === '当前阶段' && item.value === 'a3进行中'));
+  assert.ok(
+    structureTag.hover.items.some((item) => item.label === '升级条件' && item.value === '确认 a4 后继续突破前高')
+  );
+});
+
+test('buildPeriodSummarySignalTags prefers phase2 divergence weight over legacy macd divergence note', () => {
+  const tags = signalTags.buildPeriodSummarySignalTags(
+    createPeriod({
+      macd: {
+        status: '中偏弱',
+        description: '动能转弱',
+        divergence_note: '注意顶背离',
+      },
+      trinity_decision: createDecision({
+        divergence_weight: {
+          status: 'neutral',
+          label: '无背离压制',
+          reason: '当前未检测到顶底背离',
+          impact_on_judgment: 'neutral',
+        },
+      }),
+    })
+  );
+
+  const divergenceTag = tags.find((tag) => tag.key === 'divergence');
+  assert.ok(divergenceTag);
+  assert.equal(divergenceTag.label, '背离｜无背离压制');
+});
+
 test('buildPeriodSignalTags combines period signals into capped tags', () => {
   const tags = signalTags.buildPeriodSignalTags(createPeriod(), { max: 4 });
 

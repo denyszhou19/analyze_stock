@@ -6,6 +6,10 @@ import type {
 export type JudgmentLabel = '严格等待' | '候选可试' | '确认执行';
 
 export function resolveJudgmentLabel(decision?: TrinityDecision): JudgmentLabel {
+  if (decision?.judgment?.label) {
+    return decision.judgment.label;
+  }
+
   if (!decision) {
     return '严格等待';
   }
@@ -55,8 +59,14 @@ export function buildExecutionPreview(decision?: TrinityDecision): {
   invalidation: string;
 } {
   return {
-    probeEntry: decision?.execution?.triggers[0] ?? '继续等待触发',
-    confirmEntry: decision?.execution?.confirmation[0] ?? '等待进一步确认',
-    invalidation: decision?.execution?.invalidation[0] ?? '若条件失效则取消',
+    probeEntry: decision?.execution_plan?.probe_entry ?? decision?.execution?.triggers[0] ?? '继续等待触发',
+    confirmEntry:
+      decision?.execution_plan?.confirm_entry ??
+      decision?.execution?.confirmation[0] ??
+      '等待进一步确认',
+    invalidation:
+      decision?.execution_plan?.invalidation ??
+      decision?.execution?.invalidation[0] ??
+      '若条件失效则取消',
   };
 }

@@ -3812,6 +3812,354 @@ class TrinityStockAnalyzer:
             'risk_flags': execution_payload.get('risk_flags') or [],
         }
 
+    def _build_trinity_candidate_structure_decision(
+        self,
+        *,
+        structure_payload: Dict[str, Any],
+        execution_payload: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        interpretation = structure_payload.get('interpretation') if isinstance(structure_payload, dict) else {}
+        interpretation = interpretation or {}
+        focus_structure = interpretation.get('focus_structure') or {}
+        current_leg = interpretation.get('current_leg') or {}
+        next_confirmation = interpretation.get('next_confirmation') or {}
+        gate = interpretation.get('spacetime_gate') or {}
+        family = str(focus_structure.get('archetype_family') or '').strip()
+        trend_direction = (
+            {'上涨': 'up', '下跌': 'down', '震荡': 'neutral'}
+            .get(structure_payload.get('trend_direction'))
+        )
+        direction = (
+            current_leg.get('direction')
+            or focus_structure.get('directional_bias')
+            or trend_direction
+            or 'neutral'
+        )
+        direction = direction if direction in {'up', 'down'} else 'neutral'
+        if not family:
+            return None
+
+        candidate_type_map = {
+            ('A', 'up'): 'A延续',
+            ('A', 'down'): 'A修正',
+            ('B', 'up'): 'B',
+            ('B', 'down'): 'B',
+            ('B', 'neutral'): 'B',
+            ('C', 'up'): 'C',
+            ('C', 'down'): 'C',
+            ('C', 'neutral'): 'C',
+            ('D', 'down'): 'D延续',
+            ('D', 'up'): 'D反抽',
+            ('D', 'neutral'): 'D',
+        }
+        candidate_label_map = {
+            ('A', 'up'): 'A延续候选',
+            ('A', 'down'): 'A修正候选',
+            ('B', 'up'): 'B候选',
+            ('B', 'down'): 'B候选',
+            ('B', 'neutral'): 'B候选',
+            ('C', 'up'): 'C候选',
+            ('C', 'down'): 'C候选',
+            ('C', 'neutral'): 'C候选',
+            ('D', 'down'): 'D延续候选',
+            ('D', 'up'): 'D反抽候选',
+            ('D', 'neutral'): 'D候选',
+        }
+        invalidation_list = execution_payload.get('invalidation') if isinstance(execution_payload, dict) else None
+        invalidation_list = invalidation_list if isinstance(invalidation_list, list) else []
+
+        return {
+            'candidate_type': candidate_type_map.get((family, direction), family),
+            'candidate_label': candidate_label_map.get((family, direction), f'{family}候选'),
+            'current_leg': current_leg.get('label') or '待确认',
+            'direction': direction,
+            'reason': (
+                focus_structure.get('summary')
+                or structure_payload.get('description')
+                or '候选结构待确认'
+            ),
+            'upgrade_condition': (
+                next_confirmation.get('trigger')
+                or gate.get('required_confirmation')
+                or '等待下一确认动作'
+            ),
+            'invalidation': invalidation_list[0] if invalidation_list else '若关键边界失效则取消候选',
+        }
+
+    def _build_trinity_wait_state_decision(
+        self,
+        *,
+        structure_payload: Dict[str, Any],
+        execution_payload: Dict[str, Any],
+        trade_qualification: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        interpretation = structure_payload.get('interpretation') if isinstance(structure_payload, dict) else {}
+        interpretation = interpretation or {}
+        gate = interpretation.get('spacetime_gate') or {}
+        next_confirmation = interpretation.get('next_confirmation') or {}
+        confirmation_list = execution_payload.get('confirmation') if isinstance(execution_payload, dict) else None
+        confirmation_list = confirmation_list if isinstance(confirmation_list, list) else []
+        wait_reason = execution_payload.get('wait_reason') or gate.get('wait_reason')
+        if not wait_reason and trade_qualification.get('trade_mode') != 'wait_confirmation':
+            return None
+
+        if '父级' in str(wait_reason or ''):
+            wait_type = '父级未放行'
+        elif '量能' in str(wait_reason or ''):
+            wait_type = '等待量能确认'
+        elif '回抽' in str(wait_reason or ''):
+            wait_type = '等待回抽确认'
+        else:
+            wait_type = '等待触发'
+
+        return {
+            'wait_type': wait_type,
+            'wait_label': wait_type,
+            'current_block': wait_reason or '等待下一确认信号',
+            'next_confirmation_action': (
+                gate.get('required_confirmation')
+                or next_confirmation.get('trigger')
+                or (confirmation_list[0] if confirmation_list else None)
+                or '继续观察下一确认动作'
+            ),
+            'reason': wait_reason or '当前仍处于等待状态',
+        }
+
+    def _build_trinity_zero_axis_signal_decision(
+        self,
+        macd_payload: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        macd_payload = macd_payload if isinstance(macd_payload, dict) else {}
+        explicit = macd_payload.get('zero_axis_signal')
+        description_candidates = [
+            macd_payload.get('description'),
+            macd_payload.get('divergence_note'),
+            macd_payload.get('note'),
+        ]
+        description = ' '.join(str(item) for item in description_candidates if item)
+
+        signal_type = None
+        reason = None
+        formed = False
+        if isinstance(explicit, dict) and explicit.get('formed'):
+            formed = True
+            signal_type = explicit.get('signal_type')
+            reason = explicit.get('reason')
+        elif '零轴金叉' in description:
+            formed = True
+            signal_type = 'zero_axis_golden_cross'
+            reason = description
+        elif '零轴死叉' in description:
+            formed = True
+            signal_type = 'zero_axis_death_cross'
+            reason = description
+        elif '二次金叉' in description or '二次死叉' in description:
+            formed = True
+            signal_type = 'secondary_confirmation'
+            reason = description
+        elif '失败' in description and '零轴' in description:
+            signal_type = 'formation_failure'
+            reason = description
+
+        if not signal_type:
+            return None
+
+        signal_label_map = {
+            'zero_axis_golden_cross': '零轴金叉',
+            'zero_axis_death_cross': '零轴死叉',
+            'secondary_confirmation': '二次确认',
+            'formation_failure': '信号失败',
+            'zero_axis_pullback': '零轴上方回抽',
+        }
+        impact = (
+            'promote'
+            if signal_type in {'zero_axis_golden_cross', 'secondary_confirmation', 'zero_axis_pullback'}
+            else 'suppress'
+        )
+        return {
+            'formed': formed,
+            'signal_type': signal_type,
+            'signal_label': signal_label_map.get(signal_type, signal_type),
+            'reason': reason or '零轴强信号已触发',
+            'impact_on_judgment': impact,
+        }
+
+    def _build_trinity_resonance_state_decision(
+        self,
+        *,
+        level_nesting_decision: Optional[Dict[str, Any]],
+        moving_average_decision: Dict[str, Any],
+        volume_decision: Dict[str, Any],
+    ) -> Dict[str, Any]:
+        nesting = level_nesting_decision if isinstance(level_nesting_decision, dict) else {}
+        resonance = nesting.get('resonance')
+        permission = nesting.get('permission') or {}
+        if resonance == 'aligned':
+            return {
+                'status': 'supportive',
+                'reason': permission.get('reason') or '父级支持，子级顺父级',
+                'impact_on_judgment': 'promote',
+                'is_hard_constraint': False,
+            }
+        if resonance in {'child_countertrend', 'conflict'}:
+            return {
+                'status': 'conflicting',
+                'reason': permission.get('reason') or '父级强冲突，子级逆父级',
+                'impact_on_judgment': 'suppress',
+                'is_hard_constraint': True,
+            }
+
+        ma_reason = ((moving_average_decision.get('ma_gate') or {}).get('reason')) or '均线暂未额外放行'
+        volume_reason = ((volume_decision.get('volume_gate') or {}).get('reason')) or '量能暂未额外放行'
+        return {
+            'status': 'neutral',
+            'reason': f'{ma_reason}；{volume_reason}',
+            'impact_on_judgment': 'neutral',
+            'is_hard_constraint': False,
+        }
+
+    def _build_trinity_divergence_weight_decision(
+        self,
+        *,
+        spacetime_decision: Dict[str, Any],
+        conclusion_bias: str,
+    ) -> Dict[str, Any]:
+        divergence = spacetime_decision.get('divergence_policy') or {}
+        top = bool(divergence.get('top_divergence_valid'))
+        bottom = bool(divergence.get('bottom_divergence_valid'))
+        reason = divergence.get('reason') or '沿用现有 MACD 背离字段'
+
+        if conclusion_bias == 'bullish' and top:
+            return {
+                'status': 'hard_block',
+                'label': '顶背离压制',
+                'reason': reason,
+                'impact_on_judgment': 'suppress',
+            }
+        if conclusion_bias == 'bearish' and bottom:
+            return {
+                'status': 'hard_block',
+                'label': '底背离压制',
+                'reason': reason,
+                'impact_on_judgment': 'suppress',
+            }
+        if bottom:
+            return {
+                'status': 'supportive',
+                'label': '底背离加分',
+                'reason': reason,
+                'impact_on_judgment': 'promote',
+            }
+        if top:
+            return {
+                'status': 'suppressive',
+                'label': '顶背离压制',
+                'reason': reason,
+                'impact_on_judgment': 'suppress',
+            }
+        return {
+            'status': 'neutral',
+            'label': '背离影响中性',
+            'reason': reason,
+            'impact_on_judgment': 'neutral',
+        }
+
+    def _build_trinity_judgment_decision(
+        self,
+        *,
+        trade_qualification: Dict[str, Any],
+        execution_payload: Dict[str, Any],
+        wait_state: Optional[Dict[str, Any]],
+        zero_axis_signal: Optional[Dict[str, Any]],
+        resonance_state: Optional[Dict[str, Any]],
+        divergence_weight: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        suppressive_divergence_reason = (
+            (divergence_weight or {}).get('reason')
+            if (divergence_weight or {}).get('impact_on_judgment') == 'suppress'
+            else None
+        )
+        critical_reason = (
+            (resonance_state or {}).get('reason')
+            if (resonance_state or {}).get('is_hard_constraint')
+            else (wait_state or {}).get('current_block')
+            or suppressive_divergence_reason
+            or execution_payload.get('rationale')
+            or execution_payload.get('wait_reason')
+            or '等待下一步确认'
+        )
+        hard_block = bool((resonance_state or {}).get('is_hard_constraint')) or (
+            (divergence_weight or {}).get('status') == 'hard_block'
+        )
+        if hard_block or trade_qualification.get('trade_mode') in {'wait_confirmation', 'no_trade'}:
+            level = 'strict_wait'
+            label = '严格等待'
+            current_best_action = '继续等待'
+        elif execution_payload.get('can_trade') and not wait_state:
+            level = 'confirmed_execute'
+            label = '确认执行'
+            current_best_action = execution_payload.get('action') or 'wait'
+        else:
+            level = 'candidate_probe'
+            label = '候选可试'
+            current_best_action = '轻仓试'
+
+        supporting_factors = [
+            item for item in [
+                (zero_axis_signal or {}).get('signal_label')
+                if (zero_axis_signal or {}).get('impact_on_judgment') == 'promote'
+                else None,
+                (resonance_state or {}).get('reason')
+                if (resonance_state or {}).get('status') == 'supportive'
+                else None,
+            ] if item
+        ]
+        limiting_factors = [
+            item for item in [
+                (wait_state or {}).get('current_block'),
+                (divergence_weight or {}).get('label')
+                if (divergence_weight or {}).get('impact_on_judgment') == 'suppress'
+                else None,
+                (resonance_state or {}).get('reason')
+                if (resonance_state or {}).get('status') == 'conflicting'
+                else None,
+            ] if item
+        ]
+
+        return {
+            'level': level,
+            'label': label,
+            'current_best_action': current_best_action,
+            'critical_reason': critical_reason,
+            'supporting_factors': supporting_factors,
+            'limiting_factors': limiting_factors,
+        }
+
+    def _build_trinity_execution_plan_decision(
+        self,
+        *,
+        execution_payload: Dict[str, Any],
+        judgment: Dict[str, Any],
+        candidate_structure: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        trigger_list = execution_payload.get('trigger') if isinstance(execution_payload, dict) else None
+        trigger_list = trigger_list if isinstance(trigger_list, list) else []
+        confirmation_list = execution_payload.get('confirmation') if isinstance(execution_payload, dict) else None
+        confirmation_list = confirmation_list if isinstance(confirmation_list, list) else []
+        invalidation_list = execution_payload.get('invalidation') if isinstance(execution_payload, dict) else None
+        invalidation_list = invalidation_list if isinstance(invalidation_list, list) else []
+        return {
+            'probe_entry': trigger_list[0] if trigger_list else '继续等待触发',
+            'confirm_entry': (
+                confirmation_list[0]
+                if confirmation_list
+                else (candidate_structure or {}).get('upgrade_condition')
+                or '等待进一步确认'
+            ),
+            'invalidation': invalidation_list[0] if invalidation_list else '若条件失效则取消',
+            'current_position_action': judgment.get('current_best_action') or '继续等待',
+        }
+
     def _build_trinity_decision(
         self,
         *,
@@ -3839,6 +4187,16 @@ class TrinityStockAnalyzer:
             level_nesting_payload,
         )
         execution_decision = self._build_trinity_execution_decision(execution_payload)
+        candidate_structure = self._build_trinity_candidate_structure_decision(
+            structure_payload=structure_payload,
+            execution_payload=execution_payload,
+        )
+        wait_state = self._build_trinity_wait_state_decision(
+            structure_payload=structure_payload,
+            execution_payload=execution_payload,
+            trade_qualification=trade_qualification,
+        )
+        zero_axis_signal = self._build_trinity_zero_axis_signal_decision(macd_payload)
 
         raw_action = execution_payload.get('action') or 'wait'
         action = raw_action
@@ -3848,22 +4206,53 @@ class TrinityStockAnalyzer:
             can_trade = False
         elif action == 'wait':
             can_trade = False
+        conclusion_bias = (
+            'bullish'
+            if execution_payload.get('direction') == 'long'
+            else 'bearish'
+            if execution_payload.get('direction') == 'short'
+            else 'neutral'
+        )
+        resonance_state = self._build_trinity_resonance_state_decision(
+            level_nesting_decision=level_nesting_payload,
+            moving_average_decision=moving_average_decision,
+            volume_decision=volume_decision,
+        )
+        divergence_weight = self._build_trinity_divergence_weight_decision(
+            spacetime_decision=spacetime_decision,
+            conclusion_bias=conclusion_bias,
+        )
+        judgment = self._build_trinity_judgment_decision(
+            trade_qualification=trade_qualification,
+            execution_payload=execution_payload,
+            wait_state=wait_state,
+            zero_axis_signal=zero_axis_signal,
+            resonance_state=resonance_state,
+            divergence_weight=divergence_weight,
+        )
+        if judgment.get('level') == 'strict_wait':
+            action = 'wait'
+            can_trade = False
+        execution_plan = self._build_trinity_execution_plan_decision(
+            execution_payload=execution_payload,
+            judgment=judgment,
+            candidate_structure=candidate_structure,
+        )
         return {
             'version': 'v2',
             'level': level,
             'conclusion': {
                 'action': action,
                 'action_label': action,
-                'bias': (
-                    'bullish'
-                    if execution_payload.get('direction') == 'long'
-                    else 'bearish'
-                    if execution_payload.get('direction') == 'short'
-                    else 'neutral'
-                ),
+                'bias': conclusion_bias,
                 'confidence': trade_qualification['confidence'],
                 'can_trade': can_trade,
-                'wait_reason': execution_payload.get('wait_reason'),
+                'wait_reason': (
+                    execution_payload.get('wait_reason')
+                    or judgment.get('critical_reason')
+                    if action == 'wait'
+                    else execution_payload.get('wait_reason')
+                ),
             },
             'structure': structure_decision,
             'spacetime': spacetime_decision,
@@ -3872,9 +4261,17 @@ class TrinityStockAnalyzer:
             'level_nesting': level_nesting_payload,
             'trade_qualification': trade_qualification,
             'execution': execution_decision,
+            'candidate_structure': candidate_structure,
+            'wait_state': wait_state,
+            'zero_axis_signal': zero_axis_signal,
+            'resonance_state': resonance_state,
+            'divergence_weight': divergence_weight,
+            'judgment': judgment,
+            'execution_plan': execution_plan,
             'judgment_criteria': [],
             'ai_summary_facts': [
                 structure_payload.get('description') or '',
+                judgment.get('critical_reason') or '',
                 execution_payload.get('rationale') or execution_payload.get('wait_reason') or '',
             ],
         }

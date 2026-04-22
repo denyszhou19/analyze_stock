@@ -777,6 +777,374 @@ test('AnalysisPeriodDetails prefers period breakthrough risk over broader decisi
   assert.doesNotMatch(html, /突破\/跌破｜突破候选/);
 });
 
+test('AnalysisPeriodDetails prefers phase2 wait and execution fields with legacy fallback preserved', async () => {
+  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
+    'src/components/stock/AnalysisPeriodDetails.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisPeriodDetails, {
+      defaultLevelKey: 'daily',
+      sections: [
+        {
+          key: 'daily',
+          label: '日线',
+          period: {
+            period: 'daily',
+            trinity_decision: {
+              version: 'v2',
+              level: 'daily',
+              conclusion: {
+                action: 'wait',
+                action_label: '等待',
+                bias: 'neutral',
+                confidence: 'medium',
+                can_trade: false,
+                wait_reason: '旧等待理由',
+              },
+              spacetime: {
+                status: '中偏强',
+                direction_bias: 'neutral',
+                expected_structures: {
+                  up: ['A五段式'],
+                  down: ['D三段式'],
+                },
+                structure_match: true,
+                mismatch_reason: null,
+                divergence_policy: {
+                  top_divergence_valid: false,
+                  bottom_divergence_valid: false,
+                  reason: '旧时空说明',
+                },
+              },
+              structure: {
+                family: 'standard',
+                type: 'A五段式',
+                qualification: 'standard',
+                direction: 'up',
+                boundaries: {},
+                node_map: {},
+                can_trade_by_structure_nodes: false,
+                can_trade_by_boundaries: true,
+                explainability: { status: 'passed', reason: 'A原型成立', evidence: [] },
+              },
+              candidate_structure: {
+                candidate_type: 'A延续',
+                candidate_label: 'A延续候选',
+                current_leg: 'a3进行中',
+                direction: 'up',
+                reason: 'live 段仍按上涨原型处理',
+                upgrade_condition: '确认 a4 后继续突破前高',
+                invalidation: '跌破 a3 起涨低点',
+              },
+              moving_average: {
+                ma55_role: 'support',
+                ma233_role: 'neutral',
+                price_position: {
+                  above_ma55: true,
+                  above_ma233: false,
+                },
+                breakthrough_state: 'breakout_pending',
+                ma_gate: {
+                  allow_long: false,
+                  allow_short: false,
+                  reason: '等待突破确认',
+                },
+              },
+              volume_confirmation: {
+                volume_state: 'normal',
+                breakout_volume: 'weak',
+                breakdown_volume: 'not_applicable',
+                pullback_volume: 'normal',
+                volume_gate: {
+                  supports_breakout: false,
+                  supports_breakdown: false,
+                  supports_pullback_confirmation: false,
+                  confidence_adjustment: 'neutral',
+                  reason: '突破量弱',
+                },
+              },
+              trade_qualification: {
+                position_permission: 'light_probe',
+                trade_mode: 'wait_confirmation',
+                confidence: 'medium',
+                reason: ['旧资格说明'],
+              },
+              execution: {
+                entry_style: 'pullback',
+                triggers: ['旧先手点'],
+                confirmation: ['旧确认点'],
+                invalidation: ['旧失效点'],
+                risk_flags: ['旧风险'],
+                position_sizing: { reason: '旧执行摘要' },
+              },
+              wait_state: {
+                wait_type: '等待回抽确认',
+                wait_label: '等待回抽确认',
+                current_block: '30分钟尚未给出回抽企稳',
+                next_confirmation_action: '观察30分钟回抽不破 MA55',
+                reason: '当前仍缺少确认回抽',
+              },
+              execution_plan: {
+                probe_entry: '15分钟止跌后轻仓试',
+                confirm_entry: '30分钟回抽确认后加仓',
+                invalidation: '跌破15分钟确认低点',
+                current_position_action: '轻仓试',
+              },
+              judgment: {
+                level: 'candidate_probe',
+                label: '候选可试',
+                current_best_action: '轻仓试',
+                critical_reason: '父级支持但30分钟仍待确认',
+                supporting_factors: ['零轴金叉'],
+                limiting_factors: ['等待回抽确认'],
+              },
+              judgment_criteria: [],
+              ai_summary_facts: [],
+            },
+            structure: {
+              structure_type: 'A五段式',
+              description: '旧结构摘要',
+            },
+          } as PeriodAnalysisData,
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /候选可试/);
+  assert.match(html, /A延续候选｜a3进行中/);
+  assert.match(html, /结构｜A延续候选/);
+  assert.doesNotMatch(html, /结构｜A五段式/);
+  assert.match(html, /观察30分钟回抽不破 MA55/);
+  assert.match(html, /父级支持但30分钟仍待确认/);
+  assert.match(html, /15分钟止跌后轻仓试/);
+  assert.match(html, /30分钟回抽确认后加仓/);
+  assert.match(html, /跌破15分钟确认低点/);
+  assert.doesNotMatch(html, /旧确认点/);
+});
+
+test('AnalysisPeriodDetails ignores legacy section summary when candidate structure is present', async () => {
+  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
+    'src/components/stock/AnalysisPeriodDetails.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisPeriodDetails, {
+      defaultLevelKey: 'daily',
+      sections: [
+        {
+          key: 'daily',
+          label: '日线',
+          summary: '旧调用方摘要',
+          period: {
+            period: 'daily',
+            trinity_decision: {
+              version: 'v2',
+              level: 'daily',
+              conclusion: {
+                action: 'wait',
+                action_label: '等待',
+                bias: 'neutral',
+                confidence: 'medium',
+                can_trade: false,
+                wait_reason: '旧等待理由',
+              },
+              spacetime: {
+                status: '中偏强',
+                direction_bias: 'neutral',
+                expected_structures: { up: ['A五段式'], down: ['D三段式'] },
+                structure_match: true,
+                mismatch_reason: null,
+                divergence_policy: {
+                  top_divergence_valid: false,
+                  bottom_divergence_valid: false,
+                  reason: '旧时空说明',
+                },
+              },
+              structure: {
+                family: 'standard',
+                type: 'A五段式',
+                qualification: 'standard',
+                direction: 'up',
+                boundaries: {},
+                node_map: {},
+                can_trade_by_structure_nodes: false,
+                can_trade_by_boundaries: true,
+                explainability: { status: 'passed', reason: 'A原型成立', evidence: [] },
+              },
+              candidate_structure: {
+                candidate_type: 'A延续',
+                candidate_label: 'A延续候选',
+                current_leg: 'a3进行中',
+                direction: 'up',
+                reason: 'live 段仍按上涨原型处理',
+                upgrade_condition: '确认 a4 后继续突破前高',
+                invalidation: '跌破 a3 起涨低点',
+              },
+              moving_average: {
+                ma55_role: 'support',
+                ma233_role: 'neutral',
+                price_position: { above_ma55: true, above_ma233: false },
+                breakthrough_state: 'breakout_pending',
+                ma_gate: {
+                  allow_long: false,
+                  allow_short: false,
+                  reason: '等待突破确认',
+                },
+              },
+              volume_confirmation: {
+                volume_state: 'normal',
+                breakout_volume: 'weak',
+                breakdown_volume: 'not_applicable',
+                pullback_volume: 'normal',
+                volume_gate: {
+                  supports_breakout: false,
+                  supports_breakdown: false,
+                  supports_pullback_confirmation: false,
+                  confidence_adjustment: 'neutral',
+                  reason: '突破量弱',
+                },
+              },
+              execution: {
+                entry_style: 'pullback',
+                triggers: ['旧先手点'],
+                confirmation: ['旧确认点'],
+                invalidation: ['旧失效点'],
+                risk_flags: ['旧风险'],
+                position_sizing: { reason: '旧执行摘要' },
+              },
+              trade_qualification: {
+                position_permission: 'light_probe',
+                trade_mode: 'wait_confirmation',
+                confidence: 'medium',
+                reason: ['旧资格说明'],
+              },
+              judgment_criteria: [],
+              ai_summary_facts: [],
+            },
+            structure: {
+              structure_type: 'A五段式',
+              description: '旧结构摘要',
+            },
+          } as PeriodAnalysisData,
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /A延续候选｜a3进行中/);
+  assert.match(html, /结构｜A延续候选/);
+  assert.doesNotMatch(html, /旧调用方摘要/);
+});
+
+test('AnalysisPeriodDetails falls back to legacy structure and guardrail when phase2 fields are absent', async () => {
+  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
+    'src/components/stock/AnalysisPeriodDetails.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisPeriodDetails, {
+      defaultLevelKey: 'daily',
+      sections: [
+        {
+          key: 'daily',
+          label: '日线',
+          period: {
+            period: 'daily',
+            trinity_decision: {
+              version: 'v2',
+              level: 'daily',
+              conclusion: {
+                action: 'wait',
+                action_label: '等待',
+                bias: 'neutral',
+                confidence: 'medium',
+                can_trade: false,
+                wait_reason: '旧等待理由',
+              },
+              spacetime: {
+                status: '中偏强',
+                direction_bias: 'neutral',
+                expected_structures: { up: ['A五段式'], down: ['D三段式'] },
+                structure_match: true,
+                mismatch_reason: null,
+                divergence_policy: {
+                  top_divergence_valid: false,
+                  bottom_divergence_valid: false,
+                  reason: '旧时空说明',
+                },
+              },
+              structure: {
+                family: 'standard',
+                type: 'A五段式',
+                qualification: 'standard',
+                direction: 'up',
+                boundaries: {},
+                node_map: {},
+                can_trade_by_structure_nodes: false,
+                can_trade_by_boundaries: true,
+                explainability: { status: 'passed', reason: '旧结构解释', evidence: [] },
+              },
+              moving_average: {
+                ma55_role: 'support',
+                ma233_role: 'neutral',
+                price_position: { above_ma55: true, above_ma233: false },
+                breakthrough_state: 'breakout_pending',
+                ma_gate: {
+                  allow_long: false,
+                  allow_short: false,
+                  reason: '等待突破确认',
+                },
+              },
+              volume_confirmation: {
+                volume_state: 'normal',
+                breakout_volume: 'weak',
+                breakdown_volume: 'not_applicable',
+                pullback_volume: 'normal',
+                volume_gate: {
+                  supports_breakout: false,
+                  supports_breakdown: false,
+                  supports_pullback_confirmation: false,
+                  confidence_adjustment: 'neutral',
+                  reason: '突破量弱',
+                },
+              },
+              trade_qualification: {
+                position_permission: 'light_probe',
+                trade_mode: 'wait_confirmation',
+                confidence: 'medium',
+                reason: ['旧资格说明'],
+              },
+              execution: {
+                entry_style: 'pullback',
+                triggers: ['旧先手点'],
+                confirmation: ['旧确认点'],
+                invalidation: ['旧失效点'],
+                risk_flags: ['旧风险'],
+                position_sizing: { reason: '旧执行摘要' },
+              },
+              judgment_criteria: [],
+              ai_summary_facts: [],
+            },
+            structure: {
+              structure_type: 'A五段式',
+              description: '旧结构摘要',
+            },
+          } as PeriodAnalysisData,
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /旧结构摘要/);
+  assert.match(html, /结构｜A五段式/);
+  assert.match(html, /旧先手点/);
+  assert.match(html, /旧确认点/);
+  assert.match(html, /旧失效点/);
+  assert.match(html, /旧执行摘要/);
+});
+
 test('AnalysisPeriodDetails falls back cleanly when period data is missing', async () => {
   const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
     'src/components/stock/AnalysisPeriodDetails.tsx'

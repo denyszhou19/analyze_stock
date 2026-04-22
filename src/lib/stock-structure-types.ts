@@ -563,6 +563,62 @@ export interface TrinityTradeQualification {
   reason: string[];
 }
 
+export interface TrinityCandidateStructureDecision {
+  candidate_type: string;
+  candidate_label: string;
+  current_leg: string;
+  direction: 'up' | 'down' | 'neutral';
+  reason: string;
+  upgrade_condition: string;
+  invalidation: string;
+}
+
+export interface TrinityWaitStateDecision {
+  wait_type: string;
+  wait_label: string;
+  current_block: string;
+  next_confirmation_action: string;
+  reason: string;
+}
+
+export interface TrinityZeroAxisSignalDecision {
+  formed: boolean;
+  signal_type: string;
+  signal_label: string;
+  reason: string;
+  impact_on_judgment: 'promote' | 'suppress' | 'neutral';
+}
+
+export interface TrinityResonanceStateDecision {
+  status: 'supportive' | 'conflicting' | 'neutral';
+  reason: string;
+  impact_on_judgment: 'promote' | 'suppress' | 'neutral';
+  is_hard_constraint: boolean;
+}
+
+export interface TrinityDivergenceWeightDecision {
+  status: 'supportive' | 'suppressive' | 'hard_block' | 'neutral';
+  label: string;
+  reason: string;
+  impact_on_judgment: 'promote' | 'suppress' | 'neutral';
+}
+
+export interface TrinityJudgmentDecision {
+  level: 'strict_wait' | 'candidate_probe' | 'confirmed_execute';
+  label: '严格等待' | '候选可试' | '确认执行';
+  current_best_action: string;
+  critical_reason: string;
+  supporting_factors: string[];
+  limiting_factors: string[];
+}
+
+export interface TrinityExecutionPlanDecision {
+  probe_entry: string;
+  confirm_entry: string;
+  invalidation: string;
+  current_position_action: string;
+}
+
 export interface TrinityExecutionDecision {
   entry_style: 'node' | 'boundary' | 'pullback' | 'breakout' | 't_trade' | 'none';
   triggers: string[];
@@ -595,6 +651,13 @@ export interface TrinityDecision {
   level_nesting?: TrinityLevelNestingDecision;
   trade_qualification: TrinityTradeQualification;
   execution: TrinityExecutionDecision;
+  candidate_structure?: TrinityCandidateStructureDecision;
+  wait_state?: TrinityWaitStateDecision;
+  zero_axis_signal?: TrinityZeroAxisSignalDecision;
+  resonance_state?: TrinityResonanceStateDecision;
+  divergence_weight?: TrinityDivergenceWeightDecision;
+  judgment?: TrinityJudgmentDecision;
+  execution_plan?: TrinityExecutionPlanDecision;
   judgment_criteria: TrinityJudgmentCriterion[];
   ai_summary_facts: string[];
 }

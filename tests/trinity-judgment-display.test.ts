@@ -154,6 +154,21 @@ test('resolveJudgmentLabel maps wait, probe, and full execution states', () => {
   assert.equal(judgmentDisplay.resolveJudgmentLabel(undefined), '严格等待');
 });
 
+test('resolveJudgmentLabel prefers backend judgment block', () => {
+  const decision = createDecision({
+    judgment: {
+      level: 'confirmed_execute',
+      label: '确认执行',
+      current_best_action: '确认后加仓',
+      critical_reason: '30分钟回抽确认已经完成',
+      supporting_factors: ['父级支持'],
+      limiting_factors: [],
+    },
+  });
+
+  assert.equal(judgmentDisplay.resolveJudgmentLabel(decision), '确认执行');
+});
+
 test('resolveRelationLabel compresses parent-child resonance into fixed short copy', () => {
   assert.equal(
     judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'child_countertrend' })),
@@ -197,4 +212,21 @@ test('buildExecutionPreview falls back when execution arrays are missing', () =>
       invalidation: '若条件失效则取消',
     }
   );
+});
+
+test('buildExecutionPreview prefers execution_plan before legacy execution arrays', () => {
+  const decision = createDecision({
+    execution_plan: {
+      probe_entry: '15分钟止跌后轻仓试',
+      confirm_entry: '30分钟回抽确认后加仓',
+      invalidation: '跌破15分钟确认低点',
+      current_position_action: '轻仓试',
+    },
+  });
+
+  assert.deepEqual(judgmentDisplay.buildExecutionPreview(decision), {
+    probeEntry: '15分钟止跌后轻仓试',
+    confirmEntry: '30分钟回抽确认后加仓',
+    invalidation: '跌破15分钟确认低点',
+  });
 });
