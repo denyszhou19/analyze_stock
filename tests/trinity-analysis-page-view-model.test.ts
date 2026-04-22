@@ -502,6 +502,99 @@ test('summary and global strategy prefer phase2 trigger and risk badges over leg
   assert.doesNotMatch(vm.globalStrategy.riskLabels.join('｜'), /30分钟旧风险/);
 });
 
+test('trading combinations and execution rule chain prefer phase2 execution copy over legacy arrays', () => {
+  const result = createResult();
+  const dailyDecision = result.periods.daily.trinity_decision;
+  if (!dailyDecision) {
+    throw new Error('missing daily decision');
+  }
+
+  dailyDecision.execution.triggers = ['日线旧触发'];
+  dailyDecision.execution.confirmation = ['日线旧确认'];
+  dailyDecision.execution.invalidation = ['日线旧失效'];
+  dailyDecision.execution.risk_flags = ['日线旧风险'];
+  dailyDecision.execution.position_sizing.reason = '日线旧执行摘要';
+  dailyDecision.execution_plan = {
+    probe_entry: '日线回抽确认后轻仓试',
+    confirm_entry: '日线放量站稳后加仓',
+    invalidation: '日线跌破确认低点',
+    current_position_action: '轻仓试',
+  };
+  dailyDecision.wait_state = {
+    wait_type: '等待回抽确认',
+    wait_label: '等待回抽确认',
+    current_block: '日线仍待回抽企稳',
+    next_confirmation_action: '观察日线回抽不破 MA55',
+    reason: '日线当前仍缺少确认回抽',
+  };
+  dailyDecision.judgment_criteria = dailyDecision.judgment_criteria.filter(
+    (criterion) => criterion.category !== 'execution'
+  );
+
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'wait',
+        action_label: '等待确认',
+        bias: 'bullish',
+        confidence: 'medium',
+        can_trade: false,
+        wait_reason: '等待 30 分钟确认触发',
+      },
+      execution: {
+        entry_style: 'pullback_confirm' as never,
+        triggers: ['30分钟旧触发'],
+        invalidation: ['30分钟旧失效'],
+        confirmation: ['30分钟旧确认'],
+        position_sizing: { max_ratio: 0.2, reason: '30分钟旧执行摘要' },
+        risk_flags: ['30分钟旧风险'],
+      },
+      execution_plan: {
+        probe_entry: '30分钟回抽确认后轻仓试',
+        confirm_entry: '30分钟放量站稳后加仓',
+        invalidation: '30分钟跌破确认低点',
+        current_position_action: '轻仓试',
+      },
+      wait_state: {
+        wait_type: '等待回抽确认',
+        wait_label: '等待回抽确认',
+        current_block: '30分钟仍待回抽企稳',
+        next_confirmation_action: '观察30分钟回抽不破 MA55',
+        reason: '30分钟当前仍缺少确认回抽',
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+  const executionRule = vm.ruleChain.items.find((item) => item.title === '执行计划');
+
+  assert.ok(shortline);
+  assert.ok(executionRule);
+  assert.equal(shortline.recommendation, '先等30分钟回抽确认后轻仓试');
+  assert.equal(shortline.triggerLevel.value, '30分钟：30分钟回抽确认后轻仓试');
+  assert.match(shortline.triggerLevel.hoverItems[1].value, /30分钟回抽确认后轻仓试/);
+  assert.match(shortline.triggerLevel.hoverItems[3].value, /30分钟放量站稳后加仓/);
+  assert.match(shortline.suitableAction.hoverItems[1].value, /轻仓试|30分钟当前仍缺少确认回抽/);
+  assert.match(shortline.suitableAction.hoverItems[3].value, /30分钟回抽确认后轻仓试/);
+  assert.equal(shortline.majorRisk.value, '30分钟跌破确认低点');
+  assert.match(executionRule.detail, /日线回抽确认后轻仓试/);
+  assert.match(executionRule.detail, /日线跌破确认低点/);
+  assert.equal(executionRule.recommendation, '先等日线回抽确认后轻仓试');
+  assert.match(executionRule.detailHover.items[4].value, /日线回抽确认后轻仓试/);
+  assert.match(executionRule.detailHover.items[4].value, /日线跌破确认低点/);
+  assert.doesNotMatch(shortline.recommendation, /30分钟旧触发/);
+  assert.doesNotMatch(shortline.majorRisk.value, /30分钟旧风险|30分钟旧失效/);
+  assert.doesNotMatch(executionRule.detail, /日线旧触发|日线旧失效/);
+});
+
 test('rule chain preserves failed status from judgment criteria', () => {
   const result = createResult();
   if (!result.periods.daily.trinity_decision) {

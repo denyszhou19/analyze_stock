@@ -4074,12 +4074,18 @@ class TrinityStockAnalyzer:
         resonance_state: Optional[Dict[str, Any]],
         divergence_weight: Optional[Dict[str, Any]],
     ) -> Dict[str, Any]:
+        suppressive_divergence_reason = (
+            (divergence_weight or {}).get('reason')
+            if (divergence_weight or {}).get('impact_on_judgment') == 'suppress'
+            else None
+        )
         critical_reason = (
             (resonance_state or {}).get('reason')
             if (resonance_state or {}).get('is_hard_constraint')
             else (wait_state or {}).get('current_block')
-            or (divergence_weight or {}).get('reason')
+            or suppressive_divergence_reason
             or execution_payload.get('rationale')
+            or execution_payload.get('wait_reason')
             or '等待下一步确认'
         )
         hard_block = bool((resonance_state or {}).get('is_hard_constraint')) or (
