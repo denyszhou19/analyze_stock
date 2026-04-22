@@ -5,6 +5,7 @@ import assert from 'node:assert/strict';
 import React from 'react';
 import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
 import type { AnalysisPageRuleChainItem } from '../src/lib/trinity-analysis-page-view-model.ts';
+import type { PeriodAnalysisData } from '../src/lib/stock-structure-types.ts';
 
 type TradingCycleBusModule = typeof import('../src/components/stock/TradingCycleBus.tsx');
 type TrinityRuleChainModule = typeof import('../src/components/stock/TrinityRuleChain.tsx');
@@ -600,7 +601,7 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
                 },
               },
             },
-          } as any,
+          } as PeriodAnalysisData,
         },
       ],
     })
@@ -608,13 +609,23 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
 
   assert.match(html, /周期详情/);
   assert.match(html, /日线/);
-  assert.match(html, /该级别简明决策/);
-  assert.match(html, /日线等待30分钟触发/);
-  assert.match(html, /先等30分钟放量突破/);
+  assert.match(html, /当前综合判断/);
+  assert.match(html, /父子关系/);
+  assert.match(html, /时空摘要/);
+  assert.match(html, /结构摘要/);
+  assert.match(html, /执行摘要/);
+  assert.match(html, /先手点/);
+  assert.match(html, /确认点/);
+  assert.match(html, /失效点/);
+  assert.match(html, /日线等待确认/);
   assert.match(html, /时空｜中偏弱/);
+  assert.match(html, /背离｜顶背离/);
   assert.match(html, /结构｜C单平台式/);
-  assert.match(html, /突破\/跌破｜突破候选/);
+  assert.match(html, /突破\/跌破｜普通突破/);
   assert.match(html, /量能｜突破量弱/);
+  assert.match(html, /均线｜MA55支撑/);
+  assert.match(html, /级别｜共振一致/);
+  assert.match(html, /执行｜回踩执行/);
   assert.match(html, /信号含义/);
   assert.match(html, /交易含义/);
   assert.match(html, /规则摘要/);
@@ -631,6 +642,7 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
   assert.match(html, /共振对象：周线 → 日线/);
   assert.match(html, /上一级：周线/);
   assert.match(html, /当前级别：日线/);
+  assert.doesNotMatch(html, /当前级别简明决策/);
   assert.doesNotMatch(html, /周期摘要/);
 });
 
@@ -737,7 +749,7 @@ test('AnalysisPeriodDetails prefers period breakthrough risk over broader decisi
               inflection_points: 6,
               description: '30分钟假突破风险正在增加',
             },
-          } as any,
+          } as PeriodAnalysisData,
         },
       ],
     })
@@ -745,4 +757,35 @@ test('AnalysisPeriodDetails prefers period breakthrough risk over broader decisi
 
   assert.match(html, /突破\/跌破｜假突破风险/);
   assert.doesNotMatch(html, /突破\/跌破｜突破候选/);
+});
+
+test('AnalysisPeriodDetails falls back cleanly when period data is missing', async () => {
+  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
+    'src/components/stock/AnalysisPeriodDetails.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisPeriodDetails, {
+      sections: [
+        {
+          key: 'daily',
+          label: '日线',
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /当前综合判断/);
+  assert.match(html, /严格等待/);
+  assert.match(html, /父级未明，子级先看确认/);
+  assert.match(html, /当前级别暂无周期数据/);
+  assert.match(html, /当前周期暂无时空状态/);
+  assert.match(html, /当前周期暂无结构证据/);
+  assert.match(html, /先手点：/);
+  assert.match(html, /继续等待触发/);
+  assert.match(html, /确认点：/);
+  assert.match(html, /等待进一步确认/);
+  assert.match(html, /失效点：/);
+  assert.match(html, /若条件失效则取消/);
+  assert.doesNotMatch(html, /signal-tags/);
 });
