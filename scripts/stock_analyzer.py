@@ -4450,6 +4450,67 @@ class TrinityStockAnalyzer:
 
         return to_point
 
+    def _build_window_extreme_focus_candidate(
+        self,
+        line_geometry: Dict[str, Any],
+    ) -> Optional[Dict[str, Any]]:
+        """Pick a visible dominant peak/valley when most of the actionable structure sits to its right."""
+        points = list((line_geometry or {}).get('points', []))
+        confirmed_points: List[Tuple[int, Dict[str, Any]]] = [
+            (index, point)
+            for index, point in enumerate(points)
+            if not point.get('is_current') and point.get('type') != 'current'
+        ]
+        if len(confirmed_points) < 8:
+            return None
+
+        def build_candidate(kind: str, candidate_index: int) -> Optional[Dict[str, Any]]:
+            if candidate_index <= 0 or candidate_index >= len(confirmed_points) - 2:
+                return None
+
+            original_index, point = confirmed_points[candidate_index]
+            right_count = len(confirmed_points) - candidate_index - 1
+            left_count = candidate_index
+            if right_count < 6 or right_count <= left_count:
+                return None
+
+            return {
+                'kind': kind,
+                'point_index': original_index,
+                'price': point.get('price'),
+                'date': point.get('date'),
+                'right_count': right_count,
+                'left_count': left_count,
+                'source_variant': 'window_extreme',
+                'reason': (
+                    '宏观原点在窗口外，检测到窗口主峰后右侧仍有独立节奏，优先从窗口主峰开始解释当前结构'
+                    if kind == 'peak_extreme'
+                    else '宏观原点在窗口外，检测到窗口主谷后右侧仍有独立节奏，优先从窗口主谷开始解释当前结构'
+                ),
+            }
+
+        prices: List[float] = []
+        for _, point in confirmed_points:
+            price = point.get('price')
+            if isinstance(price, (int, float)):
+                prices.append(float(price))
+            else:
+                return None
+
+        peak_candidate = build_candidate('peak_extreme', prices.index(max(prices)))
+        valley_candidate = build_candidate('valley_extreme', prices.index(min(prices)))
+        candidates = [candidate for candidate in (peak_candidate, valley_candidate) if candidate]
+        if not candidates:
+            return None
+
+        return max(
+            candidates,
+            key=lambda candidate: (
+                int(candidate['right_count']),
+                -int(candidate['left_count']),
+            ),
+        )
+
     def _build_focus_origin_analysis(
         self,
         valid_range: Optional[Dict[str, Any]],
@@ -4505,6 +4566,7 @@ class TrinityStockAnalyzer:
                 normalized_components.append(component.to_dict())
             elif isinstance(component, dict):
                 normalized_components.append(component)
+        prefer_window_extreme_candidate = False
         if len(normalized_components) >= 2:
             recent_component = normalized_components[-1]
             previous_component = normalized_components[-2]
@@ -4516,6 +4578,7 @@ class TrinityStockAnalyzer:
             ):
                 selected_component = previous_component
                 component_reason = '检测到平台后接推进，优先从最近平台起点开始解释当前结构'
+                prefer_window_extreme_candidate = True
             elif recent_component.get('type') == 'Platform':
                 component_reason = '检测到最近平台，优先从最近平台起点开始解释当前结构'
 
@@ -4559,12 +4622,32 @@ class TrinityStockAnalyzer:
                 'point_index': peak_point_index,
                 'price': peak_point.get('price', peak_analysis.get('peak_price')),
                 'date': peak_point.get('date'),
+                'source_variant': 'peak_analysis',
                 'reason': peak_reason,
                 'selected': False,
             })
 
+        if (
+            not peak_kind
+            and macro_origin
+            and macro_origin.get('outside_window')
+            and prefer_window_extreme_candidate
+        ):
+            visible_extreme_candidate = self._build_window_extreme_focus_candidate(line_geometry)
+            if visible_extreme_candidate:
+                candidates.append({
+                    'kind': visible_extreme_candidate['kind'],
+                    'point_index': visible_extreme_candidate['point_index'],
+                    'price': visible_extreme_candidate['price'],
+                    'date': visible_extreme_candidate['date'],
+                    'source_variant': visible_extreme_candidate.get('source_variant'),
+                    'reason': visible_extreme_candidate['reason'],
+                    'selected': False,
+                })
+
         selected_origin_kind = 'none'
         selected_point_index = None
+        selected_origin_variant = None
         explainability_status = 'failed'
         explainability_reason = '未找到可用的聚焦起点，回退到默认起点'
 
@@ -4572,6 +4655,7 @@ class TrinityStockAnalyzer:
             if candidate['kind'] in ('peak_extreme', 'valley_extreme') and candidate.get('point_index') is not None:
                 selected_origin_kind = candidate['kind']
                 selected_point_index = candidate['point_index']
+                selected_origin_variant = candidate.get('source_variant')
                 explainability_status = 'passed'
                 explainability_reason = candidate['reason']
                 candidate['selected'] = True
@@ -4582,6 +4666,7 @@ class TrinityStockAnalyzer:
                 if candidate['kind'] == 'recent_component' and candidate.get('point_index') is not None:
                     selected_origin_kind = 'recent_component'
                     selected_point_index = candidate['point_index']
+                    selected_origin_variant = candidate.get('source_variant')
                     explainability_status = 'passed'
                     explainability_reason = candidate['reason']
                     candidate['selected'] = True
@@ -4592,6 +4677,7 @@ class TrinityStockAnalyzer:
                 if candidate['kind'] == 'macro_origin':
                     selected_origin_kind = 'macro_origin'
                     selected_point_index = candidate['point_index']
+                    selected_origin_variant = candidate.get('source_variant')
                     explainability_status = 'passed'
                     explainability_reason = (
                         candidate['reason']
@@ -4606,6 +4692,7 @@ class TrinityStockAnalyzer:
             'candidates': candidates,
             'selected_origin_kind': selected_origin_kind,
             'selected_point_index': selected_point_index,
+            'selected_origin_variant': selected_origin_variant,
             'explainability_status': explainability_status,
             'explainability_reason': explainability_reason,
         }
@@ -5054,9 +5141,32 @@ class TrinityStockAnalyzer:
             inflection_count,
             focus_origin_analysis,
         )
+        if (
+            focus_origin_analysis.get('selected_origin_kind') in ('peak_extreme', 'valley_extreme')
+            and focus_origin_analysis.get('selected_origin_variant') == 'window_extreme'
+        ):
+            focus_origin_label = '峰值极点' if focus_origin_analysis.get('selected_origin_kind') == 'peak_extreme' else '谷值极点'
+            if focus_classification['standard_qualification'] == 'extended':
+                explainability_verdict = {
+                    'passed': False,
+                    'status': 'downgraded',
+                    'reason': (
+                        f'从{focus_origin_label}重新聚焦后，右侧仍超出标准点数，'
+                        '不能继续包装为延伸结构'
+                    ),
+                }
+            elif focus_classification['archetype_family'] in ('complex', 'unfinished'):
+                explainability_verdict = {
+                    'passed': False,
+                    'status': 'downgraded',
+                    'reason': (
+                        f'从{focus_origin_label}重新聚焦后，右侧仍无法稳定解释为标准结构，'
+                        '已降级为等待确认'
+                    ),
+                }
         explainability_status = explainability_verdict['status']
         explainability_reason = explainability_verdict['reason']
-        if focus_classification['standard_qualification'] == 'extended':
+        if focus_classification['standard_qualification'] == 'extended' and explainability_verdict['passed']:
             explainability_status = 'extended'
             explainability_reason = (
                 focus_classification['qualification_reason'] or explainability_reason

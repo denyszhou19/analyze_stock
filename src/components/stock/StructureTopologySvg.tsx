@@ -224,7 +224,7 @@ export function StructureTopologySvg({
             x2={segment.x2}
             y2={segment.y2}
             stroke={isProjectedSegment ? '#94a3b8' : segment.stroke}
-            strokeWidth={isCurrentSegment ? Math.max(segment.stroke_width, 3.5) : segment.stroke_width}
+            strokeWidth={segment.stroke_width}
             strokeDasharray={isProjectedSegment ? '6,4' : segment.stroke_dasharray ?? undefined}
           />
         );

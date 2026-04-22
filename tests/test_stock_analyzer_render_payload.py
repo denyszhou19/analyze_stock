@@ -118,6 +118,86 @@ def build_focus_origin_peak_regression_fixture() -> tuple[pd.DataFrame, list[dic
     )
 
 
+def build_300274_daily_focus_origin_regression_fixture() -> tuple[pd.DataFrame, list[dict], list[dict], list[dict]]:
+    prices = [
+        135.22,
+        209.88,
+        164.38,
+        192.88,
+        174.28,
+        191.60,
+        160.27,
+        185.18,
+        157.15,
+        176.56,
+        143.83,
+        159.32,
+        142.08,
+        181.99,
+        121.74,
+        142.12,
+        135.20,
+    ]
+    dates = [
+        "2025-10-13",
+        "2025-11-07",
+        "2025-11-24",
+        "2025-11-27",
+        "2025-12-04",
+        "2025-12-09",
+        "2025-12-16",
+        "2025-12-29",
+        "2026-01-13",
+        "2026-01-19",
+        "2026-01-30",
+        "2026-02-10",
+        "2026-03-02",
+        "2026-03-13",
+        "2026-04-07",
+        "2026-04-15",
+        "2026-04-20",
+    ]
+
+    valid_fractals = []
+    full_strokes = []
+    for index, (price, date) in enumerate(zip(prices, dates)):
+        valid_fractals.append(
+            {
+                "index": index,
+                "type": "bottom" if index % 2 == 0 else "top",
+                "high": round(price + 1.8, 2),
+                "low": round(price - 1.8, 2),
+                "date": date,
+            }
+        )
+
+    for index, ((from_price, from_date), (to_price, to_date)) in enumerate(
+        zip(zip(prices, dates), zip(prices[1:], dates[1:]))
+    ):
+        from_fractal = valid_fractals[index]
+        to_fractal = valid_fractals[index + 1]
+        full_strokes.append(
+            {
+                "from_date": f"{from_date} 00:00:00",
+                "to_date": f"{to_date} 00:00:00",
+                "from_price": from_price,
+                "to_price": to_price,
+                "direction": "上涨" if to_price > from_price else "下跌",
+                "length": 1,
+                "from_type": from_fractal["type"],
+                "to_type": to_fractal["type"],
+                "is_current": index == len(prices) - 2,
+            }
+        )
+
+    return (
+        build_focus_origin_recent_dataframe(),
+        full_strokes,
+        valid_fractals,
+        [dict(stroke) for stroke in full_strokes],
+    )
+
+
 class TestStockAnalyzerRenderPayload(unittest.TestCase):
     def setUp(self) -> None:
         self.analyzer = TrinityStockAnalyzer()
@@ -542,6 +622,61 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
         self.assertEqual(focus_origin_analysis["selected_origin_kind"], "recent_component")
         self.assertEqual(focus_origin_analysis["selected_point_index"], 1)
         self.assertIn("最近平台起点", focus_origin_analysis["explainability_reason"])
+
+    def test_build_focus_origin_analysis_prefers_visible_peak_extreme_over_platform_start_for_300274_daily_regression(self) -> None:
+        line_geometry = {
+            "points": [
+                {"sequence": 0, "price": 135.22, "date": "2025-10-13 00:00:00", "type": "bottom"},
+                {"sequence": 1, "price": 209.88, "date": "2025-11-07 00:00:00", "type": "top"},
+                {"sequence": 2, "price": 164.38, "date": "2025-11-24 00:00:00", "type": "bottom"},
+                {"sequence": 3, "price": 192.88, "date": "2025-11-27 00:00:00", "type": "top"},
+                {"sequence": 4, "price": 174.28, "date": "2025-12-04 00:00:00", "type": "bottom"},
+                {"sequence": 5, "price": 191.60, "date": "2025-12-09 00:00:00", "type": "top"},
+                {"sequence": 6, "price": 160.27, "date": "2025-12-16 00:00:00", "type": "bottom"},
+                {"sequence": 7, "price": 185.18, "date": "2025-12-29 00:00:00", "type": "top"},
+                {"sequence": 8, "price": 157.15, "date": "2026-01-13 00:00:00", "type": "bottom"},
+                {"sequence": 9, "price": 176.56, "date": "2026-01-19 00:00:00", "type": "top"},
+                {"sequence": 10, "price": 143.83, "date": "2026-01-30 00:00:00", "type": "bottom"},
+                {"sequence": 11, "price": 159.32, "date": "2026-02-10 00:00:00", "type": "top"},
+                {"sequence": 12, "price": 142.08, "date": "2026-03-02 00:00:00", "type": "bottom"},
+                {"sequence": 13, "price": 181.99, "date": "2026-03-13 00:00:00", "type": "top"},
+                {"sequence": 14, "price": 121.74, "date": "2026-04-07 00:00:00", "type": "bottom"},
+                {"sequence": 15, "price": 142.12, "date": "2026-04-15 00:00:00", "type": "top"},
+                {"sequence": 16, "price": 135.20, "date": "2026-04-20 00:00:00", "type": "current", "is_current": True},
+            ]
+        }
+
+        focus_origin_analysis = self.analyzer._build_focus_origin_analysis(
+            valid_range={
+                "start_date": "2025-07-15",
+                "start_price": 76.40,
+                "origin_type": "low",
+            },
+            line_geometry=line_geometry,
+            peak_analysis=None,
+            macro_components=[
+                {
+                    "type": "Platform",
+                    "strokes": [
+                        {"from_date": "2025-10-13 00:00:00", "from_price": 135.22},
+                    ],
+                },
+                {
+                    "type": "Directional",
+                    "strokes": [
+                        {"from_date": "2026-04-07 00:00:00", "from_price": 121.74},
+                    ],
+                },
+            ],
+        )
+
+        self.assertEqual(focus_origin_analysis["selected_origin_kind"], "peak_extreme")
+        self.assertEqual(focus_origin_analysis["selected_point_index"], 1)
+        selected_candidate = next(
+            candidate for candidate in focus_origin_analysis["candidates"] if candidate["selected"]
+        )
+        self.assertEqual(selected_candidate["price"], 209.88)
+        self.assertIn("窗口主峰", focus_origin_analysis["explainability_reason"])
 
     def test_build_numbering_explainability_restarts_numbering_for_standard_focus_structure(self) -> None:
         explainability = self.analyzer._build_numbering_explainability(
@@ -1051,6 +1186,179 @@ class TestStockAnalyzerRenderPayload(unittest.TestCase):
             result["interpretation"]["focus_structure"]["start_anchor_source"],
             "peak_extreme",
         )
+
+    def test_detect_structure_downgrades_extended_peak_focus_instead_of_falling_back_to_platform_start_for_300274_daily(self) -> None:
+        recent, full_strokes, valid_fractals, stroke_list = (
+            build_300274_daily_focus_origin_regression_fixture()
+        )
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes: list[dict]) -> None:
+                self.component_type = component_type
+                self.strokes_payload = strokes
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": list(self.strokes_payload),
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "上涨",
+            "valid_range_info": {
+                "start_date": "2025-07-15",
+                "end_date": "2026-04-20",
+                "start_price": 76.40,
+                "origin_type": "low",
+            },
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": stroke_list,
+        }
+        macro_components = [
+            StubMacroComponent(
+                "Platform",
+                [{"from_date": "2025-10-13 00:00:00", "from_price": 135.22}] + [{} for _ in range(13)],
+            ),
+            StubMacroComponent(
+                "Directional",
+                [{"from_date": "2026-04-07 00:00:00", "from_price": 121.74}, {}],
+            ),
+        ]
+        non_peak_analysis = {
+            "is_peak_structure": False,
+            "peak_type": None,
+            "peak_price": None,
+            "right_structure": None,
+        }
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("C单平台式", "大中枢突破启动", "超大C类（14笔大中枢整理）+ 新上涨第一推动段", ["mocked raw classification"]),
+             ), \
+             patch.object(
+                 self.analyzer,
+                 "_build_focus_structure_classification",
+                 return_value={
+                     "type": "延伸C类",
+                     "stage": "超出标准点数，按延伸C类跟踪",
+                     "description": "当前聚焦区间仍属C类原型，但已超出标准点数",
+                     "archetype_family": "C",
+                     "standard_qualification": "extended",
+                     "qualification_reason": "超出标准点数，按延伸C类跟踪",
+                     "trend_direction": "上涨",
+                     "component_summary": ["Platform(14笔)", "Directional(1笔)"],
+                     "criteria": ["mocked focus classification"],
+                 },
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=non_peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
+
+        focus_origin_analysis = result["structure_details"]["focus_origin_analysis"]
+        self.assertEqual(focus_origin_analysis["selected_origin_kind"], "peak_extreme")
+        self.assertEqual(focus_origin_analysis["selected_point_index"], 1)
+        self.assertEqual(result["structure_type"], "复杂结构")
+        self.assertEqual(result["structure_stage"], "等待确认")
+        self.assertEqual(result["interpretation"]["focus_structure"]["start_anchor_source"], "peak_extreme")
+        self.assertEqual(result["interpretation"]["focus_structure"]["explainability_status"], "downgraded")
+        self.assertIn("右侧仍超出标准点数", result["interpretation"]["focus_structure"]["downgrade_reason"])
+        self.assertEqual(
+            result["structure_details"]["explainability"]["structure_start_point_id"],
+            "p2",
+        )
+
+    def test_detect_structure_canonicalizes_window_extreme_complex_focus_to_waiting_confirmation_for_300274_daily(self) -> None:
+        recent, full_strokes, valid_fractals, stroke_list = (
+            build_300274_daily_focus_origin_regression_fixture()
+        )
+
+        class StubMacroComponent:
+            def __init__(self, component_type: str, strokes: list[dict]) -> None:
+                self.component_type = component_type
+                self.strokes_payload = strokes
+
+            def to_dict(self) -> dict:
+                return {
+                    "type": self.component_type,
+                    "strokes": list(self.strokes_payload),
+                }
+
+        pipeline = {
+            "actual_lookback": len(recent),
+            "recent": recent,
+            "trend_direction": "上涨",
+            "valid_range_info": {
+                "start_date": "2025-07-15",
+                "end_date": "2026-04-20",
+                "start_price": 76.40,
+                "origin_type": "low",
+            },
+            "processed_df": recent,
+            "top_fractals": [],
+            "bottom_fractals": [],
+            "validated_fractals": valid_fractals,
+            "final_fractals": valid_fractals,
+            "strokes": full_strokes,
+            "valid_fractals": valid_fractals,
+            "stroke_list": stroke_list,
+        }
+        macro_components = [
+            StubMacroComponent(
+                "Platform",
+                [{"from_date": "2025-10-13 00:00:00", "from_price": 135.22}] + [{} for _ in range(13)],
+            ),
+            StubMacroComponent(
+                "Directional",
+                [{"from_date": "2026-04-07 00:00:00", "from_price": 121.74}, {}],
+            ),
+        ]
+        non_peak_analysis = {
+            "is_peak_structure": False,
+            "peak_type": None,
+            "peak_price": None,
+            "right_structure": None,
+        }
+
+        with patch.object(self.analyzer, "_run_structure_pipeline", return_value=pipeline), \
+             patch.object(self.analyzer, "_consolidate_boxes", return_value=macro_components), \
+             patch.object(
+                 self.analyzer,
+                 "_classify_structure_by_macro_components",
+                 return_value=("C单平台式", "大中枢突破启动", "超大C类（14笔大中枢整理）+ 新上涨第一推动段", ["mocked raw classification"]),
+             ), \
+             patch.object(
+                 self.analyzer,
+                 "_build_focus_structure_classification",
+                 return_value={
+                     "type": "复杂结构",
+                     "stage": "四组件组合",
+                     "description": "当前聚焦区间暂无法归入标准或延伸原型",
+                     "archetype_family": "complex",
+                     "standard_qualification": "failed",
+                     "qualification_reason": "当前聚焦区间暂无法归入标准或延伸原型",
+                     "trend_direction": "上涨",
+                     "component_summary": ["Platform(14笔)", "Directional(1笔)"],
+                     "criteria": ["mocked focus classification"],
+                 },
+             ), \
+             patch.object(self.analyzer, "_analyze_peak_structure", return_value=non_peak_analysis):
+            result = self.analyzer.detect_structure(self.df, macd_status="中偏强")
+
+        self.assertEqual(result["structure_type"], "复杂结构")
+        self.assertEqual(result["structure_stage"], "等待确认")
+        self.assertEqual(result["interpretation"]["focus_structure"]["start_anchor_source"], "peak_extreme")
+        self.assertEqual(result["interpretation"]["focus_structure"]["explainability_status"], "downgraded")
+        self.assertIn("无法稳定解释为标准结构", result["interpretation"]["focus_structure"]["downgrade_reason"])
 
     def test_detect_structure_marks_macro_origin_as_outside_window_and_omits_background_origin_when_unavailable(self) -> None:
         recent, full_strokes, valid_fractals, stroke_list, _ = (
