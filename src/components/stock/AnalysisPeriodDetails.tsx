@@ -72,8 +72,8 @@ function resolveSummary(section: AnalysisPeriodSection) {
     .join('｜');
 
   return (
-    section.summary ||
     candidateSummary ||
+    section.summary ||
     section.period?.structure?.description ||
     section.period?.structure?.execution?.wait_reason ||
     section.period?.trinity_decision?.conclusion.wait_reason ||

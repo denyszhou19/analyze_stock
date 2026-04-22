@@ -420,6 +420,88 @@ test('summary prefers candidate structure label and current leg over legacy stru
   assert.ok(vm.summary.signalTags.some((tag) => tag.label === '结构｜A延续候选'));
 });
 
+test('summary and global strategy prefer phase2 trigger and risk badges over legacy execution arrays', () => {
+  const result = createResult();
+  const dailyDecision = result.periods.daily.trinity_decision;
+  if (!dailyDecision) {
+    throw new Error('missing daily decision');
+  }
+
+  dailyDecision.execution.triggers = ['旧先手点'];
+  dailyDecision.execution.risk_flags = ['旧风险'];
+  dailyDecision.execution_plan = {
+    probe_entry: '15分钟止跌后轻仓试',
+    confirm_entry: '30分钟回抽确认后加仓',
+    invalidation: '跌破15分钟确认低点',
+    current_position_action: '轻仓试',
+  };
+  dailyDecision.wait_state = {
+    wait_type: '等待回抽确认',
+    wait_label: '等待回抽确认',
+    current_block: '30分钟尚未给出回抽企稳',
+    next_confirmation_action: '观察30分钟回抽不破 MA55',
+    reason: '当前仍缺少确认回抽',
+  };
+
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'buy',
+        action_label: '轻仓试探',
+        bias: 'bullish',
+        confidence: 'medium',
+        can_trade: true,
+      },
+      execution: {
+        entry_style: 'pullback',
+        triggers: ['30分钟旧触发'],
+        invalidation: ['30分钟旧风险'],
+        confirmation: ['30分钟旧确认'],
+        position_sizing: { max_ratio: 0.2, reason: '旧30分钟执行摘要' },
+        risk_flags: ['30分钟旧风险'],
+      },
+      execution_plan: {
+        probe_entry: '30分钟回抽确认后轻仓试',
+        confirm_entry: '30分钟放量站稳后加仓',
+        invalidation: '30分钟跌破确认低点',
+        current_position_action: '轻仓试',
+      },
+      wait_state: {
+        wait_type: '等待回抽确认',
+        wait_label: '等待回抽确认',
+        current_block: '30分钟仍待回抽企稳',
+        next_confirmation_action: '观察30分钟回抽不破 MA55',
+        reason: '当前仍缺少确认回抽',
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.deepEqual(vm.summary.triggerLabels, [
+    '15分钟止跌后轻仓试',
+    '30分钟回抽确认后加仓',
+    '观察30分钟回抽不破 MA55',
+  ]);
+  assert.deepEqual(vm.summary.riskLabels, ['跌破15分钟确认低点']);
+  assert.doesNotMatch(vm.summary.triggerLabels.join('｜'), /旧先手点/);
+  assert.doesNotMatch(vm.summary.riskLabels.join('｜'), /旧风险/);
+  assert.deepEqual(vm.globalStrategy.triggerLabels, [
+    '30分钟回抽确认后轻仓试',
+    '30分钟放量站稳后加仓',
+    '观察30分钟回抽不破 MA55',
+  ]);
+  assert.deepEqual(vm.globalStrategy.riskLabels, ['30分钟跌破确认低点']);
+  assert.doesNotMatch(vm.globalStrategy.triggerLabels.join('｜'), /30分钟旧触发/);
+  assert.doesNotMatch(vm.globalStrategy.riskLabels.join('｜'), /30分钟旧风险/);
+});
+
 test('rule chain preserves failed status from judgment criteria', () => {
   const result = createResult();
   if (!result.periods.daily.trinity_decision) {

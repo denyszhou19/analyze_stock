@@ -820,6 +820,36 @@ function buildExecutionSummary(decision: TrinityDecision): string {
   return `现在怎么做：先看${probeEntry}，确认看${confirmEntry}，失效看${invalidation}`;
 }
 
+function resolveDecisionTriggerLabels(decision?: TrinityDecision | null): string[] {
+  if (!decision) {
+    return [];
+  }
+
+  const phase2Triggers = [
+    decision.execution_plan?.probe_entry,
+    decision.execution_plan?.confirm_entry,
+    decision.wait_state?.next_confirmation_action,
+  ].filter((item): item is string => Boolean(item));
+
+  if (phase2Triggers.length > 0) {
+    return phase2Triggers;
+  }
+
+  return decision.execution.triggers;
+}
+
+function resolveDecisionRiskLabels(decision?: TrinityDecision | null): string[] {
+  if (!decision) {
+    return [];
+  }
+
+  if (decision.execution_plan?.invalidation) {
+    return [decision.execution_plan.invalidation];
+  }
+
+  return decision.execution.risk_flags;
+}
+
 function buildSummary(
   decision: TrinityDecision,
   hardGateDecision: TrinityDecision,
@@ -848,8 +878,8 @@ function buildSummary(
     judgmentLabel: resolveJudgmentLabel(decision),
     relationLabel: resolveRelationLabel(decision.level_nesting),
     primaryReason: resolveChineseReason([readySummary?.primary_reason, backendReason], backendReason),
-    triggerLabels: preferChineseList(readySummary?.triggers, decision.execution.triggers),
-    riskLabels: preferChineseList(readySummary?.risks, decision.execution.risk_flags),
+    triggerLabels: preferChineseList(readySummary?.triggers, resolveDecisionTriggerLabels(decision)),
+    riskLabels: preferChineseList(readySummary?.risks, resolveDecisionRiskLabels(decision)),
     guardrail: resolveChineseReason([readySummary?.guardrail, backendReason], backendReason),
     spacetimeSummary: buildSpacetimeSummary(decision),
     structureSummary: buildStructureSummary(decision),
@@ -1100,8 +1130,10 @@ function buildGlobalStrategy({
     actionLabel: primaryCombination.actionLabel,
     headline: `${primaryCombination.label}｜${structureMeta.label}｜${primaryCombination.directionLabel}${primaryCombination.actionLabel}`,
     primaryReason: explanation.reason,
-    triggerLabels: triggerDecision?.execution.triggers ?? [],
-    riskLabels: triggerDecision?.execution.risk_flags ?? constraintDecision?.execution.risk_flags ?? [],
+    triggerLabels: resolveDecisionTriggerLabels(triggerDecision),
+    riskLabels: resolveDecisionRiskLabels(triggerDecision).length
+      ? resolveDecisionRiskLabels(triggerDecision)
+      : resolveDecisionRiskLabels(constraintDecision),
     guardrail: resolveChineseReason(
       [
         constraintDecision?.conclusion.wait_reason,
