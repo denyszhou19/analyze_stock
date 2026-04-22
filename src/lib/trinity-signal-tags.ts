@@ -221,6 +221,52 @@ function divergenceTone(label: string): SignalTagTone {
   return 'neutral';
 }
 
+function zeroAxisTone(
+  impact?: NonNullable<TrinityDecision['zero_axis_signal']>['impact_on_judgment'],
+  fallback: SignalTagTone = 'neutral'
+): SignalTagTone {
+  if (impact === 'promote') {
+    return 'bullish';
+  }
+  if (impact === 'suppress') {
+    return 'warning';
+  }
+  return fallback;
+}
+
+function divergenceDecisionTone(
+  divergenceWeight?: TrinityDecision['divergence_weight']
+): SignalTagTone {
+  if (divergenceWeight?.status === 'supportive') {
+    return 'bullish';
+  }
+  if (divergenceWeight?.status === 'neutral') {
+    return 'neutral';
+  }
+  if (divergenceWeight) {
+    return 'bearish';
+  }
+  return 'neutral';
+}
+
+function resolveExecutionPreview(decision: TrinityDecision): {
+  probeEntry: string;
+  confirmEntry: string;
+  invalidation: string;
+} {
+  return {
+    probeEntry: decision.execution_plan?.probe_entry ?? decision.execution.triggers[0] ?? '继续等待触发',
+    confirmEntry:
+      decision.execution_plan?.confirm_entry ??
+      decision.execution.confirmation[0] ??
+      '等待进一步确认',
+    invalidation:
+      decision.execution_plan?.invalidation ??
+      decision.execution.invalidation[0] ??
+      '若条件失效则取消',
+  };
+}
+
 function normalizeBreakthroughPatternType(patternType?: string | null): string {
   const cleaned = cleanText(patternType);
   if (!cleaned) {
@@ -351,11 +397,21 @@ function executionTone(
 }
 
 function buildExecutionHoverItems(decision: TrinityDecision): Array<{ label: string; value?: string | null }> {
+  const preview = resolveExecutionPreview(decision);
+
   return [
-    { label: '说明', value: decision.execution.position_sizing.reason ?? decision.conclusion.wait_reason },
-    { label: '先手点', value: decision.execution.triggers[0] },
-    { label: '确认点', value: decision.execution.confirmation[0] },
-    { label: '失效点', value: decision.execution.invalidation[0] },
+    {
+      label: '说明',
+      value:
+        decision.execution_plan?.current_position_action ??
+        decision.judgment?.current_best_action ??
+        decision.wait_state?.reason ??
+        decision.execution.position_sizing.reason ??
+        decision.conclusion.wait_reason,
+    },
+    { label: '先手点', value: preview.probeEntry },
+    { label: '确认点', value: preview.confirmEntry },
+    { label: '失效点', value: preview.invalidation },
   ];
 }
 
@@ -379,13 +435,36 @@ export function buildDecisionSignalTags(
   }
 
   const tags = [
-    buildTag('spacetime', '时空', decision.spacetime.status, decision.spacetime.direction_bias, [
-      {
-        label: '结构匹配',
-        value: decision.spacetime.structure_match ? '时空与结构匹配' : decision.spacetime.mismatch_reason,
-      },
-      { label: '背离策略', value: decision.spacetime.divergence_policy.reason },
-    ]),
+    buildTag(
+      'spacetime',
+      '时空',
+      decision.zero_axis_signal?.signal_label ?? decision.spacetime.status,
+      zeroAxisTone(decision.zero_axis_signal?.impact_on_judgment, decision.spacetime.direction_bias),
+      [
+        {
+          label: '说明',
+          value: decision.zero_axis_signal?.reason ?? decision.spacetime.divergence_policy.reason,
+        },
+        decision.zero_axis_signal
+          ? {
+              label: '信号状态',
+              value: decision.zero_axis_signal.formed ? '零轴强信号已形成' : '零轴强信号尚未形成',
+            }
+          : {
+              label: '结构匹配',
+              value: decision.spacetime.structure_match ? '时空与结构匹配' : decision.spacetime.mismatch_reason,
+            },
+      ]
+    ),
+    buildTag(
+      'divergence',
+      '背离',
+      decision.divergence_weight?.label ?? divergenceLabel(decision.spacetime.divergence_policy.reason),
+      decision.divergence_weight
+        ? divergenceDecisionTone(decision.divergence_weight)
+        : divergenceTone(divergenceLabel(decision.spacetime.divergence_policy.reason)),
+      [{ label: '说明', value: decision.divergence_weight?.reason ?? decision.spacetime.divergence_policy.reason }]
+    ),
     buildTag(
       'breakthrough',
       '突破/跌破',
@@ -445,9 +524,22 @@ export function buildPeriodSignalTags(
     buildTag(
       'spacetime',
       '时空',
-      period.trinity_decision?.spacetime.status ?? period.macd?.status,
-      period.trinity_decision?.spacetime.direction_bias ?? 'neutral',
-      [{ label: '说明', value: period.macd?.description }]
+      period.trinity_decision?.zero_axis_signal?.signal_label ??
+        period.trinity_decision?.spacetime.status ??
+        period.macd?.status,
+      zeroAxisTone(
+        period.trinity_decision?.zero_axis_signal?.impact_on_judgment,
+        period.trinity_decision?.spacetime.direction_bias ?? 'neutral'
+      ),
+      [
+        {
+          label: '说明',
+          value:
+            period.trinity_decision?.zero_axis_signal?.reason ??
+            period.macd?.description ??
+            period.trinity_decision?.spacetime.divergence_policy.reason,
+        },
+      ]
     ),
   ].filter((tag): tag is TrinitySignalTag => Boolean(tag));
 

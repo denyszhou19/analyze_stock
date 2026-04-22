@@ -252,6 +252,29 @@ test('buildDecisionSignalTags keeps parent bias hover labels in Chinese across b
   assert.ok(!fallbackTags.some((tag) => tag.key === 'level_nesting'));
 });
 
+test('buildDecisionSignalTags exposes zero-axis and divergence decisions from phase2 blocks', () => {
+  const tags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      zero_axis_signal: {
+        formed: true,
+        signal_type: 'zero_axis_golden_cross',
+        signal_label: '零轴金叉',
+        reason: '零轴附近快速金叉',
+        impact_on_judgment: 'promote',
+      },
+      divergence_weight: {
+        status: 'suppressive',
+        label: '顶背离压制',
+        reason: '顶背离仍在压制',
+        impact_on_judgment: 'suppress',
+      },
+    })
+  );
+
+  assert.ok(tags.some((tag) => tag.label === '时空｜零轴金叉'));
+  assert.ok(tags.some((tag) => tag.label === '背离｜顶背离压制'));
+});
+
 test('buildPeriodSignalTags combines period signals into capped tags', () => {
   const tags = signalTags.buildPeriodSignalTags(createPeriod(), { max: 4 });
 

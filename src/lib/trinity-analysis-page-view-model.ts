@@ -780,10 +780,15 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
 
 function buildSpacetimeSummary(decision: TrinityDecision): string {
   const detail = resolveChineseReason(
-    [decision.spacetime.mismatch_reason, decision.spacetime.divergence_policy.reason],
+    [
+      decision.zero_axis_signal?.reason,
+      decision.divergence_weight?.reason,
+      decision.spacetime.mismatch_reason,
+      decision.spacetime.divergence_policy.reason,
+    ],
     '继续等待时空共振确认'
   );
-  return `时空：${decision.spacetime.status}，${detail}`;
+  return `时空：${decision.zero_axis_signal?.signal_label ?? decision.spacetime.status}，${detail}`;
 }
 
 function buildStructureSummary(decision: TrinityDecision): string {
@@ -796,7 +801,11 @@ function buildStructureSummary(decision: TrinityDecision): string {
 
 function buildExecutionSummary(decision: TrinityDecision): string {
   const preview = buildExecutionPreview(decision);
-  return `现在怎么做：先看${compactTriggerText(preview.probeEntry)}，确认看${compactTriggerText(preview.confirmEntry)}，失效看${compactTriggerText(preview.invalidation)}`;
+  const probeEntry = decision.execution_plan?.probe_entry ?? compactTriggerText(preview.probeEntry);
+  const confirmEntry = decision.execution_plan?.confirm_entry ?? compactTriggerText(preview.confirmEntry);
+  const invalidation = decision.execution_plan?.invalidation ?? compactTriggerText(preview.invalidation);
+
+  return `现在怎么做：先看${probeEntry}，确认看${confirmEntry}，失效看${invalidation}`;
 }
 
 function buildSummary(
@@ -812,6 +821,8 @@ function buildSummary(
     decision.conclusion.action_label
   );
   const backendReason = resolveChineseReason([
+    decision.judgment?.critical_reason,
+    decision.wait_state?.current_block,
     decision.conclusion.wait_reason,
     decision.trade_qualification.reason[0],
     decision.execution.position_sizing.reason,

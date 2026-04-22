@@ -97,11 +97,16 @@ function resolveStructureEvidence(section: AnalysisPeriodSection) {
 }
 
 function resolveSpacetimeStatus(section: AnalysisPeriodSection) {
+  const decision = section.period?.trinity_decision;
   const interpretation = section.period?.structure?.interpretation;
   const macd = section.period?.macd;
 
   return (
     [
+      decision?.zero_axis_signal?.signal_label,
+      decision?.zero_axis_signal?.reason,
+      decision?.divergence_weight?.label,
+      decision?.divergence_weight?.reason,
       interpretation?.spacetime_gate?.parent_status,
       macd?.status,
       interpretation?.spacetime_gate?.wait_reason,
@@ -210,7 +215,7 @@ function buildPeriodSummarySignalTags(section: AnalysisPeriodSection) {
   const decisionTags = buildDecisionSignalTags(section.period?.trinity_decision);
   const fallbackStructureTag = buildStructureSummaryTag(section);
   const tags = [
-    periodTags.find((tag) => tag.key === 'divergence'),
+    periodTags.find((tag) => tag.key === 'divergence') ?? decisionTags.find((tag) => tag.key === 'divergence'),
     resolvePreferredBreakthroughTag(
       periodTags.find((tag) => tag.key === 'breakthrough'),
       decisionTags.find((tag) => tag.key === 'breakthrough')
@@ -236,6 +241,15 @@ function resolvePeriodDirection(section: AnalysisPeriodSection) {
 
 function resolvePeriodTriggers(section: AnalysisPeriodSection) {
   const decision = section.period?.trinity_decision;
+  const phase2Triggers = [
+    decision?.execution_plan?.probe_entry,
+    decision?.execution_plan?.confirm_entry,
+    decision?.wait_state?.next_confirmation_action,
+  ].filter((item): item is string => Boolean(item));
+  if (phase2Triggers.length) {
+    return phase2Triggers;
+  }
+
   if (decision?.execution.triggers?.length) {
     return decision.execution.triggers;
   }
@@ -252,6 +266,10 @@ function resolvePeriodTriggers(section: AnalysisPeriodSection) {
 
 function resolvePeriodRisks(section: AnalysisPeriodSection) {
   const decision = section.period?.trinity_decision;
+  if (decision?.execution_plan?.invalidation) {
+    return [decision.execution_plan.invalidation];
+  }
+
   if (decision?.execution.risk_flags?.length) {
     return decision.execution.risk_flags;
   }
@@ -265,15 +283,20 @@ function resolvePeriodRisks(section: AnalysisPeriodSection) {
 }
 
 function resolvePeriodGuardrail(section: AnalysisPeriodSection) {
+  const decision = section.period?.trinity_decision;
+
   return (
-    section.period?.trinity_decision?.execution.position_sizing.reason ??
+    decision?.wait_state?.reason ??
+    decision?.execution.position_sizing.reason ??
     section.period?.structure?.execution?.wait_reason ??
+    decision?.judgment?.critical_reason ??
     '暂无明确风控约束'
   );
 }
 
 function resolveResonanceEvidence(section: AnalysisPeriodSection) {
   const nesting = section.period?.trinity_decision?.level_nesting;
+  const decision = section.period?.trinity_decision;
   if (!nesting?.parent_level || !nesting.child_level) {
     return '级别共振：暂无父子级别共振数据。';
   }
@@ -281,7 +304,7 @@ function resolveResonanceEvidence(section: AnalysisPeriodSection) {
   return [
     `共振对象：${resolveLevelLabel(nesting.parent_level)} → ${resolveLevelLabel(nesting.child_level)}`,
     `成立依据：${nesting.permission.reason}`,
-    `仍需确认：${section.period?.trinity_decision?.conclusion.wait_reason ?? '等待触发级别确认'}`,
+    `仍需确认：${decision?.wait_state?.current_block ?? decision?.conclusion.wait_reason ?? '等待触发级别确认'}`,
   ].join('｜');
 }
 

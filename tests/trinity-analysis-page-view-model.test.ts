@@ -351,6 +351,46 @@ test('AI ready summary falls back to backend Chinese copy when AI summary is Eng
   assert.equal(vm.summary.hardGates[0].value, '等待');
 });
 
+test('summary prefers backend judgment critical reason and execution plan', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.judgment = {
+    level: 'candidate_probe',
+    label: '候选可试',
+    current_best_action: '轻仓试',
+    critical_reason: '父级支持但30分钟仍待确认',
+    supporting_factors: ['零轴金叉'],
+    limiting_factors: ['等待回抽确认'],
+  };
+  decision.execution_plan = {
+    probe_entry: '15分钟止跌后轻仓试',
+    confirm_entry: '30分钟回抽确认后加仓',
+    invalidation: '跌破15分钟确认低点',
+    current_position_action: '轻仓试',
+  };
+  decision.wait_state = {
+    wait_type: '等待回抽确认',
+    wait_label: '等待回抽确认',
+    current_block: '30分钟尚未给出回抽企稳',
+    next_confirmation_action: '观察30分钟回抽不破 MA55',
+    reason: '当前仍缺少确认回抽',
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.equal(vm.summary.judgmentLabel, '候选可试');
+  assert.equal(vm.summary.primaryReason, '父级支持但30分钟仍待确认');
+  assert.match(vm.summary.executionSummary, /30分钟回抽确认后加仓/);
+});
+
 test('rule chain preserves failed status from judgment criteria', () => {
   const result = createResult();
   if (!result.periods.daily.trinity_decision) {
