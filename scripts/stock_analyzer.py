@@ -4224,6 +4224,9 @@ class TrinityStockAnalyzer:
             resonance_state=resonance_state,
             divergence_weight=divergence_weight,
         )
+        if judgment.get('level') == 'strict_wait':
+            action = 'wait'
+            can_trade = False
         execution_plan = self._build_trinity_execution_plan_decision(
             execution_payload=execution_payload,
             judgment=judgment,
@@ -4238,7 +4241,12 @@ class TrinityStockAnalyzer:
                 'bias': conclusion_bias,
                 'confidence': trade_qualification['confidence'],
                 'can_trade': can_trade,
-                'wait_reason': execution_payload.get('wait_reason'),
+                'wait_reason': (
+                    execution_payload.get('wait_reason')
+                    or judgment.get('critical_reason')
+                    if action == 'wait'
+                    else execution_payload.get('wait_reason')
+                ),
             },
             'structure': structure_decision,
             'spacetime': spacetime_decision,

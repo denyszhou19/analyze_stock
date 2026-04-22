@@ -188,3 +188,70 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
         self.assertEqual(decision['divergence_weight']['status'], 'hard_block')
         self.assertEqual(decision['judgment']['label'], '严格等待')
         self.assertEqual(decision['judgment']['critical_reason'], '父级强冲突，子级逆父级')
+
+    def test_build_trinity_decision_forces_conclusion_to_wait_when_divergence_hard_block_overrides_trade_intent(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='daily',
+            structure_payload={
+                'structure_type': 'A五段式',
+                'structure_stage': '趋势中继',
+                'trend_direction': '上涨',
+                'description': '顶背离压制，但执行层仍给买入意图',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                        'summary': '多头结构存在，但硬阻断未解除',
+                    },
+                    'spacetime_gate': {
+                        'parent_status': '中偏强',
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'structure_readiness': 'matched',
+                    },
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                    },
+                    'explainability': {
+                        'a4_price': 21.6,
+                    },
+                },
+            },
+            macd_payload={
+                'status': '中偏强',
+                'top_divergence': True,
+                'bottom_divergence': False,
+            },
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': '多头排列',
+            },
+            breakthrough_payload={
+                'pattern_type': '突破确认',
+                'direction': 'up',
+                'is_valid': True,
+            },
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'pullback_confirm',
+                'trigger': ['回踩后买入'],
+                'invalidation': ['跌破确认低点'],
+                'confirmation': ['放量继续上攻'],
+                'position_sizing': {'initial': '20%-30%'},
+                'risk_flags': ['顶背离压制'],
+                'rationale': '结构节点存在，原始执行意图为买入',
+            },
+            level_nesting_payload=None,
+            period_payload={'volume_ratio_5': 1.4, 'volume_ratio_20': 1.2, 'amount_ratio_20': 1.1},
+        )
+
+        self.assertEqual(decision['judgment']['label'], '严格等待')
+        self.assertEqual(decision['conclusion']['action'], 'wait')
+        self.assertFalse(decision['conclusion']['can_trade'])
