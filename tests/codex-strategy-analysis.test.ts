@@ -211,23 +211,23 @@ test('runCodexStrategyAnalysisWithSession returns report and extracted session i
   });
 });
 
-test('runCodexStrategyAnalysisWithSession rejects successful reports without a session id', async () => {
-  await assert.rejects(
-    () =>
-      runCodexStrategyAnalysisWithSession({
-        systemPrompt: 'SYSTEM_PROMPT',
-        userPrompt: 'USER_PROMPT',
-        executor: async () => ({
-          exitCode: 0,
-          signal: null,
-          stdout: JSON.stringify({ type: 'turn.completed' }),
-          stderr: '',
-          report: '\n# 分析报告\n- 继续观察\n',
-          timedOut: false,
-        }),
-      }),
-    /Codex 未返回会话标识/
-  );
+test('runCodexStrategyAnalysisWithSession returns report even when session id is missing', async () => {
+  const result = await runCodexStrategyAnalysisWithSession({
+    systemPrompt: 'SYSTEM_PROMPT',
+    userPrompt: 'USER_PROMPT',
+    executor: async () => ({
+      exitCode: 0,
+      signal: null,
+      stdout: JSON.stringify({ type: 'turn.completed' }),
+      stderr: '',
+      report: '\n# 分析报告\n- 继续观察\n',
+      timedOut: false,
+    }),
+  });
+
+  assert.deepEqual(result, {
+    report: '# 分析报告\n- 继续观察',
+  });
 });
 
 test('resumeCodexStrategyAnalysis resumes an existing session and returns trimmed report', async () => {

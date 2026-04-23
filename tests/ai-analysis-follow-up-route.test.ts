@@ -41,17 +41,14 @@ const sessionBindingModule = await import(
 
 const {
   POST: mainRoutePost,
-  aiAnalysisRouteDependencies,
-  buildAnalysisSnapshotKey,
 } = mainRouteModule;
 const {
   POST: followUpRoutePost,
-  buildAiFollowUpPrompt,
-  followUpRouteDependencies,
 } = followUpRouteModule;
 const {
   bindAiAnalysisSessionSnapshot,
   clearAiAnalysisSessionSnapshots,
+  getAiAnalysisSessionBinding,
   getAiAnalysisSnapshotForSession,
 } = sessionBindingModule;
 
@@ -70,12 +67,45 @@ interface FollowUpResumeOptions {
   configOverrides?: string[];
 }
 
-type MainRouteDependencies = typeof aiAnalysisRouteDependencies & {
+type MainRouteDependencies = {
   buildAiDecisionPayload: (analysisData: unknown) => Record<string, unknown>;
   runCodexStrategyAnalysisWithSession: (
     options: MainRouteRunOptions
-  ) => Promise<{ report: string; session: { sessionId: string } }>;
+  ) => Promise<{ report: string; session?: { sessionId: string } }>;
+  bindAiAnalysisSessionSnapshot: (
+    sessionId: string,
+    bindingInput: { code: string; snapshotKey: string }
+  ) => void;
 };
+
+type MainRouteModuleWithHooks = typeof mainRouteModule & {
+  POST: typeof mainRoutePost & {
+    aiAnalysisRouteDependencies: MainRouteDependencies;
+    buildAnalysisSnapshotKey: (code: string, payload: unknown) => string;
+  };
+};
+
+type FollowUpRouteModuleWithHooks = typeof followUpRouteModule & {
+  POST: typeof followUpRoutePost & {
+    buildAiFollowUpPrompt: (options: {
+      snapshotKey: string;
+      question: string;
+    }) => string;
+    followUpRouteDependencies: {
+      resumeCodexStrategyAnalysis: (
+        options: FollowUpResumeOptions
+      ) => Promise<string>;
+      getAiAnalysisSessionBinding: (
+        sessionId: string
+      ) => ReturnType<typeof getAiAnalysisSessionBinding>;
+    };
+  };
+};
+
+const mainRouteHooks = (mainRouteModule as MainRouteModuleWithHooks).POST.aiAnalysisRouteDependencies;
+const buildAnalysisSnapshotKey = (mainRouteModule as MainRouteModuleWithHooks).POST.buildAnalysisSnapshotKey;
+const followUpRouteHooks = (followUpRouteModule as FollowUpRouteModuleWithHooks).POST.followUpRouteDependencies;
+const buildAiFollowUpPrompt = (followUpRouteModule as FollowUpRouteModuleWithHooks).POST.buildAiFollowUpPrompt;
 
 test('buildAnalysisSnapshotKey stays stable for equivalent payloads', () => {
   const left = buildAnalysisSnapshotKey('600000', {
@@ -135,7 +165,7 @@ test('buildAiFollowUpPrompt binds resume answer to snapshot and markdown-only bo
 });
 
 test('main route returns report session snapshot metadata and stores snapshot binding', async (t) => {
-  const dependencies = aiAnalysisRouteDependencies as MainRouteDependencies;
+  const dependencies = mainRouteHooks as MainRouteDependencies;
   const originalBuildPayload = dependencies.buildAiDecisionPayload;
   const originalRunAnalysis = dependencies.runCodexStrategyAnalysisWithSession;
 
@@ -207,7 +237,67 @@ test('main route returns report session snapshot metadata and stores snapshot bi
     getAiAnalysisSnapshotForSession('session-main-1'),
     payload.data.snapshotKey
   );
+  const binding = getAiAnalysisSessionBinding('session-main-1');
+  assert.deepEqual(binding, {
+    sessionId: 'session-main-1',
+    code: '600000',
+    snapshotKey: payload.data.snapshotKey,
+    createdAt: binding?.createdAt,
+    updatedAt: binding?.updatedAt,
+  });
   assert.match(payload.data.generatedAt, /^\d{4}-\d{2}-\d{2}T/);
+});
+
+test('main route succeeds when codex returns report without session id', async (t) => {
+  const dependencies = mainRouteHooks as MainRouteDependencies;
+  const originalBuildPayload = dependencies.buildAiDecisionPayload;
+  const originalRunAnalysis = dependencies.runCodexStrategyAnalysisWithSession;
+  const originalBindSnapshot = dependencies.bindAiAnalysisSessionSnapshot;
+
+  t.after(() => {
+    dependencies.buildAiDecisionPayload = originalBuildPayload;
+    dependencies.runCodexStrategyAnalysisWithSession = originalRunAnalysis;
+    dependencies.bindAiAnalysisSessionSnapshot = originalBindSnapshot;
+    clearAiAnalysisSessionSnapshots();
+  });
+
+  clearAiAnalysisSessionSnapshots();
+
+  dependencies.buildAiDecisionPayload = () => ({
+    stock_name: '浦发银行',
+    analysis_time: '2026-04-23T10:00:00.000Z',
+  });
+  dependencies.runCodexStrategyAnalysisWithSession = async () => ({
+    report: '# 主报告\n- session 缺失也应成功',
+  });
+
+  let boundSnapshotCalls = 0;
+  dependencies.bindAiAnalysisSessionSnapshot = () => {
+    boundSnapshotCalls += 1;
+  };
+
+  const response = await mainRoutePost(
+    new Request('http://localhost/api/stock/ai-analysis', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        code: '600000',
+        analysisData: {
+          anything: true,
+        },
+      }),
+    }) as never
+  );
+
+  assert.equal(response.status, 200);
+  assert.equal(boundSnapshotCalls, 0);
+
+  const payload = await response.json();
+  assert.equal(payload.success, true);
+  assert.equal(payload.data.report, '# 主报告\n- session 缺失也应成功');
+  assert.equal(payload.data.session, undefined);
 });
 
 test('follow-up route returns 400 when required params are missing', async () => {
@@ -237,7 +327,10 @@ test('follow-up route rejects snapshot keys that are not bound to the session', 
   });
 
   clearAiAnalysisSessionSnapshots();
-  bindAiAnalysisSessionSnapshot('session-1', 'snapshot-bound');
+  bindAiAnalysisSessionSnapshot('session-1', {
+    code: '600000',
+    snapshotKey: 'snapshot-bound',
+  });
 
   const response = await followUpRoutePost(
     new Request('http://localhost/api/stock/ai-analysis/follow-up', {
@@ -261,19 +354,22 @@ test('follow-up route rejects snapshot keys that are not bound to the session', 
 });
 
 test('follow-up route resumes codex session and returns markdown only', async (t) => {
-  const originalResume = followUpRouteDependencies.resumeCodexStrategyAnalysis;
+  const originalResume = followUpRouteHooks.resumeCodexStrategyAnalysis;
 
   t.after(() => {
-    followUpRouteDependencies.resumeCodexStrategyAnalysis = originalResume;
+    followUpRouteHooks.resumeCodexStrategyAnalysis = originalResume;
     clearAiAnalysisSessionSnapshots();
   });
 
   clearAiAnalysisSessionSnapshots();
-  bindAiAnalysisSessionSnapshot('session-1', 'snapshot-1');
+  bindAiAnalysisSessionSnapshot('session-1', {
+    code: '600000',
+    snapshotKey: 'snapshot-1',
+  });
 
   let capturedOptions: FollowUpResumeOptions | undefined;
 
-  followUpRouteDependencies.resumeCodexStrategyAnalysis = async (
+  followUpRouteHooks.resumeCodexStrategyAnalysis = async (
     options: FollowUpResumeOptions
   ) => {
     capturedOptions = options;
@@ -318,17 +414,20 @@ test('follow-up route resumes codex session and returns markdown only', async (t
 });
 
 test('follow-up route fails when codex returns only a json block without markdown', async (t) => {
-  const originalResume = followUpRouteDependencies.resumeCodexStrategyAnalysis;
+  const originalResume = followUpRouteHooks.resumeCodexStrategyAnalysis;
 
   t.after(() => {
-    followUpRouteDependencies.resumeCodexStrategyAnalysis = originalResume;
+    followUpRouteHooks.resumeCodexStrategyAnalysis = originalResume;
     clearAiAnalysisSessionSnapshots();
   });
 
   clearAiAnalysisSessionSnapshots();
-  bindAiAnalysisSessionSnapshot('session-json-only', 'snapshot-json-only');
+  bindAiAnalysisSessionSnapshot('session-json-only', {
+    code: '600000',
+    snapshotKey: 'snapshot-json-only',
+  });
 
-  followUpRouteDependencies.resumeCodexStrategyAnalysis = async () =>
+  followUpRouteHooks.resumeCodexStrategyAnalysis = async () =>
     '```json\n{"headline":"只有摘要"}\n```';
 
   const response = await followUpRoutePost(
@@ -350,4 +449,60 @@ test('follow-up route fails when codex returns only a json block without markdow
     success: false,
     error: 'AI 追问未返回 Markdown',
   });
+});
+
+test('follow-up route fails when codex returns raw json without markdown', async (t) => {
+  const originalResume = followUpRouteHooks.resumeCodexStrategyAnalysis;
+
+  t.after(() => {
+    followUpRouteHooks.resumeCodexStrategyAnalysis = originalResume;
+    clearAiAnalysisSessionSnapshots();
+  });
+
+  clearAiAnalysisSessionSnapshots();
+  bindAiAnalysisSessionSnapshot('session-raw-json', {
+    code: '600000',
+    snapshotKey: 'snapshot-raw-json',
+  });
+
+  followUpRouteHooks.resumeCodexStrategyAnalysis = async () =>
+    '{"headline":"只有原始 JSON"}';
+
+  const response = await followUpRoutePost(
+    new Request('http://localhost/api/stock/ai-analysis/follow-up', {
+      method: 'POST',
+      headers: {
+        'content-type': 'application/json',
+      },
+      body: JSON.stringify({
+        sessionId: 'session-raw-json',
+        snapshotKey: 'snapshot-raw-json',
+        question: '继续分析',
+      }),
+    }) as never
+  );
+
+  assert.equal(response.status, 500);
+  assert.deepEqual(await response.json(), {
+    success: false,
+    error: 'AI 追问返回了纯 JSON 内容',
+  });
+});
+
+test('session store keeps binding metadata for session code snapshot and timestamps', () => {
+  clearAiAnalysisSessionSnapshots();
+
+  bindAiAnalysisSessionSnapshot('session-meta', {
+    code: '600000',
+    snapshotKey: 'snapshot-meta',
+  });
+
+  const binding = getAiAnalysisSessionBinding('session-meta');
+
+  assert.equal(binding?.sessionId, 'session-meta');
+  assert.equal(binding?.code, '600000');
+  assert.equal(binding?.snapshotKey, 'snapshot-meta');
+  assert.match(binding?.createdAt || '', /^\d{4}-\d{2}-\d{2}T/);
+  assert.match(binding?.updatedAt || '', /^\d{4}-\d{2}-\d{2}T/);
+  assert.equal(binding?.createdAt, binding?.updatedAt);
 });

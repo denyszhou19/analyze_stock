@@ -223,14 +223,14 @@ export async function runCodexStrategyAnalysisWithSession({
   const report = ensureCodexReport(result, timeoutMs);
   const sessionId = extractCodexSessionIdFromJsonl(result.stdout);
 
-  if (!sessionId) {
-    throw new Error('Codex 未返回会话标识');
-  }
-
-  return {
-    report,
-    session: { sessionId },
-  };
+  return sessionId
+    ? {
+        report,
+        session: { sessionId },
+      }
+    : {
+        report,
+      };
 }
 
 export async function resumeCodexStrategyAnalysis({

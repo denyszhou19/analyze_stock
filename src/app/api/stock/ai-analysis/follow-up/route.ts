@@ -1,10 +1,14 @@
 import { NextRequest, NextResponse } from 'next/server.js';
 import { resumeCodexStrategyAnalysis } from '../../../../../lib/codex-strategy-analysis.ts';
-import { TRINITY_SYSTEM_PROMPT } from '../route.ts';
-import { getAiAnalysisSnapshotForSession } from '../session-store.ts';
+import { POST as aiAnalysisRoute } from '../route.ts';
+import { getAiAnalysisSessionBinding } from '../session-store.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
+
+const { TRINITY_SYSTEM_PROMPT } = aiAnalysisRoute as typeof aiAnalysisRoute & {
+  TRINITY_SYSTEM_PROMPT: string;
+};
 
 interface AiAnalysisFollowUpRequest {
   sessionId: string;
@@ -35,6 +39,10 @@ function extractFollowUpMarkdown(report: string): string {
     return markdown;
   }
 
+  if (looksLikeRawJsonOnly(trimmed)) {
+    throw new Error('AI 追问返回了纯 JSON 内容');
+  }
+
   const markdown = trimmed;
 
   if (!markdown) {
@@ -42,6 +50,21 @@ function extractFollowUpMarkdown(report: string): string {
   }
 
   return markdown;
+}
+
+function looksLikeRawJsonOnly(value: string): boolean {
+  const firstChar = value.trimStart()[0];
+
+  if (firstChar !== '{' && firstChar !== '[') {
+    return false;
+  }
+
+  try {
+    const parsed = JSON.parse(value);
+    return parsed !== null && typeof parsed === 'object';
+  } catch {
+    return false;
+  }
 }
 
 function parseFollowUpRequest(value: unknown): AiAnalysisFollowUpRequest | null {
@@ -65,7 +88,7 @@ function parseFollowUpRequest(value: unknown): AiAnalysisFollowUpRequest | null 
   };
 }
 
-export function buildAiFollowUpPrompt({
+function buildAiFollowUpPrompt({
   snapshotKey,
   question,
 }: {
@@ -89,9 +112,9 @@ export function buildAiFollowUpPrompt({
 ${question}`;
 }
 
-export const followUpRouteDependencies = {
+const followUpRouteDependencies = {
   resumeCodexStrategyAnalysis,
-  getAiAnalysisSnapshotForSession,
+  getAiAnalysisSessionBinding,
 };
 
 export async function POST(request: NextRequest) {
@@ -108,21 +131,21 @@ export async function POST(request: NextRequest) {
       );
     }
 
-    const boundSnapshotKey = followUpRouteDependencies.getAiAnalysisSnapshotForSession(
+    const boundSession = followUpRouteDependencies.getAiAnalysisSessionBinding(
       parsed.sessionId
     );
 
-    if (!boundSnapshotKey) {
+    if (!boundSession) {
       return NextResponse.json(
         {
           success: false,
-          error: 'sessionId 未绑定分析快照',
+          error: 'sessionId 未绑定分析会话',
         },
         { status: 400 }
       );
     }
 
-    if (boundSnapshotKey !== parsed.snapshotKey) {
+    if (boundSession.sessionId !== parsed.sessionId || boundSession.snapshotKey !== parsed.snapshotKey) {
       return NextResponse.json(
         {
           success: false,
@@ -157,3 +180,8 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+Object.assign(POST, {
+  buildAiFollowUpPrompt,
+  followUpRouteDependencies,
+});

@@ -7,7 +7,7 @@ import { bindAiAnalysisSessionSnapshot } from './session-store.ts';
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-export const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守）
+const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守）
 
 - 先输出 JSON 摘要，再输出 Markdown 正文
 - JSON 摘要必须放在 \`\`\`json\`\`\` 代码块内，且只能输出一个摘要对象
@@ -30,7 +30,7 @@ export const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守�
 `;
 
 // 三位一体策略系统提示词（精简版 - AI专注于策略分析）
-export const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师，精通"三位一体操作策略"。你的任务是基于系统已经计算好的分析结果，进行深度策略解读和操作建议。
+const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师，精通"三位一体操作策略"。你的任务是基于系统已经计算好的分析结果，进行深度策略解读和操作建议。
 
 ## 后端硬边界（最高优先级）
 
@@ -352,7 +352,7 @@ export const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策
 6. **禁止绝对表述**：不使用"必定"、"一定"等词汇
 7. **重点标识**：对于系统标记的重点提醒（key_alerts），要特别关注并在报告中突出展示`;
 
-export function buildAiDecisionPrompt(
+function buildAiDecisionPrompt(
   code: string,
   payload: ReturnType<typeof buildAiDecisionPayload>
 ) {
@@ -460,13 +460,13 @@ function stableSerializeForSnapshot(value: unknown): string {
   return `{${entries.join(',')}}`;
 }
 
-export function buildAnalysisSnapshotKey(code: string, payload: unknown): string {
+function buildAnalysisSnapshotKey(code: string, payload: unknown): string {
   return createHash('sha256')
     .update(`${code}\n${stableSerializeForSnapshot(payload)}`)
     .digest('hex');
 }
 
-export const aiAnalysisRouteDependencies = {
+const aiAnalysisRouteDependencies = {
   buildAiDecisionPayload,
   runCodexStrategyAnalysisWithSession,
   bindAiAnalysisSessionSnapshot,
@@ -504,14 +504,12 @@ export async function POST(request: NextRequest) {
       configOverrides: buildAiCodexConfigOverrides(),
     });
 
-    if (!result.session) {
-      throw new Error('Codex 未返回会话标识');
+    if (result.session) {
+      aiAnalysisRouteDependencies.bindAiAnalysisSessionSnapshot(result.session.sessionId, {
+        code,
+        snapshotKey,
+      });
     }
-
-    aiAnalysisRouteDependencies.bindAiAnalysisSessionSnapshot(
-      result.session.sessionId,
-      snapshotKey
-    );
 
     console.log(`[AI Analysis] 分析完成`);
 
@@ -533,3 +531,11 @@ export async function POST(request: NextRequest) {
     );
   }
 }
+
+Object.assign(POST, {
+  AI_REPORT_OUTPUT_CONTRACT,
+  TRINITY_SYSTEM_PROMPT,
+  buildAiDecisionPrompt,
+  aiAnalysisRouteDependencies,
+  buildAnalysisSnapshotKey,
+});
