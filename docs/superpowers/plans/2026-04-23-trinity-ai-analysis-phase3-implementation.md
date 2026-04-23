@@ -174,7 +174,6 @@ test('parseAiReportContract keeps old reports valid when phase3 fields are absen
   assert.equal(parsed.summary.wait_state, undefined);
 });
 ```
-
 - [ ] **Step 2: 运行测试，确认新字段断言先失败**
 
 Run:
@@ -1080,4 +1079,3 @@ Manual checklist:
 git add src/lib/stock-structure-types.ts src/lib/ai-report-contract.ts src/lib/codex-strategy-analysis.ts src/app/api/stock/ai-analysis/route.ts src/app/api/stock/ai-analysis/follow-up/route.ts src/lib/trinity-analysis-page-view-model.ts src/components/stock/AnalysisSummaryPanel.tsx src/components/stock/AiFollowupPanel.tsx src/app/stock/[code]/analysis/page.tsx tests/ai-report-contract.test.ts tests/codex-strategy-analysis.test.ts tests/ai-analysis-follow-up-route.test.ts tests/analysis-summary-panel.test.ts tests/analysis-page-sections.test.ts tests/analysis-page-layout-contract.test.ts tests/ai-followup-panel.test.ts
 git commit -m "feat: 完成第三阶段 AI 综合判断与追问会话重组"
 ```
-
