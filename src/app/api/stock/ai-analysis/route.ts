@@ -1,32 +1,47 @@
-import { NextRequest, NextResponse } from 'next/server';
-import { buildAiDecisionPayload } from '@/lib/ai-analysis-payload';
-import { runCodexStrategyAnalysis } from '@/lib/codex-strategy-analysis';
+import { createHash } from 'node:crypto';
+import { NextRequest, NextResponse } from 'next/server.js';
+import { buildAiDecisionPayload } from '../../../../lib/ai-analysis-payload.ts';
+import { runCodexStrategyAnalysisWithSession } from '../../../../lib/codex-strategy-analysis.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
 
-const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守）
+export const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守）
 
 - 先输出 JSON 摘要，再输出 Markdown 正文
 - JSON 摘要必须放在 \`\`\`json\`\`\` 代码块内，且只能输出一个摘要对象
 - JSON 摘要字段必须包含 headline / action / bias / primary_reason / triggers / risks / guardrail
+- JSON 摘要还必须新增 judgment / critical_reason / spacetime_summary / structure_summary / execution_summary / candidate_structure / wait_state / judgment_warning
 - JSON 摘要中的 action 只能使用英文枚举：buy / add / hold / reduce / sell / t_trade / wait / avoid
 - JSON 摘要中的 bias 只能使用英文枚举：bullish / bearish / neutral
 - JSON 摘要中的 action / bias 禁止输出中文值，如“观望”“等待”“中性偏空”“中性偏多”
 - 所有自然语言内容必须使用简体中文；仅 JSON 摘要中的 action / bias 保持英文枚举值
 - “操作策略参考”必须以 periods.*.deterministic_decision.conclusion.action 为硬边界
 - 如果 periods.*.deterministic_decision.conclusion.action = wait / avoid，摘要 action 不能升级为 buy / add
-- Markdown 正文再展开跨级别依据、仓位与执行方案、风险与应对
+- AI 可以写“若 X 则可升级”的条件升级预案，也可以指出后端判断疑点，但不能直接改写后端当前正式动作边界
+- Markdown 正文必须严格按以下顺序组织：
+  1. 当前综合判断
+  2. 时空怎么看
+  3. 结构怎么看
+  4. 现在怎么做
+  5. 风险与应对
 `;
 
 // 三位一体策略系统提示词（精简版 - AI专注于策略分析）
-const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师，精通"三位一体操作策略"。你的任务是基于系统已经计算好的分析结果，进行深度策略解读和操作建议。
+export const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师，精通"三位一体操作策略"。你的任务是基于系统已经计算好的分析结果，进行深度策略解读和操作建议。
 
 ## 后端硬边界（最高优先级）
 
 任何策略解读不得突破后端硬边界；其优先级高于下方所有策略知识、经验话术和历史黑话。
 必须以 \`periods.*.deterministic_decision.conclusion.action\`、\`trade_qualification\`、\`position_permission\` 作为操作策略上限。
 如果这些字段给出等待、回避、无仓位或仅轻仓权限，不得写成买入、加仓或更激进的执行建议。
+
+## 条件性越权规则（必须遵守）
+
+- 可以写“若 X 则可升级为 Y”的条件升级预案
+- 可以指出后端判断与输入信号之间的疑点、张力或保守降级
+- 不能直接改写后端当前正式动作边界
+- 不能把条件性预案写成已经生效的正式执行动作
 
 ## 核心哲学（重要）
 
@@ -335,7 +350,10 @@ const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师�
 6. **禁止绝对表述**：不使用"必定"、"一定"等词汇
 7. **重点标识**：对于系统标记的重点提醒（key_alerts），要特别关注并在报告中突出展示`;
 
-function buildAiDecisionPrompt(code: string, payload: ReturnType<typeof buildAiDecisionPayload>) {
+export function buildAiDecisionPrompt(
+  code: string,
+  payload: ReturnType<typeof buildAiDecisionPayload>
+) {
   return `## 股票决策解读任务
 
 **股票代码**：${code}
@@ -371,34 +389,30 @@ ${AI_REPORT_OUTPUT_CONTRACT}
 
 ## 输出结构
 
-### 一、先给结论
-- 当前操作方向：买入 / 卖出 / 持有 / 观望
-- 一句话理由：先说最核心的因果链
-- JSON 摘要中的 \`action\`、\`bias\` 必须与 \`periods.*.deterministic_decision.conclusion.action\` 保持同向，不得擅自升级风险偏好
-- 注意：上面“买入 / 卖出 / 持有 / 观望”仅用于 Markdown 正文中文表述；JSON 摘要中的 \`action\`、\`bias\` 必须严格使用英文枚举
+### 一、JSON 摘要
+- 必须先输出一个 JSON 摘要对象
+- 旧 7 个字段必须完整保留
+- judgment 只能使用：严格等待 / 候选可试 / 确认执行
+- critical_reason 要用一句话说清当前最关键因果
+- spacetime_summary 要概括父子级别、时空门控、零轴强信号或共振状态
+- structure_summary 要概括正式结构与候选结构当前状态
+- execution_summary 要概括当前动作建议与执行含义
+- candidate_structure 只包含 label / current_leg / upgrade_condition / invalidation
+- wait_state 只包含 label / current_block / next_action
+- judgment_warning 只在存在后端判断疑点、输入张力或保守降级时填写
 
-### 二、跨级别决策依据
-- 用周线→日线→30分钟/15分钟的顺序解释
-- 先解释 periods.*.deterministic_decision.conclusion.action 给出的硬边界，再解释 level_nesting.trading_decision 与 execution_phase / execution
-- 优先解读 \`level_nesting.trading_decision\`，明确 \`analysis_order = top_down\`、\`execution_order = bottom_up\`
-- 再结合各周期 \`execution_phase / execution\` 说明执行级别、动作和仓位上限
-- 然后补充 \`multi_dimension_operation\` 与 \`level_nesting.summary / spacetime_confirmation\`
-- 如果系统结论之间有冲突，要明确指出冲突来自哪里
-
-### 三、关键信号与关键价位
-- 重点解读日线 MA55/MA233、均线物理性质、突破/跌破形态
-- 提炼最值得盯的支撑位、压力位、止损位
-- 如果 30分钟预测对入场时机有帮助，要单独指出
-
-### 四、仓位与执行方案
-- 起手仓位建议
-- 加仓条件
-- 减仓/止盈条件
-- 若判断暂不适合操作，明确写“等待什么条件出现”
-
-### 五、风险与应对
-- 说明最需要警惕的失败场景
-- 给出“若X发生，则应对Y”的条件句
+### 二、Markdown 正文
+- 必须严格使用以下顺序与标题：
+  1. 当前综合判断
+  2. 时空怎么看
+  3. 结构怎么看
+  4. 现在怎么做
+  5. 风险与应对
+- “当前综合判断”先说当前操作方向、最关键因果、当前优先交易组合、主约束级别、触发级别
+- “时空怎么看”重点解释周线→日线→30分钟/15分钟的时空门控、零轴强信号、共振与 level_nesting.trading_decision
+- “结构怎么看”重点解释正式结构、候选结构、当前卡点、日线与30分钟 prediction、如果存在判断疑点要明确指出
+- “现在怎么做”重点说明当前正式动作边界、条件升级预案、起手仓位/加仓条件/减仓条件/等待什么确认
+- “风险与应对”重点说明失败场景，并使用“若X发生，则应对Y”的条件句
 
 ## 额外要求
 
@@ -407,6 +421,7 @@ ${AI_REPORT_OUTPUT_CONTRACT}
 - 不要复述 JSON 字段名，重点做解读和决策落地
 - 如果信息不足以支持激进操作，请明确倾向保守应对
 - 若 periods.*.deterministic_decision.conclusion.action 给出 \`wait\` / \`avoid\`，正文也必须维持等待/回避基调，不能写成积极买入或加仓建议
+- 允许提出条件性升级预案，也允许提示后端判断疑点，但不能直接改写后端当前正式动作边界
 - \`ABCD\` 结构标签与 \`archetype\` 只是结构原型和背景解释，不代表未来一定会完整走完
 - \`archetype\` 不能单独当作交易开关；交易动作必须结合 \`trading_decision\`、\`execution_phase\`、\`execution\` 与日线关键信号`;
 }
@@ -422,6 +437,35 @@ function buildAiCodexConfigOverrides() {
 
   return overrides;
 }
+
+function stableSerializeForSnapshot(value: unknown): string {
+  if (value === null || typeof value !== 'object') {
+    return JSON.stringify(value);
+  }
+
+  if (Array.isArray(value)) {
+    return `[${value.map((item) => stableSerializeForSnapshot(item)).join(',')}]`;
+  }
+
+  const entries = Object.entries(value as Record<string, unknown>)
+    .sort(([left], [right]) => left.localeCompare(right))
+    .map(
+      ([key, entryValue]) =>
+        `${JSON.stringify(key)}:${stableSerializeForSnapshot(entryValue)}`
+    );
+
+  return `{${entries.join(',')}}`;
+}
+
+export function buildAnalysisSnapshotKey(code: string, payload: unknown): string {
+  return createHash('sha256')
+    .update(`${code}\n${stableSerializeForSnapshot(payload)}`)
+    .digest('hex');
+}
+
+export const aiAnalysisRouteDependencies = {
+  runCodexStrategyAnalysisWithSession,
+};
 
 /**
  * POST /api/stock/ai-analysis - AI 智能分析
@@ -445,9 +489,10 @@ export async function POST(request: NextRequest) {
 
     const aiDecisionPayload = buildAiDecisionPayload(analysisData);
     const userPrompt = buildAiDecisionPrompt(code, aiDecisionPayload);
+    const snapshotKey = buildAnalysisSnapshotKey(code, aiDecisionPayload);
 
     const timeoutMs = Number.parseInt(process.env.AI_ANALYSIS_CODEX_TIMEOUT_MS || '', 10);
-    const report = await runCodexStrategyAnalysis({
+    const result = await aiAnalysisRouteDependencies.runCodexStrategyAnalysisWithSession({
       systemPrompt: TRINITY_SYSTEM_PROMPT,
       userPrompt,
       timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
@@ -460,11 +505,12 @@ export async function POST(request: NextRequest) {
       success: true,
       data: {
         code,
-        report,
-        generatedAt: new Date().toISOString()
-      }
+        report: result.report,
+        session: result.session,
+        snapshotKey,
+        generatedAt: new Date().toISOString(),
+      },
     });
-
   } catch (err) {
     console.error('[AI Analysis] Error:', err);
     return NextResponse.json(
