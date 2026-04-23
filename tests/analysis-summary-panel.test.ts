@@ -165,6 +165,80 @@ test('AnalysisSummaryPanel ready renders AI headline without backend enum leakag
   assert.doesNotMatch(html, /wait_confirmation/);
 });
 
+test('AnalysisSummaryPanel ready renders phase3 enhanced AI summary fields', async () => {
+  const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
+    'src/components/stock/AnalysisSummaryPanel.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisSummaryPanel, {
+      viewModel: {
+        ...summaryViewModel,
+        mode: 'ready',
+        headline: 'AI 判断：当前先等30分钟回抽确认',
+        judgmentLabel: '候选可试',
+        primaryReason: '父级支持，但30分钟回抽段未完成止跌确认',
+        spacetimeSummary: '时空：日线中偏强，30分钟顺父级，零轴强信号偏支持',
+        structureSummary: '结构：正式结构未完全确认，当前更偏 D 候选',
+        executionSummary: '现在怎么做：先看30分钟止跌，确认后再加',
+        candidateStructureSummary: {
+          label: 'D候选',
+          current_leg: '30分钟回抽段',
+          upgrade_condition: '30分钟回抽止跌并放量重新转强',
+          invalidation: '跌回日线确认低点下方',
+        },
+        waitStateSummary: {
+          label: '等待回抽确认',
+          current_block: '30分钟回抽段尚未完成止跌确认',
+          next_action: '观察30分钟止跌并重新转强',
+        },
+      },
+      globalStrategy: globalStrategyViewModel,
+      onGenerate: () => {},
+      canGenerate: true,
+    })
+  );
+
+  assert.match(html, /AI 判断：当前先等30分钟回抽确认/);
+  assert.match(html, /候选可试/);
+  assert.match(html, /父级支持，但30分钟回抽段未完成止跌确认/);
+  assert.match(html, /时空：日线中偏强，30分钟顺父级，零轴强信号偏支持/);
+  assert.match(html, /结构：正式结构未完全确认，当前更偏 D 候选/);
+  assert.match(html, /现在怎么做：先看30分钟止跌，确认后再加/);
+  assert.match(html, /候选结构/);
+  assert.match(html, /D候选｜30分钟回抽段/);
+  assert.match(html, /30分钟回抽止跌并放量重新转强/);
+  assert.match(html, /跌回日线确认低点下方/);
+  assert.match(html, /等待状态/);
+  assert.match(html, /等待回抽确认｜30分钟回抽段尚未完成止跌确认/);
+  assert.match(html, /观察30分钟止跌并重新转强/);
+});
+
+test('AnalysisSummaryPanel renders judgment warning separately when AI points out backend tension', async () => {
+  const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
+    'src/components/stock/AnalysisSummaryPanel.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisSummaryPanel, {
+      viewModel: {
+        ...summaryViewModel,
+        mode: 'ready',
+        headline: 'AI 判断：后端当前仍等待',
+        primaryReason: '当前仍未完成触发确认',
+        judgmentWarning: '判断疑点：30分钟信号已明显转强，但后端当前结论仍偏保守',
+      },
+      globalStrategy: globalStrategyViewModel,
+      onGenerate: () => {},
+      canGenerate: true,
+    })
+  );
+
+  assert.match(html, /判断疑点/);
+  assert.match(html, /判断疑点：30分钟信号已明显转强，但后端当前结论仍偏保守/);
+  assert.match(html, /后端最终动作：等待/);
+});
+
 test('AnalysisSummaryPanel loading renders Chinese progress copy and disabled action', async () => {
   const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
     'src/components/stock/AnalysisSummaryPanel.tsx'

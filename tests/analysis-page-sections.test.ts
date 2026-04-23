@@ -462,6 +462,91 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
   assert.doesNotMatch(html, /后端硬门控/);
 });
 
+test('AnalysisSummaryPanel keeps signal tags and hard gates visible when phase3 summary blocks render', async () => {
+  const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
+    'src/components/stock/AnalysisSummaryPanel.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisSummaryPanel, {
+      viewModel: {
+        mode: 'ready',
+        headline: 'AI 判断：当前先等30分钟回抽确认',
+        primaryActionLabel: '等待',
+        judgmentLabel: '候选可试',
+        relationLabel: '父级强冲突，子级逆父级',
+        primaryReason: '父级支持，但30分钟回抽段未完成止跌确认',
+        triggerLabels: ['30分钟止跌后重新转强'],
+        riskLabels: ['跌回日线确认低点下方'],
+        guardrail: '后端当前仍未放开等待约束',
+        spacetimeSummary: '时空：日线中偏强，30分钟顺父级，零轴强信号偏支持',
+        structureSummary: '结构：正式结构未完全确认，当前更偏 D 候选',
+        executionSummary: '现在怎么做：先看30分钟止跌，确认后再加',
+        judgmentWarning: '判断疑点：30分钟信号已明显转强，但后端当前结论仍偏保守',
+        candidateStructureSummary: {
+          label: 'D候选',
+          current_leg: '30分钟回抽段',
+          upgrade_condition: '30分钟回抽止跌并放量重新转强',
+          invalidation: '跌回日线确认低点下方',
+        },
+        waitStateSummary: {
+          label: '等待回抽确认',
+          current_block: '30分钟回抽段尚未完成止跌确认',
+          next_action: '观察30分钟止跌并重新转强',
+        },
+        signalTags: [
+          createSignalTag('级别｜子级逆势', 'warning'),
+          createSignalTag('执行｜回踩执行', 'neutral'),
+        ],
+        hardGateTitle: '主策略硬门控',
+        hardGateSourceLabel: '当前硬门控来自主判定级别：日线',
+        hardGates: [
+          {
+            label: '仓位权限',
+            value: '轻仓试探',
+            description: {
+              title: '仓位权限',
+              meaning: '后端允许的最大仓位动作范围。',
+              tradeImpact: '当前值为「轻仓试探」，AI 和页面结论不能突破这个限制。',
+              source: 'trinity_decision.trade_qualification.position_permission',
+            },
+          },
+        ],
+      },
+      globalStrategy: {
+        scopeLabel: '综合范围：中线主策略组合、短线执行组合、超短线 / T 组合',
+        primaryCombination: 'shortline',
+        primaryCombinationLabel: '短线执行组合｜日线 → 30分钟',
+        primaryConstraintLevel: 'daily',
+        primaryConstraintLevelLabel: '日线',
+        triggerLevel: 'hour30',
+        triggerLevelLabel: '30分钟',
+        direction: 'bullish',
+        directionLabel: '偏多',
+        actionLabel: '观察中',
+        headline: 'AI 判断：当前先等30分钟回抽确认',
+        primaryReason: '父级支持，但30分钟回抽段未完成止跌确认',
+        triggerLabels: ['30分钟止跌后重新转强'],
+        riskLabels: ['跌回日线确认低点下方'],
+        guardrail: '后端当前仍未放开等待约束',
+      },
+      onGenerate: () => undefined,
+      canGenerate: true,
+    })
+  );
+
+  assert.match(html, /判断疑点/);
+  assert.match(html, /候选结构/);
+  assert.match(html, /D候选｜30分钟回抽段/);
+  assert.match(html, /等待状态/);
+  assert.match(html, /等待回抽确认｜30分钟回抽段尚未完成止跌确认/);
+  assert.match(html, /级别｜子级逆势/);
+  assert.match(html, /执行｜回踩执行/);
+  assert.match(html, /页面级综合结论/);
+  assert.match(html, /主策略硬门控/);
+  assert.match(html, /仓位权限/);
+});
+
 test('AnalysisPeriodDetails renders level tabs with decision card, rule summary and evidence', async () => {
   const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
     'src/components/stock/AnalysisPeriodDetails.tsx'

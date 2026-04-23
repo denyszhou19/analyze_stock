@@ -32,6 +32,10 @@ export interface AnalysisSummaryPanelProps {
   canGenerate: boolean;
 }
 
+function joinSummaryParts(parts: Array<string | null | undefined>) {
+  return parts.filter((part): part is string => Boolean(part?.trim())).join('｜');
+}
+
 function renderLabels(title: string, labels: string[]) {
   return (
     <section className="space-y-2">
@@ -207,6 +211,55 @@ export function AnalysisSummaryPanel({
               <p className="text-muted-foreground">{viewModel.executionSummary}</p>
             </div>
           </div>
+          {viewModel.judgmentWarning ? (
+            <div className="mt-4 rounded-lg border border-amber-500/30 bg-amber-50 px-3 py-2 text-sm text-amber-800">
+              <div className="text-xs font-medium uppercase tracking-wide text-amber-700">
+                判断疑点
+              </div>
+              <p className="mt-1">{viewModel.judgmentWarning}</p>
+            </div>
+          ) : null}
+          {viewModel.candidateStructureSummary || viewModel.waitStateSummary ? (
+            <div className="mt-4 grid gap-3 md:grid-cols-2">
+              {viewModel.candidateStructureSummary ? (
+                <section className="rounded-lg border bg-background/60 p-3 text-sm leading-6">
+                  <div className="text-xs text-muted-foreground">候选结构</div>
+                  <p className="mt-1 text-muted-foreground">
+                    {joinSummaryParts([
+                      viewModel.candidateStructureSummary.label,
+                      viewModel.candidateStructureSummary.current_leg,
+                    ]) || '暂无明确候选结构'}
+                  </p>
+                  {viewModel.candidateStructureSummary.upgrade_condition ? (
+                    <p className="mt-1 text-muted-foreground">
+                      升级条件：{viewModel.candidateStructureSummary.upgrade_condition}
+                    </p>
+                  ) : null}
+                  {viewModel.candidateStructureSummary.invalidation ? (
+                    <p className="mt-1 text-muted-foreground">
+                      失效条件：{viewModel.candidateStructureSummary.invalidation}
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
+              {viewModel.waitStateSummary ? (
+                <section className="rounded-lg border bg-background/60 p-3 text-sm leading-6">
+                  <div className="text-xs text-muted-foreground">等待状态</div>
+                  <p className="mt-1 text-muted-foreground">
+                    {joinSummaryParts([
+                      viewModel.waitStateSummary.label,
+                      viewModel.waitStateSummary.current_block,
+                    ]) || '暂无明确等待状态'}
+                  </p>
+                  {viewModel.waitStateSummary.next_action ? (
+                    <p className="mt-1 text-muted-foreground">
+                      下一步：{viewModel.waitStateSummary.next_action}
+                    </p>
+                  ) : null}
+                </section>
+              ) : null}
+            </div>
+          ) : null}
           {viewModel.signalTags.length ? (
             <div className="mt-4 space-y-2">
               <div className="text-xs text-muted-foreground">关键信号标签</div>

@@ -89,6 +89,9 @@ export interface AnalysisPageSummaryViewModel {
   spacetimeSummary: string;
   structureSummary: string;
   executionSummary: string;
+  judgmentWarning?: string | null;
+  candidateStructureSummary?: AiSummaryCard['candidate_structure'] | null;
+  waitStateSummary?: AiSummaryCard['wait_state'] | null;
   signalTags: AnalysisPageSignalTagViewModel[];
   hardGateTitle: string;
   hardGateSourceLabel: string;
@@ -933,6 +936,9 @@ function buildSummary(
     decision.conclusion.action,
     decision.conclusion.action_label
   );
+  const backendSpacetimeSummary = buildSpacetimeSummary(decision);
+  const backendStructureSummary = buildStructureSummary(decision);
+  const backendExecutionSummary = buildExecutionSummary(decision);
   const backendReason = resolveChineseReason([
     decision.judgment?.critical_reason,
     decision.wait_state?.current_block,
@@ -946,15 +952,30 @@ function buildSummary(
     errorMessage,
     headline: preferChineseText(readySummary?.headline, actionLabel),
     primaryActionLabel: actionLabel,
-    judgmentLabel: resolveJudgmentLabel(decision),
+    judgmentLabel: readySummary?.judgment ?? resolveJudgmentLabel(decision),
     relationLabel: resolveRelationLabel(decision.level_nesting),
-    primaryReason: resolveChineseReason([readySummary?.primary_reason, backendReason], backendReason),
+    primaryReason: resolveChineseReason(
+      [readySummary?.critical_reason, readySummary?.primary_reason, backendReason],
+      backendReason
+    ),
     triggerLabels: preferChineseList(readySummary?.triggers, resolveDecisionTriggerLabels(decision)),
     riskLabels: preferChineseList(readySummary?.risks, resolveDecisionRiskLabels(decision)),
     guardrail: resolveChineseReason([readySummary?.guardrail, backendReason], backendReason),
-    spacetimeSummary: buildSpacetimeSummary(decision),
-    structureSummary: buildStructureSummary(decision),
-    executionSummary: buildExecutionSummary(decision),
+    spacetimeSummary: resolveChineseReason(
+      [readySummary?.spacetime_summary, backendSpacetimeSummary],
+      backendSpacetimeSummary
+    ),
+    structureSummary: resolveChineseReason(
+      [readySummary?.structure_summary, backendStructureSummary],
+      backendStructureSummary
+    ),
+    executionSummary: resolveChineseReason(
+      [readySummary?.execution_summary, backendExecutionSummary],
+      backendExecutionSummary
+    ),
+    judgmentWarning: readySummary?.judgment_warning ?? null,
+    candidateStructureSummary: readySummary?.candidate_structure ?? null,
+    waitStateSummary: readySummary?.wait_state ?? null,
     signalTags: buildDecisionSignalTags(decision),
     hardGateTitle: '主策略硬门控',
     hardGateSourceLabel: primaryLevelSourceLabel(
