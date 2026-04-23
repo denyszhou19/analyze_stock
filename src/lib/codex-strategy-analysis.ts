@@ -120,7 +120,11 @@ export function buildCodexExecResumeArgs({
 }
 
 export function extractCodexSessionIdFromJsonl(stdout: string): string | null {
-  for (const line of stdout.split('\n')) {
+  const lines = stdout.split('\n');
+  const sessionCandidates: string[] = [];
+  const threadCandidates: string[] = [];
+
+  for (const line of lines) {
     const trimmed = line.trim();
     if (!trimmed) {
       continue;
@@ -128,25 +132,35 @@ export function extractCodexSessionIdFromJsonl(stdout: string): string | null {
 
     try {
       const event = JSON.parse(trimmed) as Record<string, unknown>;
-      const session =
-        (typeof event.session_id === 'string' && event.session_id) ||
-        (typeof event.thread_id === 'string' && event.thread_id) ||
-        (typeof event.session === 'object' && event.session !== null
-          ? (event.session as Record<string, unknown>).id
-          : null) ||
-        (typeof event.thread === 'object' && event.thread !== null
-          ? (event.thread as Record<string, unknown>).id
-          : null);
+      const sessionId = extractNestedSessionId(event.session);
+      const threadId = extractNestedSessionId(event.thread);
 
-      if (typeof session === 'string' && session) {
-        return session;
+      if (typeof event.session_id === 'string' && event.session_id) {
+        sessionCandidates.push(event.session_id);
+      } else if (sessionId) {
+        sessionCandidates.push(sessionId);
+      }
+
+      if (typeof event.thread_id === 'string' && event.thread_id) {
+        threadCandidates.push(event.thread_id);
+      } else if (threadId) {
+        threadCandidates.push(threadId);
       }
     } catch {
       continue;
     }
   }
 
-  return null;
+  return sessionCandidates[0] || threadCandidates[0] || null;
+}
+
+function extractNestedSessionId(value: unknown): string | null {
+  if (!value || typeof value !== 'object') {
+    return null;
+  }
+
+  const candidate = (value as Record<string, unknown>).id;
+  return typeof candidate === 'string' && candidate ? candidate : null;
 }
 
 function normalizeDetail(text: string): string {
@@ -209,9 +223,13 @@ export async function runCodexStrategyAnalysisWithSession({
   const report = ensureCodexReport(result, timeoutMs);
   const sessionId = extractCodexSessionIdFromJsonl(result.stdout);
 
+  if (!sessionId) {
+    throw new Error('Codex 未返回会话标识');
+  }
+
   return {
     report,
-    session: sessionId ? { sessionId } : undefined,
+    session: { sessionId },
   };
 }
 

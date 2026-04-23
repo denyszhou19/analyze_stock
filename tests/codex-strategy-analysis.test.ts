@@ -141,6 +141,15 @@ test('extractCodexSessionIdFromJsonl tolerates multiple event shapes', () => {
   assert.equal(extractCodexSessionIdFromJsonl(stdout), 'session-1');
 });
 
+test('extractCodexSessionIdFromJsonl prefers session ids over earlier thread ids', () => {
+  const stdout = [
+    JSON.stringify({ type: 'turn.completed', thread_id: 'thread-1' }),
+    JSON.stringify({ type: 'session.started', session_id: 'session-2' }),
+  ].join('\n');
+
+  assert.equal(extractCodexSessionIdFromJsonl(stdout), 'session-2');
+});
+
 test('buildCodexExecResumeArgs resumes an existing exec session and keeps output capture', () => {
   assert.deepEqual(
     buildCodexExecResumeArgs({
@@ -193,6 +202,25 @@ test('runCodexStrategyAnalysisWithSession returns report and extracted session i
     report: '# 分析报告\n- 继续观察',
     session: { sessionId: 'session-1' },
   });
+});
+
+test('runCodexStrategyAnalysisWithSession rejects successful reports without a session id', async () => {
+  await assert.rejects(
+    () =>
+      runCodexStrategyAnalysisWithSession({
+        systemPrompt: 'SYSTEM_PROMPT',
+        userPrompt: 'USER_PROMPT',
+        executor: async () => ({
+          exitCode: 0,
+          signal: null,
+          stdout: JSON.stringify({ type: 'turn.completed' }),
+          stderr: '',
+          report: '\n# 分析报告\n- 继续观察\n',
+          timedOut: false,
+        }),
+      }),
+    /Codex 未返回会话标识/
+  );
 });
 
 test('resumeCodexStrategyAnalysis resumes an existing session and returns trimmed report', async () => {
