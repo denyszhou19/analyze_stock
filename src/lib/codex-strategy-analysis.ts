@@ -9,6 +9,7 @@ export interface BuildCodexExecArgsParams {
   outputPath: string;
   workingDir: string;
   configOverrides?: string[];
+  json?: boolean;
 }
 
 export interface CodexStrategyAnalysisExecutionResult {
@@ -18,6 +19,15 @@ export interface CodexStrategyAnalysisExecutionResult {
   stderr: string;
   report: string | null;
   timedOut: boolean;
+}
+
+export interface CodexSessionRef {
+  sessionId: string;
+}
+
+export interface CodexStrategyAnalysisResult {
+  report: string;
+  session?: CodexSessionRef;
 }
 
 export interface RunCodexStrategyAnalysisOptions {
@@ -30,7 +40,12 @@ export interface RunCodexStrategyAnalysisOptions {
 
 export type CodexStrategyAnalysisExecutor = (
   prompt: string,
-  options: { timeoutMs: number; configOverrides?: string[] }
+  options: {
+    timeoutMs: number;
+    configOverrides?: string[];
+    json?: boolean;
+    sessionId?: string;
+  }
 ) => Promise<CodexStrategyAnalysisExecutionResult>;
 
 export function buildCodexExecPrompt(systemPrompt: string, userPrompt: string): string {
@@ -54,6 +69,7 @@ export function buildCodexExecArgs({
   outputPath,
   workingDir,
   configOverrides = [],
+  json = false,
 }: BuildCodexExecArgsParams): string[] {
   return [
     '-a',
@@ -66,11 +82,71 @@ export function buildCodexExecArgs({
     'never',
     '--cd',
     workingDir,
+    ...(json ? ['--json'] : []),
     '--output-last-message',
     outputPath,
     ...configOverrides.flatMap((override) => ['-c', override]),
     '-',
   ];
+}
+
+export function buildCodexExecResumeArgs({
+  sessionId,
+  outputPath,
+  workingDir,
+  configOverrides = [],
+}: {
+  sessionId: string;
+  outputPath: string;
+  workingDir: string;
+  configOverrides?: string[];
+}): string[] {
+  return [
+    '-a',
+    'never',
+    'exec',
+    'resume',
+    '--skip-git-repo-check',
+    '--color',
+    'never',
+    '--cd',
+    workingDir,
+    '--output-last-message',
+    outputPath,
+    ...configOverrides.flatMap((override) => ['-c', override]),
+    sessionId,
+    '-',
+  ];
+}
+
+export function extractCodexSessionIdFromJsonl(stdout: string): string | null {
+  for (const line of stdout.split('\n')) {
+    const trimmed = line.trim();
+    if (!trimmed) {
+      continue;
+    }
+
+    try {
+      const event = JSON.parse(trimmed) as Record<string, unknown>;
+      const session =
+        (typeof event.session_id === 'string' && event.session_id) ||
+        (typeof event.thread_id === 'string' && event.thread_id) ||
+        (typeof event.session === 'object' && event.session !== null
+          ? (event.session as Record<string, unknown>).id
+          : null) ||
+        (typeof event.thread === 'object' && event.thread !== null
+          ? (event.thread as Record<string, unknown>).id
+          : null);
+
+      if (typeof session === 'string' && session) {
+        return session;
+      }
+    } catch {
+      continue;
+    }
+  }
+
+  return null;
 }
 
 function normalizeDetail(text: string): string {
@@ -98,7 +174,13 @@ export async function runCodexStrategyAnalysis({
 }: RunCodexStrategyAnalysisOptions): Promise<string> {
   const prompt = buildCodexExecPrompt(systemPrompt, userPrompt);
   const result = await executor(prompt, { timeoutMs, configOverrides });
+  return ensureCodexReport(result, timeoutMs);
+}
 
+function ensureCodexReport(
+  result: CodexStrategyAnalysisExecutionResult,
+  timeoutMs: number
+): string {
   if (result.timedOut) {
     throw new Error(`Codex 分析超时 (${timeoutMs}ms)`);
   }
@@ -115,20 +197,59 @@ export async function runCodexStrategyAnalysis({
   return report;
 }
 
+export async function runCodexStrategyAnalysisWithSession({
+  systemPrompt,
+  userPrompt,
+  timeoutMs = DEFAULT_CODEX_ANALYSIS_TIMEOUT_MS,
+  configOverrides = [],
+  executor = executeCodexCli,
+}: RunCodexStrategyAnalysisOptions): Promise<CodexStrategyAnalysisResult> {
+  const prompt = buildCodexExecPrompt(systemPrompt, userPrompt);
+  const result = await executor(prompt, { timeoutMs, configOverrides, json: true });
+  const report = ensureCodexReport(result, timeoutMs);
+  const sessionId = extractCodexSessionIdFromJsonl(result.stdout);
+
+  return {
+    report,
+    session: sessionId ? { sessionId } : undefined,
+  };
+}
+
+export async function resumeCodexStrategyAnalysis({
+  sessionId,
+  systemPrompt,
+  userPrompt,
+  timeoutMs = DEFAULT_CODEX_ANALYSIS_TIMEOUT_MS,
+  configOverrides = [],
+  executor = executeCodexCli,
+}: RunCodexStrategyAnalysisOptions & { sessionId: string }): Promise<string> {
+  const prompt = buildCodexExecPrompt(systemPrompt, userPrompt);
+  const result = await executor(prompt, { timeoutMs, configOverrides, sessionId });
+  return ensureCodexReport(result, timeoutMs);
+}
+
 export const executeCodexCli: CodexStrategyAnalysisExecutor = async (
   prompt,
-  { timeoutMs, configOverrides = [] }
+  { timeoutMs, configOverrides = [], json = false, sessionId }
 ) => {
   const tempDir = await mkdtemp(path.join(os.tmpdir(), 'analyze-stock-codex-'));
   const outputPath = path.join(tempDir, 'last-message.md');
   let killTimer: NodeJS.Timeout | null = null;
 
   try {
-    const args = buildCodexExecArgs({
-      outputPath,
-      workingDir: tempDir,
-      configOverrides,
-    });
+    const args = sessionId
+      ? buildCodexExecResumeArgs({
+          sessionId,
+          outputPath,
+          workingDir: tempDir,
+          configOverrides,
+        })
+      : buildCodexExecArgs({
+          outputPath,
+          workingDir: tempDir,
+          configOverrides,
+          json,
+        });
 
     const result = await new Promise<CodexStrategyAnalysisExecutionResult>((resolve, reject) => {
       const child = spawn(process.env.CODEX_BIN || 'codex', args, {

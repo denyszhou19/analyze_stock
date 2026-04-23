@@ -4,9 +4,13 @@ import { readFileSync } from 'node:fs';
 
 const {
   buildCodexExecArgs,
+  buildCodexExecResumeArgs,
   buildCodexExecPrompt,
+  extractCodexSessionIdFromJsonl,
   formatCodexExecFailure,
   runCodexStrategyAnalysis,
+  runCodexStrategyAnalysisWithSession,
+  resumeCodexStrategyAnalysis,
 } = await import(
   new URL('../src/lib/codex-strategy-analysis.ts', import.meta.url).href
 );
@@ -100,6 +104,118 @@ test('buildCodexExecArgs appends config overrides for AI-specific reasoning cont
       '-',
     ]
   );
+});
+
+test('buildCodexExecArgs enables json event mode for session capture', () => {
+  assert.deepEqual(
+    buildCodexExecArgs({
+      outputPath: '/tmp/codex-output.txt',
+      workingDir: '/tmp/codex-workdir',
+      json: true,
+    }),
+    [
+      '-a',
+      'never',
+      'exec',
+      '-s',
+      'read-only',
+      '--skip-git-repo-check',
+      '--color',
+      'never',
+      '--cd',
+      '/tmp/codex-workdir',
+      '--json',
+      '--output-last-message',
+      '/tmp/codex-output.txt',
+      '-',
+    ]
+  );
+});
+
+test('extractCodexSessionIdFromJsonl tolerates multiple event shapes', () => {
+  const stdout = [
+    JSON.stringify({ type: 'session.started', session_id: 'session-1' }),
+    JSON.stringify({ type: 'turn.completed', thread_id: 'thread-ignored' }),
+  ].join('\n');
+
+  assert.equal(extractCodexSessionIdFromJsonl(stdout), 'session-1');
+});
+
+test('buildCodexExecResumeArgs resumes an existing exec session and keeps output capture', () => {
+  assert.deepEqual(
+    buildCodexExecResumeArgs({
+      sessionId: 'session-1',
+      outputPath: '/tmp/codex-output.txt',
+      workingDir: '/tmp/codex-workdir',
+    }),
+    [
+      '-a',
+      'never',
+      'exec',
+      'resume',
+      '--skip-git-repo-check',
+      '--color',
+      'never',
+      '--cd',
+      '/tmp/codex-workdir',
+      '--output-last-message',
+      '/tmp/codex-output.txt',
+      'session-1',
+      '-',
+    ]
+  );
+});
+
+test('runCodexStrategyAnalysisWithSession returns report and extracted session id', async () => {
+  const result = await runCodexStrategyAnalysisWithSession({
+    systemPrompt: 'SYSTEM_PROMPT',
+    userPrompt: 'USER_PROMPT',
+    executor: async (prompt: string, options) => {
+      assert.match(prompt, /SYSTEM_PROMPT/);
+      assert.match(prompt, /USER_PROMPT/);
+      assert.equal(options.json, true);
+
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: [
+          JSON.stringify({ type: 'session.started', session_id: 'session-1' }),
+          JSON.stringify({ type: 'turn.completed' }),
+        ].join('\n'),
+        stderr: '',
+        report: '\n# 分析报告\n- 继续观察\n',
+        timedOut: false,
+      };
+    },
+  });
+
+  assert.deepEqual(result, {
+    report: '# 分析报告\n- 继续观察',
+    session: { sessionId: 'session-1' },
+  });
+});
+
+test('resumeCodexStrategyAnalysis resumes an existing session and returns trimmed report', async () => {
+  const report = await resumeCodexStrategyAnalysis({
+    sessionId: 'session-1',
+    systemPrompt: 'SYSTEM_PROMPT',
+    userPrompt: 'FOLLOW_UP_PROMPT',
+    executor: async (prompt: string, options) => {
+      assert.match(prompt, /FOLLOW_UP_PROMPT/);
+      assert.equal(options.sessionId, 'session-1');
+
+      return {
+        exitCode: 0,
+        signal: null,
+        stdout: '',
+        stderr: '',
+        report: '\n# 追问报告\n- 继续观察\n',
+        timedOut: false,
+      };
+    },
+  });
+
+  assert.equal(report, '# 追问报告\n- 继续观察');
 });
 
 test('formatCodexExecFailure prefers stderr details', () => {
