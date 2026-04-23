@@ -351,6 +351,136 @@ test('AI ready summary falls back to backend Chinese copy when AI summary is Eng
   assert.equal(vm.summary.hardGates[0].value, '等待');
 });
 
+test('summary maps phase3 AI enhanced blocks before backend fallback', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.candidate_structure = {
+    candidate_type: 'A延续',
+    candidate_label: '后端候选',
+    current_leg: '后端当前段',
+    direction: 'up',
+    reason: '后端候选理由',
+    upgrade_condition: '后端升级条件',
+    invalidation: '后端失效条件',
+  };
+  decision.wait_state = {
+    wait_type: '等待回抽确认',
+    wait_label: '后端等待',
+    current_block: '后端阻塞点',
+    next_confirmation_action: '后端下一步',
+    reason: '后端等待理由',
+  };
+
+  const aiSummary: AiSummaryCard = {
+    headline: 'AI 判断：当前先等30分钟回抽确认',
+    action: 'wait',
+    bias: 'neutral',
+    primary_reason: 'AI 主理由',
+    critical_reason: 'AI 关键理由',
+    triggers: ['AI 触发'],
+    risks: ['AI 风险'],
+    guardrail: 'AI 风控',
+    judgment: '确认执行',
+    candidate_structure: {
+      label: 'AI D候选',
+      current_leg: 'AI 30分钟回抽段',
+      upgrade_condition: 'AI 升级条件',
+      invalidation: 'AI 失效条件',
+    },
+    wait_state: {
+      label: 'AI 等待回抽确认',
+      current_block: 'AI 当前阻塞',
+      next_action: 'AI 下一步',
+    },
+    judgment_warning: 'AI 判断疑点',
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: {
+      status: 'ready',
+      summary: aiSummary,
+    },
+  });
+
+  assert.equal(vm.summary.judgmentLabel, '确认执行');
+  assert.equal(vm.summary.primaryReason, 'AI 关键理由');
+  assert.equal(vm.summary.judgmentWarning, 'AI 判断疑点');
+  assert.deepEqual(vm.summary.candidateStructureSummary, {
+    label: 'AI D候选',
+    currentLeg: 'AI 30分钟回抽段',
+    upgradeCondition: 'AI 升级条件',
+    invalidation: 'AI 失效条件',
+  });
+  assert.deepEqual(vm.summary.waitStateSummary, {
+    label: 'AI 等待回抽确认',
+    currentBlock: 'AI 当前阻塞',
+    nextAction: 'AI 下一步',
+  });
+});
+
+test('summary falls back to backend candidate structure and wait state when AI omits them', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.candidate_structure = {
+    candidate_type: 'A延续',
+    candidate_label: 'A延续候选',
+    current_leg: 'a3进行中',
+    direction: 'up',
+    reason: 'live 段仍按上涨原型处理',
+    upgrade_condition: '确认 a4 后继续突破前高',
+    invalidation: '跌破 a3 起涨低点',
+  };
+  decision.wait_state = {
+    wait_type: '等待回抽确认',
+    wait_label: '等待回抽确认',
+    current_block: '30分钟尚未给出回抽企稳',
+    next_confirmation_action: '观察30分钟回抽不破 MA55',
+    reason: '当前仍缺少确认回抽',
+  };
+
+  const aiSummary: AiSummaryCard = {
+    headline: 'AI 判断：当前先等30分钟回抽确认',
+    action: 'wait',
+    bias: 'neutral',
+    primary_reason: 'AI 仍建议等待',
+    triggers: ['AI 触发'],
+    risks: ['AI 风险'],
+    guardrail: 'AI 风控',
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: {
+      status: 'ready',
+      summary: aiSummary,
+    },
+  });
+
+  assert.equal(vm.summary.judgmentWarning, null);
+  assert.deepEqual(vm.summary.candidateStructureSummary, {
+    label: 'A延续候选',
+    currentLeg: 'a3进行中',
+    upgradeCondition: '确认 a4 后继续突破前高',
+    invalidation: '跌破 a3 起涨低点',
+  });
+  assert.deepEqual(vm.summary.waitStateSummary, {
+    label: '等待回抽确认',
+    currentBlock: '30分钟尚未给出回抽企稳',
+    nextAction: '观察30分钟回抽不破 MA55',
+  });
+});
+
 test('summary prefers backend judgment critical reason and execution plan', () => {
   const result = createResult();
   const decision = result.periods.daily.trinity_decision;

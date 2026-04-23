@@ -227,12 +227,12 @@ export function AnalysisSummaryPanel({
                   <p className="mt-1 text-muted-foreground">
                     {joinSummaryParts([
                       viewModel.candidateStructureSummary.label,
-                      viewModel.candidateStructureSummary.current_leg,
+                      viewModel.candidateStructureSummary.currentLeg,
                     ]) || '暂无明确候选结构'}
                   </p>
-                  {viewModel.candidateStructureSummary.upgrade_condition ? (
+                  {viewModel.candidateStructureSummary.upgradeCondition ? (
                     <p className="mt-1 text-muted-foreground">
-                      升级条件：{viewModel.candidateStructureSummary.upgrade_condition}
+                      升级条件：{viewModel.candidateStructureSummary.upgradeCondition}
                     </p>
                   ) : null}
                   {viewModel.candidateStructureSummary.invalidation ? (
@@ -248,12 +248,12 @@ export function AnalysisSummaryPanel({
                   <p className="mt-1 text-muted-foreground">
                     {joinSummaryParts([
                       viewModel.waitStateSummary.label,
-                      viewModel.waitStateSummary.current_block,
+                      viewModel.waitStateSummary.currentBlock,
                     ]) || '暂无明确等待状态'}
                   </p>
-                  {viewModel.waitStateSummary.next_action ? (
+                  {viewModel.waitStateSummary.nextAction ? (
                     <p className="mt-1 text-muted-foreground">
-                      下一步：{viewModel.waitStateSummary.next_action}
+                      下一步：{viewModel.waitStateSummary.nextAction}
                     </p>
                   ) : null}
                 </section>

@@ -485,14 +485,14 @@ test('AnalysisSummaryPanel keeps signal tags and hard gates visible when phase3 
         judgmentWarning: '判断疑点：30分钟信号已明显转强，但后端当前结论仍偏保守',
         candidateStructureSummary: {
           label: 'D候选',
-          current_leg: '30分钟回抽段',
-          upgrade_condition: '30分钟回抽止跌并放量重新转强',
+          currentLeg: '30分钟回抽段',
+          upgradeCondition: '30分钟回抽止跌并放量重新转强',
           invalidation: '跌回日线确认低点下方',
         },
         waitStateSummary: {
           label: '等待回抽确认',
-          current_block: '30分钟回抽段尚未完成止跌确认',
-          next_action: '观察30分钟止跌并重新转强',
+          currentBlock: '30分钟回抽段尚未完成止跌确认',
+          nextAction: '观察30分钟止跌并重新转强',
         },
         signalTags: [
           createSignalTag('级别｜子级逆势', 'warning'),

@@ -183,14 +183,14 @@ test('AnalysisSummaryPanel ready renders phase3 enhanced AI summary fields', asy
         executionSummary: '现在怎么做：先看30分钟止跌，确认后再加',
         candidateStructureSummary: {
           label: 'D候选',
-          current_leg: '30分钟回抽段',
-          upgrade_condition: '30分钟回抽止跌并放量重新转强',
+          currentLeg: '30分钟回抽段',
+          upgradeCondition: '30分钟回抽止跌并放量重新转强',
           invalidation: '跌回日线确认低点下方',
         },
         waitStateSummary: {
           label: '等待回抽确认',
-          current_block: '30分钟回抽段尚未完成止跌确认',
-          next_action: '观察30分钟止跌并重新转强',
+          currentBlock: '30分钟回抽段尚未完成止跌确认',
+          nextAction: '观察30分钟止跌并重新转强',
         },
       },
       globalStrategy: globalStrategyViewModel,

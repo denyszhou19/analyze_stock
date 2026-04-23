@@ -75,6 +75,19 @@ export interface AnalysisPageSummaryGate {
   description: AnalysisPageHardGateDescription;
 }
 
+export interface AnalysisPageCandidateStructureSummary {
+  label?: string | null;
+  currentLeg?: string | null;
+  upgradeCondition?: string | null;
+  invalidation?: string | null;
+}
+
+export interface AnalysisPageWaitStateSummary {
+  label?: string | null;
+  currentBlock?: string | null;
+  nextAction?: string | null;
+}
+
 export interface AnalysisPageSummaryViewModel {
   mode: AnalysisPageAiState['status'];
   errorMessage?: string | null;
@@ -90,8 +103,8 @@ export interface AnalysisPageSummaryViewModel {
   structureSummary: string;
   executionSummary: string;
   judgmentWarning?: string | null;
-  candidateStructureSummary?: AiSummaryCard['candidate_structure'] | null;
-  waitStateSummary?: AiSummaryCard['wait_state'] | null;
+  candidateStructureSummary?: AnalysisPageCandidateStructureSummary | null;
+  waitStateSummary?: AnalysisPageWaitStateSummary | null;
   signalTags: AnalysisPageSignalTagViewModel[];
   hardGateTitle: string;
   hardGateSourceLabel: string;
@@ -829,6 +842,110 @@ function buildExecutionSummary(decision: TrinityDecision): string {
   return `现在怎么做：先看${probeEntry}，确认看${confirmEntry}，失效看${invalidation}`;
 }
 
+function normalizeOptionalSummaryText(value?: string | null): string | null {
+  const normalized = normalizeRuleChainText(value);
+  return normalized || null;
+}
+
+function toCandidateStructureSummary(
+  value?: AiSummaryCard['candidate_structure'] | null
+): AnalysisPageCandidateStructureSummary | null {
+  if (!value) {
+    return null;
+  }
+
+  const summary: AnalysisPageCandidateStructureSummary = {
+    label: normalizeOptionalSummaryText(value.label),
+    currentLeg: normalizeOptionalSummaryText(value.current_leg),
+    upgradeCondition: normalizeOptionalSummaryText(value.upgrade_condition),
+    invalidation: normalizeOptionalSummaryText(value.invalidation),
+  };
+
+  return Object.values(summary).some(Boolean) ? summary : null;
+}
+
+function buildBackendCandidateStructureSummary(
+  decision: TrinityDecision
+): AnalysisPageCandidateStructureSummary | null {
+  const candidateStructure = decision.candidate_structure;
+  if (!candidateStructure) {
+    return null;
+  }
+
+  return toCandidateStructureSummary({
+    label: candidateStructure.candidate_label,
+    current_leg: candidateStructure.current_leg,
+    upgrade_condition: candidateStructure.upgrade_condition,
+    invalidation: candidateStructure.invalidation,
+  });
+}
+
+function preferCandidateStructureSummary(
+  aiSummary: AnalysisPageCandidateStructureSummary | null,
+  backendSummary: AnalysisPageCandidateStructureSummary | null
+): AnalysisPageCandidateStructureSummary | null {
+  if (!aiSummary && !backendSummary) {
+    return null;
+  }
+
+  const merged: AnalysisPageCandidateStructureSummary = {
+    label: aiSummary?.label ?? backendSummary?.label ?? null,
+    currentLeg: aiSummary?.currentLeg ?? backendSummary?.currentLeg ?? null,
+    upgradeCondition: aiSummary?.upgradeCondition ?? backendSummary?.upgradeCondition ?? null,
+    invalidation: aiSummary?.invalidation ?? backendSummary?.invalidation ?? null,
+  };
+
+  return Object.values(merged).some(Boolean) ? merged : null;
+}
+
+function toWaitStateSummary(
+  value?: AiSummaryCard['wait_state'] | null
+): AnalysisPageWaitStateSummary | null {
+  if (!value) {
+    return null;
+  }
+
+  const summary: AnalysisPageWaitStateSummary = {
+    label: normalizeOptionalSummaryText(value.label),
+    currentBlock: normalizeOptionalSummaryText(value.current_block),
+    nextAction: normalizeOptionalSummaryText(value.next_action),
+  };
+
+  return Object.values(summary).some(Boolean) ? summary : null;
+}
+
+function buildBackendWaitStateSummary(
+  decision: TrinityDecision
+): AnalysisPageWaitStateSummary | null {
+  const waitState = decision.wait_state;
+  if (!waitState) {
+    return null;
+  }
+
+  return toWaitStateSummary({
+    label: waitState.wait_label,
+    current_block: waitState.current_block,
+    next_action: waitState.next_confirmation_action,
+  });
+}
+
+function preferWaitStateSummary(
+  aiSummary: AnalysisPageWaitStateSummary | null,
+  backendSummary: AnalysisPageWaitStateSummary | null
+): AnalysisPageWaitStateSummary | null {
+  if (!aiSummary && !backendSummary) {
+    return null;
+  }
+
+  const merged: AnalysisPageWaitStateSummary = {
+    label: aiSummary?.label ?? backendSummary?.label ?? null,
+    currentBlock: aiSummary?.currentBlock ?? backendSummary?.currentBlock ?? null,
+    nextAction: aiSummary?.nextAction ?? backendSummary?.nextAction ?? null,
+  };
+
+  return Object.values(merged).some(Boolean) ? merged : null;
+}
+
 function resolveDecisionTriggerLabels(decision?: TrinityDecision | null): string[] {
   if (!decision) {
     return [];
@@ -939,6 +1056,10 @@ function buildSummary(
   const backendSpacetimeSummary = buildSpacetimeSummary(decision);
   const backendStructureSummary = buildStructureSummary(decision);
   const backendExecutionSummary = buildExecutionSummary(decision);
+  const aiCandidateStructureSummary = toCandidateStructureSummary(readySummary?.candidate_structure);
+  const backendCandidateStructureSummary = buildBackendCandidateStructureSummary(decision);
+  const aiWaitStateSummary = toWaitStateSummary(readySummary?.wait_state);
+  const backendWaitStateSummary = buildBackendWaitStateSummary(decision);
   const backendReason = resolveChineseReason([
     decision.judgment?.critical_reason,
     decision.wait_state?.current_block,
@@ -974,8 +1095,11 @@ function buildSummary(
       backendExecutionSummary
     ),
     judgmentWarning: readySummary?.judgment_warning ?? null,
-    candidateStructureSummary: readySummary?.candidate_structure ?? null,
-    waitStateSummary: readySummary?.wait_state ?? null,
+    candidateStructureSummary: preferCandidateStructureSummary(
+      aiCandidateStructureSummary,
+      backendCandidateStructureSummary
+    ),
+    waitStateSummary: preferWaitStateSummary(aiWaitStateSummary, backendWaitStateSummary),
     signalTags: buildDecisionSignalTags(decision),
     hardGateTitle: '主策略硬门控',
     hardGateSourceLabel: primaryLevelSourceLabel(
