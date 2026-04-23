@@ -8,6 +8,7 @@ import { domToJpeg } from 'modern-screenshot';
 
 import { AnalysisPeriodDetails } from '@/components/stock/AnalysisPeriodDetails';
 import type { AnalysisPeriodSection } from '@/components/stock/AnalysisPeriodDetails';
+import { AiFollowupPanel } from '@/components/stock/AiFollowupPanel';
 import { AnalysisSummaryPanel } from '@/components/stock/AnalysisSummaryPanel';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
@@ -41,6 +42,34 @@ interface PrepareAnalysisData {
       name?: string;
     };
   } | null;
+}
+
+interface AiFollowupTurn {
+  id: string;
+  question: string;
+  markdown: string;
+}
+
+interface GenerateAiAnalysisResponse {
+  success: boolean;
+  error?: string;
+  data?: {
+    code: string;
+    report: string;
+    session?: {
+      sessionId: string;
+    } | null;
+    snapshotKey?: string | null;
+    generatedAt?: string;
+  };
+}
+
+interface FollowupResponse {
+  success: boolean;
+  error?: string;
+  data?: {
+    markdown: string;
+  };
 }
 
 const PERIOD_ORDER = ['weekly', 'daily', 'hour60', 'hour30', 'hour15'] as const;
@@ -130,6 +159,11 @@ export default function StockAnalysisPage() {
   const [isExportingPdf, setIsExportingPdf] = useState(false);
   const [aiMarkdown, setAiMarkdown] = useState<string | null>(null);
   const [aiState, setAiState] = useState<AnalysisPageAiState>({ status: 'idle' });
+  const [aiSession, setAiSession] = useState<{ sessionId: string; snapshotKey: string } | null>(null);
+  const [aiFollowupDraft, setAiFollowupDraft] = useState('');
+  const [aiFollowupLoading, setAiFollowupLoading] = useState(false);
+  const [aiFollowupTurns, setAiFollowupTurns] = useState<AiFollowupTurn[]>([]);
+  const [aiFollowupError, setAiFollowupError] = useState<string | null>(null);
 
   const [dataIntegrityStatus, setDataIntegrityStatus] = useState<{
     canAnalyze: boolean;
@@ -150,6 +184,16 @@ export default function StockAnalysisPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const activeRunIdRef = useRef(0);
   const autoLoadTriggeredRef = useRef(false);
+  const activeFollowupRunIdRef = useRef(0);
+
+  const resetAiFollowupState = useCallback(() => {
+    activeFollowupRunIdRef.current += 1;
+    setAiSession(null);
+    setAiFollowupDraft('');
+    setAiFollowupLoading(false);
+    setAiFollowupTurns([]);
+    setAiFollowupError(null);
+  }, []);
 
   const applyPrepareState = useCallback((prepared: PrepareAnalysisData, runId?: number) => {
     if (typeof runId === 'number' && runId !== activeRunIdRef.current) {
@@ -287,6 +331,7 @@ export default function StockAnalysisPage() {
       setResult(null);
       setAiMarkdown(null);
       setAiState({ status: 'idle' });
+      resetAiFollowupState();
       applyLoadingStage(forceSync || levels.length > 0 ? 'syncing' : 'checking');
       setDataIntegrityStatus((prev) => ({
         ...prev,
@@ -327,7 +372,7 @@ export default function StockAnalysisPage() {
         setDataIntegrityStatus((prev) => ({ ...prev, isChecking: false, isSyncing: false }));
       }
     },
-    [applyLoadingStage, prepareAnalysis]
+    [applyLoadingStage, prepareAnalysis, resetAiFollowupState]
   );
 
   const handleManualSync = useCallback(
@@ -347,6 +392,7 @@ export default function StockAnalysisPage() {
 
     setAiMarkdown(null);
     setAiState({ status: 'loading', label: '生成中' });
+    resetAiFollowupState();
 
     try {
       const response = await fetch('/api/stock/ai-analysis', {
@@ -358,9 +404,13 @@ export default function StockAnalysisPage() {
         }),
       });
 
-      const data = await response.json();
+      const data = (await response.json()) as GenerateAiAnalysisResponse;
       if (!data.success) {
         throw new Error(data.error || '生成 AI 综合判断失败');
+      }
+
+      if (!data.data?.report) {
+        throw new Error('AI 综合判断结果缺失');
       }
 
       const parsed = parseAiReportContract(data.data.report);
@@ -369,13 +419,74 @@ export default function StockAnalysisPage() {
         status: 'ready',
         summary: parsed.summary,
       });
+
+      if (data.data.session?.sessionId && data.data.snapshotKey) {
+        setAiSession({
+          sessionId: data.data.session.sessionId,
+          snapshotKey: data.data.snapshotKey,
+        });
+      }
     } catch (currentError) {
       setAiState({
         status: 'error',
         message: currentError instanceof Error ? currentError.message : '生成 AI 综合判断失败',
       });
+      resetAiFollowupState();
     }
-  }, [code, result]);
+  }, [code, resetAiFollowupState, result]);
+
+  const handleSubmitAiFollowup = useCallback(async () => {
+    const question = aiFollowupDraft.trim();
+
+    if (!aiSession || !question || aiFollowupLoading) {
+      return;
+    }
+
+    const followupRunId = activeFollowupRunIdRef.current + 1;
+    activeFollowupRunIdRef.current = followupRunId;
+    setAiFollowupLoading(true);
+    setAiFollowupError(null);
+
+    try {
+      const response = await fetch('/api/stock/ai-analysis/follow-up', {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+          sessionId: aiSession.sessionId,
+          snapshotKey: aiSession.snapshotKey,
+          question,
+        }),
+      });
+
+      const data = (await response.json()) as FollowupResponse;
+      if (!data.success || !data.data?.markdown) {
+        throw new Error(data.error || 'AI 追问失败');
+      }
+
+      if (followupRunId !== activeFollowupRunIdRef.current) {
+        return;
+      }
+
+      setAiFollowupTurns((prev) => [
+        ...prev,
+        {
+          id: `${Date.now()}-${prev.length}`,
+          question,
+          markdown: data.data.markdown,
+        },
+      ]);
+      setAiFollowupDraft('');
+    } catch (currentError) {
+      if (followupRunId !== activeFollowupRunIdRef.current) {
+        return;
+      }
+      setAiFollowupError(currentError instanceof Error ? currentError.message : 'AI 追问失败');
+    } finally {
+      if (followupRunId === activeFollowupRunIdRef.current) {
+        setAiFollowupLoading(false);
+      }
+    }
+  }, [aiFollowupDraft, aiFollowupLoading, aiSession]);
 
   const exportToPdf = useCallback(async () => {
     if (!contentRef.current) {
@@ -435,7 +546,10 @@ export default function StockAnalysisPage() {
     activeRunIdRef.current = 0;
     setIntegritySnapshot(null);
     setLoadingStage('checking');
-  }, [code]);
+    setAiMarkdown(null);
+    setAiState({ status: 'idle' });
+    resetAiFollowupState();
+  }, [code, resetAiFollowupState]);
 
   useEffect(() => {
     if (autoLoadTriggeredRef.current) {
@@ -581,6 +695,20 @@ export default function StockAnalysisPage() {
             canGenerate={Boolean(result) && !isLoading}
           />
 
+          {aiState.status === 'ready' && aiSession ? (
+            <AiFollowupPanel
+              draft={aiFollowupDraft}
+              turns={aiFollowupTurns}
+              isLoading={aiFollowupLoading}
+              errorMessage={aiFollowupError}
+              onDraftChange={setAiFollowupDraft}
+              onSubmit={handleSubmitAiFollowup}
+              renderMarkdown={(content) => (
+                <Markdown content={content} className="space-y-3 text-sm" />
+              )}
+            />
+          ) : null}
+
           <TradingCycleBus combinations={pageViewModel.tradingCombinations} />
 
           {aiMarkdown && aiState.status === 'ready' ? (
@@ -599,10 +727,10 @@ export default function StockAnalysisPage() {
             items={pageViewModel.ruleChain.items}
           />
 
-            <AnalysisPeriodDetails
-              sections={periodSections}
-              defaultLevelKey={pageViewModel.globalStrategy.primaryConstraintLevel}
-            />
+          <AnalysisPeriodDetails
+            sections={periodSections}
+            defaultLevelKey={pageViewModel.globalStrategy.primaryConstraintLevel}
+          />
         </div>
       ) : null}
     </div>

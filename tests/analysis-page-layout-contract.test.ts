@@ -6,6 +6,7 @@ const pageSource = await fs.readFile('src/app/stock/[code]/analysis/page.tsx', '
 
 test('analysis page composes the confirmed IA sections', () => {
   assert.match(pageSource, /AnalysisSummaryPanel/);
+  assert.match(pageSource, /AiFollowupPanel/);
   assert.match(pageSource, /TradingCycleBus/);
   assert.match(pageSource, /TrinityRuleChain/);
   assert.match(pageSource, /AnalysisPeriodDetails/);
@@ -16,15 +17,31 @@ test('analysis page composes the confirmed IA sections', () => {
   assert.doesNotMatch(pageSource, /<AnalysisStatusBar/);
 });
 
-test('analysis page keeps trading cycle bus directly after summary panel', () => {
+test('analysis page keeps AI summary panel before follow-up panel', () => {
   const summaryIndex = pageSource.indexOf('<AnalysisSummaryPanel');
+  const followupIndex = pageSource.indexOf('<AiFollowupPanel');
   const busIndex = pageSource.indexOf('<TradingCycleBus');
   const markdownIndex = pageSource.indexOf('AI 正文');
 
   assert.notEqual(summaryIndex, -1);
+  assert.notEqual(followupIndex, -1);
   assert.notEqual(busIndex, -1);
-  assert.ok(summaryIndex < busIndex);
-  assert.ok(markdownIndex === -1 || busIndex < markdownIndex);
+  assert.ok(summaryIndex < followupIndex);
+  assert.ok(followupIndex < busIndex);
+  assert.ok(markdownIndex === -1 || followupIndex < markdownIndex);
+});
+
+test('analysis page stores ai follow-up session and turn state', () => {
+  assert.match(
+    pageSource,
+    /const \[aiSession, setAiSession\] = useState<\{ sessionId: string; snapshotKey: string \} \| null>\(null\);/
+  );
+  assert.match(pageSource, /const \[aiFollowupDraft, setAiFollowupDraft\] = useState\(''\);/);
+  assert.match(pageSource, /const \[aiFollowupLoading, setAiFollowupLoading\] = useState\(false\);/);
+  assert.match(pageSource, /const \[aiFollowupTurns, setAiFollowupTurns\] = useState/);
+  assert.match(pageSource, /fetch\('\/api\/stock\/ai-analysis\/follow-up'/);
+  assert.match(pageSource, /sessionId: aiSession\.sessionId/);
+  assert.match(pageSource, /snapshotKey: aiSession\.snapshotKey/);
 });
 
 test('analysis page no longer keeps old first-screen duplicate sections', () => {
