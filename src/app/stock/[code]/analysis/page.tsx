@@ -184,9 +184,11 @@ export default function StockAnalysisPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const activeRunIdRef = useRef(0);
   const autoLoadTriggeredRef = useRef(false);
+  const activeAiSummaryRunIdRef = useRef(0);
   const activeFollowupRunIdRef = useRef(0);
 
   const resetAiFollowupState = useCallback(() => {
+    activeAiSummaryRunIdRef.current += 1;
     activeFollowupRunIdRef.current += 1;
     setAiSession(null);
     setAiFollowupDraft('');
@@ -390,9 +392,11 @@ export default function StockAnalysisPage() {
       return;
     }
 
+    resetAiFollowupState();
+    const aiSummaryRunId = activeAiSummaryRunIdRef.current + 1;
+    activeAiSummaryRunIdRef.current = aiSummaryRunId;
     setAiMarkdown(null);
     setAiState({ status: 'loading', label: '生成中' });
-    resetAiFollowupState();
 
     try {
       const response = await fetch('/api/stock/ai-analysis', {
@@ -405,28 +409,40 @@ export default function StockAnalysisPage() {
       });
 
       const data = (await response.json()) as GenerateAiAnalysisResponse;
+      const aiPayload = data.data;
+
       if (!data.success) {
         throw new Error(data.error || '生成 AI 综合判断失败');
       }
 
-      if (!data.data?.report) {
+      if (!aiPayload?.report) {
         throw new Error('AI 综合判断结果缺失');
       }
 
-      const parsed = parseAiReportContract(data.data.report);
-      setAiMarkdown(parsed.markdown);
-      setAiState({
-        status: 'ready',
-        summary: parsed.summary,
-      });
+      const parsed = parseAiReportContract(aiPayload.report);
 
-      if (data.data.session?.sessionId && data.data.snapshotKey) {
-        setAiSession({
-          sessionId: data.data.session.sessionId,
-          snapshotKey: data.data.snapshotKey,
+      if (aiSummaryRunId !== activeAiSummaryRunIdRef.current) {
+        return;
+      }
+
+      if (aiSummaryRunId === activeAiSummaryRunIdRef.current) {
+        setAiMarkdown(parsed.markdown);
+        setAiState({
+          status: 'ready',
+          summary: parsed.summary,
         });
+        if (aiPayload.session?.sessionId && aiPayload.snapshotKey) {
+          setAiSession({
+            sessionId: aiPayload.session.sessionId,
+            snapshotKey: aiPayload.snapshotKey,
+          });
+        }
       }
     } catch (currentError) {
+      if (aiSummaryRunId !== activeAiSummaryRunIdRef.current) {
+        return;
+      }
+
       setAiState({
         status: 'error',
         message: currentError instanceof Error ? currentError.message : '生成 AI 综合判断失败',

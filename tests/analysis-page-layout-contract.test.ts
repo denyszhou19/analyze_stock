@@ -50,6 +50,17 @@ test('analysis page narrows follow-up payload before reading markdown', () => {
   assert.match(pageSource, /markdown: followupPayload\.markdown,/);
 });
 
+test('analysis page guards AI summary writes behind its own run id and invalidates stale requests', () => {
+  assert.match(pageSource, /const activeAiSummaryRunIdRef = useRef\(0\);/);
+  assert.match(pageSource, /const aiSummaryRunId = activeAiSummaryRunIdRef\.current \+ 1;/);
+  assert.match(pageSource, /activeAiSummaryRunIdRef\.current = aiSummaryRunId;/);
+  assert.match(pageSource, /if \(aiSummaryRunId !== activeAiSummaryRunIdRef\.current\) \{\s*return;\s*\}/);
+  assert.match(pageSource, /if \(aiSummaryRunId === activeAiSummaryRunIdRef\.current\) \{\s*setAiMarkdown\(parsed\.markdown\);/);
+  assert.match(pageSource, /setAiState\(\{\s*status: 'ready',/);
+  assert.match(pageSource, /setAiSession\(\{\s*sessionId: aiPayload\.session\.sessionId,/);
+  assert.match(pageSource, /activeAiSummaryRunIdRef\.current \+= 1;/);
+});
+
 test('analysis page no longer keeps old first-screen duplicate sections', () => {
   assert.doesNotMatch(pageSource, /AI 智能分析报告/);
   assert.doesNotMatch(pageSource, /多维度跨级别操作建议/);
