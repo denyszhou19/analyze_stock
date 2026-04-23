@@ -430,6 +430,23 @@ export interface AiSummaryCard {
   triggers: string[];
   risks: string[];
   guardrail: string;
+  judgment?: TrinityJudgmentDecision['label'];
+  critical_reason?: string;
+  spacetime_summary?: string;
+  structure_summary?: string;
+  execution_summary?: string;
+  candidate_structure?: {
+    label?: string;
+    current_leg?: string;
+    upgrade_condition?: string;
+    invalidation?: string;
+  };
+  wait_state?: {
+    label?: string;
+    current_block?: string;
+    next_action?: string;
+  };
+  judgment_warning?: string;
 }
 
 export interface TrinityConclusion {

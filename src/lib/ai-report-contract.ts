@@ -80,6 +80,69 @@ function parseStringListField(
   return value.map((item) => item.trim()).filter(Boolean);
 }
 
+function parseOptionalString(value: unknown): string | undefined {
+  if (typeof value !== 'string') {
+    return undefined;
+  }
+
+  const trimmed = value.trim();
+  return trimmed.length > 0 ? trimmed : undefined;
+}
+
+function parseOptionalJudgment(
+  value: unknown
+): AiSummaryCard['judgment'] | undefined {
+  const parsed = parseOptionalString(value);
+  if (!parsed) {
+    return undefined;
+  }
+
+  if (parsed === '严格等待' || parsed === '候选可试' || parsed === '确认执行') {
+    return parsed;
+  }
+
+  return undefined;
+}
+
+function parseOptionalCandidateStructure(
+  value: unknown
+): AiSummaryCard['candidate_structure'] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const parsed = {
+    label: parseOptionalString(candidate.label),
+    current_leg: parseOptionalString(candidate.current_leg),
+    upgrade_condition: parseOptionalString(candidate.upgrade_condition),
+    invalidation: parseOptionalString(candidate.invalidation),
+  };
+
+  return Object.values(parsed).some((item) => item !== undefined)
+    ? parsed
+    : undefined;
+}
+
+function parseOptionalWaitState(
+  value: unknown
+): AiSummaryCard['wait_state'] | undefined {
+  if (!value || typeof value !== 'object' || Array.isArray(value)) {
+    return undefined;
+  }
+
+  const candidate = value as Record<string, unknown>;
+  const parsed = {
+    label: parseOptionalString(candidate.label),
+    current_block: parseOptionalString(candidate.current_block),
+    next_action: parseOptionalString(candidate.next_action),
+  };
+
+  return Object.values(parsed).some((item) => item !== undefined)
+    ? parsed
+    : undefined;
+}
+
 function normalizeAction(value: unknown): TrinityDecisionAction | null {
   if (typeof value !== 'string') {
     return null;
@@ -123,6 +186,14 @@ function parseAiSummaryCard(value: unknown): AiSummaryCard {
     triggers: parseStringListField(candidate.triggers, 'triggers'),
     risks: parseStringListField(candidate.risks, 'risks'),
     guardrail: parseStringField(candidate.guardrail, 'guardrail'),
+    judgment: parseOptionalJudgment(candidate.judgment),
+    critical_reason: parseOptionalString(candidate.critical_reason),
+    spacetime_summary: parseOptionalString(candidate.spacetime_summary),
+    structure_summary: parseOptionalString(candidate.structure_summary),
+    execution_summary: parseOptionalString(candidate.execution_summary),
+    candidate_structure: parseOptionalCandidateStructure(candidate.candidate_structure),
+    wait_state: parseOptionalWaitState(candidate.wait_state),
+    judgment_warning: parseOptionalString(candidate.judgment_warning),
   };
 }
 
