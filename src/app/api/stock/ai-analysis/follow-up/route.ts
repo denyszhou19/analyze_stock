@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server.js';
 import { resumeCodexStrategyAnalysis } from '../../../../../lib/codex-strategy-analysis.ts';
 import { TRINITY_SYSTEM_PROMPT } from '../route.ts';
+import { getAiAnalysisSnapshotForSession } from '../session-store.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -23,7 +24,18 @@ function parseRequiredString(value: unknown): string | null {
 function extractFollowUpMarkdown(report: string): string {
   const trimmed = report.trim();
   const match = trimmed.match(/^\s*```json\s*[\s\S]*?\s*```\s*([\s\S]*)$/i);
-  const markdown = match?.[1]?.trim() || trimmed;
+
+  if (match) {
+    const markdown = match[1]?.trim();
+
+    if (!markdown) {
+      throw new Error('AI 追问未返回 Markdown');
+    }
+
+    return markdown;
+  }
+
+  const markdown = trimmed;
 
   if (!markdown) {
     throw new Error('AI 追问未返回 Markdown');
@@ -79,6 +91,7 @@ ${question}`;
 
 export const followUpRouteDependencies = {
   resumeCodexStrategyAnalysis,
+  getAiAnalysisSnapshotForSession,
 };
 
 export async function POST(request: NextRequest) {
@@ -90,6 +103,30 @@ export async function POST(request: NextRequest) {
         {
           success: false,
           error: 'sessionId、snapshotKey、question 为必填项',
+        },
+        { status: 400 }
+      );
+    }
+
+    const boundSnapshotKey = followUpRouteDependencies.getAiAnalysisSnapshotForSession(
+      parsed.sessionId
+    );
+
+    if (!boundSnapshotKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'sessionId 未绑定分析快照',
+        },
+        { status: 400 }
+      );
+    }
+
+    if (boundSnapshotKey !== parsed.snapshotKey) {
+      return NextResponse.json(
+        {
+          success: false,
+          error: 'snapshotKey 与会话绑定不匹配',
         },
         { status: 400 }
       );

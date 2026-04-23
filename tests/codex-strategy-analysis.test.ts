@@ -15,6 +15,13 @@ const {
   new URL('../src/lib/codex-strategy-analysis.ts', import.meta.url).href
 );
 
+interface TestExecutorOptions {
+  timeoutMs: number;
+  configOverrides?: string[];
+  json?: boolean;
+  sessionId?: string;
+}
+
 test('buildCodexExecPrompt keeps system and user prompts in one stdin payload', () => {
   const prompt = buildCodexExecPrompt('SYSTEM_PROMPT', 'USER_PROMPT');
 
@@ -179,7 +186,7 @@ test('runCodexStrategyAnalysisWithSession returns report and extracted session i
   const result = await runCodexStrategyAnalysisWithSession({
     systemPrompt: 'SYSTEM_PROMPT',
     userPrompt: 'USER_PROMPT',
-    executor: async (prompt: string, options) => {
+    executor: async (prompt: string, options: TestExecutorOptions) => {
       assert.match(prompt, /SYSTEM_PROMPT/);
       assert.match(prompt, /USER_PROMPT/);
       assert.equal(options.json, true);
@@ -228,7 +235,7 @@ test('resumeCodexStrategyAnalysis resumes an existing session and returns trimme
     sessionId: 'session-1',
     systemPrompt: 'SYSTEM_PROMPT',
     userPrompt: 'FOLLOW_UP_PROMPT',
-    executor: async (prompt: string, options) => {
+    executor: async (prompt: string, options: TestExecutorOptions) => {
       assert.match(prompt, /FOLLOW_UP_PROMPT/);
       assert.equal(options.sessionId, 'session-1');
 

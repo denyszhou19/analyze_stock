@@ -2,6 +2,7 @@ import { createHash } from 'node:crypto';
 import { NextRequest, NextResponse } from 'next/server.js';
 import { buildAiDecisionPayload } from '../../../../lib/ai-analysis-payload.ts';
 import { runCodexStrategyAnalysisWithSession } from '../../../../lib/codex-strategy-analysis.ts';
+import { bindAiAnalysisSessionSnapshot } from './session-store.ts';
 
 export const runtime = 'nodejs';
 export const dynamic = 'force-dynamic';
@@ -466,7 +467,9 @@ export function buildAnalysisSnapshotKey(code: string, payload: unknown): string
 }
 
 export const aiAnalysisRouteDependencies = {
+  buildAiDecisionPayload,
   runCodexStrategyAnalysisWithSession,
+  bindAiAnalysisSessionSnapshot,
 };
 
 /**
@@ -489,7 +492,7 @@ export async function POST(request: NextRequest) {
 
     console.log(`[AI Analysis] 开始分析 ${code}`);
 
-    const aiDecisionPayload = buildAiDecisionPayload(analysisData);
+    const aiDecisionPayload = aiAnalysisRouteDependencies.buildAiDecisionPayload(analysisData);
     const userPrompt = buildAiDecisionPrompt(code, aiDecisionPayload);
     const snapshotKey = buildAnalysisSnapshotKey(code, aiDecisionPayload);
 
@@ -500,6 +503,15 @@ export async function POST(request: NextRequest) {
       timeoutMs: Number.isFinite(timeoutMs) && timeoutMs > 0 ? timeoutMs : undefined,
       configOverrides: buildAiCodexConfigOverrides(),
     });
+
+    if (!result.session) {
+      throw new Error('Codex 未返回会话标识');
+    }
+
+    aiAnalysisRouteDependencies.bindAiAnalysisSessionSnapshot(
+      result.session.sessionId,
+      snapshotKey
+    );
 
     console.log(`[AI Analysis] 分析完成`);
 
