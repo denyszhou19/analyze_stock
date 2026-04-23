@@ -2,7 +2,9 @@ import type {
   AiSummaryCard,
   TrinityDecisionAction,
   TrinityDecisionBias,
-} from '@/lib/stock-structure-types';
+  TrinityJudgmentLabel,
+} from './stock-structure-types.ts';
+import { TRINITY_JUDGMENT_LABELS } from './stock-structure-types.ts';
 
 const AI_REPORT_JSON_BLOCK_PATTERN = /^\s*```json\s*([\s\S]*?)\s*```\s*([\s\S]*)$/i;
 
@@ -91,17 +93,15 @@ function parseOptionalString(value: unknown): string | undefined {
 
 function parseOptionalJudgment(
   value: unknown
-): AiSummaryCard['judgment'] | undefined {
+): TrinityJudgmentLabel | undefined {
   const parsed = parseOptionalString(value);
   if (!parsed) {
     return undefined;
   }
 
-  if (parsed === '严格等待' || parsed === '候选可试' || parsed === '确认执行') {
-    return parsed;
-  }
-
-  return undefined;
+  return TRINITY_JUDGMENT_LABELS.includes(parsed as TrinityJudgmentLabel)
+    ? (parsed as TrinityJudgmentLabel)
+    : undefined;
 }
 
 function parseOptionalCandidateStructure(

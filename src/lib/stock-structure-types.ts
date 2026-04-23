@@ -449,6 +449,14 @@ export interface AiSummaryCard {
   judgment_warning?: string;
 }
 
+export const TRINITY_JUDGMENT_LABELS = [
+  '严格等待',
+  '候选可试',
+  '确认执行',
+] as const;
+
+export type TrinityJudgmentLabel = (typeof TRINITY_JUDGMENT_LABELS)[number];
+
 export interface TrinityConclusion {
   action: TrinityDecisionAction;
   action_label: string;
@@ -622,7 +630,7 @@ export interface TrinityDivergenceWeightDecision {
 
 export interface TrinityJudgmentDecision {
   level: 'strict_wait' | 'candidate_probe' | 'confirmed_execute';
-  label: '严格等待' | '候选可试' | '确认执行';
+  label: TrinityJudgmentLabel;
   current_best_action: string;
   critical_reason: string;
   supporting_factors: string[];

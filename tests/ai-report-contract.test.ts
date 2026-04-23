@@ -141,3 +141,107 @@ test('parseAiReportContract parses phase3 enhancement fields when present', () =
     '当前后端判断偏保守，仍需关注30分钟确认后的升级路径'
   );
 });
+
+test('parseAiReportContract downgrades invalid optional fields without failing', () => {
+  const report = [
+    '```json',
+    JSON.stringify(
+      {
+        headline: '坏输入回归',
+        action: 'wait',
+        bias: 'neutral',
+        primary_reason: '主字段仍然合法',
+        triggers: ['保留触发器'],
+        risks: ['保留风险'],
+        guardrail: '主字段仍然合法',
+        judgment: '完全看多',
+        critical_reason: '   ',
+        spacetime_summary: '\n',
+        structure_summary: '   ',
+        execution_summary: '可执行摘要仍应保留',
+        candidate_structure: ['not-an-object'],
+        wait_state: 'not-an-object',
+        judgment_warning: '  仅作提示  ',
+      },
+      null,
+      2
+    ),
+    '```',
+    '',
+    '# 综合判断',
+    '',
+    '- 坏输入不应阻断解析',
+  ].join('\n');
+
+  const parsed = parseAiReportContract(report);
+
+  assert.equal(parsed.summary.judgment, undefined);
+  assert.equal(parsed.summary.critical_reason, undefined);
+  assert.equal(parsed.summary.spacetime_summary, undefined);
+  assert.equal(parsed.summary.structure_summary, undefined);
+  assert.equal(parsed.summary.execution_summary, '可执行摘要仍应保留');
+  assert.equal(parsed.summary.candidate_structure, undefined);
+  assert.equal(parsed.summary.wait_state, undefined);
+  assert.equal(parsed.summary.judgment_warning, '仅作提示');
+});
+
+test('parseAiReportContract preserves valid optional parts when others are invalid', () => {
+  const report = [
+    '```json',
+    JSON.stringify(
+      {
+        headline: '混合可选字段',
+        action: 'hold',
+        bias: 'neutral',
+        primary_reason: '主字段合法',
+        triggers: ['保留触发器'],
+        risks: ['保留风险'],
+        guardrail: '主字段合法',
+        judgment: '候选可试',
+        critical_reason: '仍需等确认',
+        spacetime_summary: '   ',
+        structure_summary: '结构摘要可空白降级',
+        execution_summary: '执行摘要可保留',
+        candidate_structure: {
+          label: 'A延续候选',
+          current_leg: '30分钟回抽段',
+          upgrade_condition: '   ',
+          invalidation: '跌破结构低点',
+        },
+        wait_state: {
+          label: '等待回抽确认',
+          current_block: '',
+          next_action: '观察30分钟止跌',
+        },
+        judgment_warning: '',
+      },
+      null,
+      2
+    ),
+    '```',
+    '',
+    '# 综合判断',
+    '',
+    '- 合法字段应保留',
+  ].join('\n');
+
+  const parsed = parseAiReportContract(report);
+
+  assert.equal(parsed.summary.judgment, '候选可试');
+  assert.equal(parsed.summary.critical_reason, '仍需等确认');
+  assert.equal(parsed.summary.spacetime_summary, undefined);
+  assert.equal(parsed.summary.structure_summary, '结构摘要可空白降级');
+  assert.equal(parsed.summary.execution_summary, '执行摘要可保留');
+  assert.deepEqual(parsed.summary.candidate_structure, {
+    label: 'A延续候选',
+    current_leg: '30分钟回抽段',
+    upgrade_condition: undefined,
+    invalidation: '跌破结构低点',
+  });
+  assert.deepEqual(parsed.summary.wait_state, {
+    label: '等待回抽确认',
+    current_block: undefined,
+    next_action: '观察30分钟止跌',
+  });
+  assert.equal(parsed.summary.judgment_warning, undefined);
+});
