@@ -51,14 +51,13 @@ test('analysis page narrows follow-up payload before reading markdown', () => {
 });
 
 test('analysis page guards AI summary writes behind its own run id and invalidates stale requests', () => {
-  assert.match(pageSource, /const activeAiSummaryRunIdRef = useRef\(0\);/);
-  assert.match(pageSource, /const aiSummaryRunId = activeAiSummaryRunIdRef\.current \+ 1;/);
-  assert.match(pageSource, /activeAiSummaryRunIdRef\.current = aiSummaryRunId;/);
-  assert.match(pageSource, /if \(aiSummaryRunId !== activeAiSummaryRunIdRef\.current\) \{\s*return;\s*\}/);
-  assert.match(pageSource, /if \(aiSummaryRunId === activeAiSummaryRunIdRef\.current\) \{\s*setAiMarkdown\(parsed\.markdown\);/);
+  assert.match(pageSource, /const aiSummaryRunGuardRef = useRef\(createRequestRunGuard\(\)\);/);
+  assert.match(pageSource, /const aiSummaryRunId = beginRequestRun\(aiSummaryRunGuardRef\.current\);/);
+  assert.match(pageSource, /if \(!isCurrentRequestRun\(aiSummaryRunGuardRef\.current, aiSummaryRunId\)\) \{\s*return;\s*\}/);
+  assert.match(pageSource, /if \(isCurrentRequestRun\(aiSummaryRunGuardRef\.current, aiSummaryRunId\)\) \{\s*setAiMarkdown\(parsed\.markdown\);/);
   assert.match(pageSource, /setAiState\(\{\s*status: 'ready',/);
   assert.match(pageSource, /setAiSession\(\{\s*sessionId: aiPayload\.session\.sessionId,/);
-  assert.match(pageSource, /activeAiSummaryRunIdRef\.current \+= 1;/);
+  assert.match(pageSource, /invalidateRequestRun\(aiSummaryRunGuardRef\.current\);/);
 });
 
 test('analysis page no longer keeps old first-screen duplicate sections', () => {

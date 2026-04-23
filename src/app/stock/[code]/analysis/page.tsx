@@ -20,6 +20,12 @@ import { Markdown } from '@/components/ui/markdown';
 import { SmartLoading } from '@/components/ui/smart-loading';
 import type { AnalysisLoadingStage } from '@/lib/analysis-loading-stage';
 import { parseAiReportContract } from '@/lib/ai-report-contract';
+import {
+  beginRequestRun,
+  createRequestRunGuard,
+  invalidateRequestRun,
+  isCurrentRequestRun,
+} from '@/lib/request-run-guard';
 import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
 import type { AnalysisResultData, PeriodAnalysisData } from '@/lib/stock-structure-types';
 import type { AnalysisPageAiState } from '@/lib/trinity-analysis-page-view-model';
@@ -184,12 +190,12 @@ export default function StockAnalysisPage() {
   const contentRef = useRef<HTMLDivElement>(null);
   const activeRunIdRef = useRef(0);
   const autoLoadTriggeredRef = useRef(false);
-  const activeAiSummaryRunIdRef = useRef(0);
-  const activeFollowupRunIdRef = useRef(0);
+  const aiSummaryRunGuardRef = useRef(createRequestRunGuard());
+  const followupRunGuardRef = useRef(createRequestRunGuard());
 
   const resetAiFollowupState = useCallback(() => {
-    activeAiSummaryRunIdRef.current += 1;
-    activeFollowupRunIdRef.current += 1;
+    invalidateRequestRun(aiSummaryRunGuardRef.current);
+    invalidateRequestRun(followupRunGuardRef.current);
     setAiSession(null);
     setAiFollowupDraft('');
     setAiFollowupLoading(false);
@@ -393,8 +399,7 @@ export default function StockAnalysisPage() {
     }
 
     resetAiFollowupState();
-    const aiSummaryRunId = activeAiSummaryRunIdRef.current + 1;
-    activeAiSummaryRunIdRef.current = aiSummaryRunId;
+    const aiSummaryRunId = beginRequestRun(aiSummaryRunGuardRef.current);
     setAiMarkdown(null);
     setAiState({ status: 'loading', label: '生成中' });
 
@@ -421,11 +426,11 @@ export default function StockAnalysisPage() {
 
       const parsed = parseAiReportContract(aiPayload.report);
 
-      if (aiSummaryRunId !== activeAiSummaryRunIdRef.current) {
+      if (!isCurrentRequestRun(aiSummaryRunGuardRef.current, aiSummaryRunId)) {
         return;
       }
 
-      if (aiSummaryRunId === activeAiSummaryRunIdRef.current) {
+      if (isCurrentRequestRun(aiSummaryRunGuardRef.current, aiSummaryRunId)) {
         setAiMarkdown(parsed.markdown);
         setAiState({
           status: 'ready',
@@ -439,7 +444,7 @@ export default function StockAnalysisPage() {
         }
       }
     } catch (currentError) {
-      if (aiSummaryRunId !== activeAiSummaryRunIdRef.current) {
+      if (!isCurrentRequestRun(aiSummaryRunGuardRef.current, aiSummaryRunId)) {
         return;
       }
 
@@ -458,8 +463,7 @@ export default function StockAnalysisPage() {
       return;
     }
 
-    const followupRunId = activeFollowupRunIdRef.current + 1;
-    activeFollowupRunIdRef.current = followupRunId;
+    const followupRunId = beginRequestRun(followupRunGuardRef.current);
     setAiFollowupLoading(true);
     setAiFollowupError(null);
 
@@ -481,7 +485,7 @@ export default function StockAnalysisPage() {
         throw new Error(data.error || 'AI 追问失败');
       }
 
-      if (followupRunId !== activeFollowupRunIdRef.current) {
+      if (!isCurrentRequestRun(followupRunGuardRef.current, followupRunId)) {
         return;
       }
 
@@ -495,12 +499,12 @@ export default function StockAnalysisPage() {
       ]);
       setAiFollowupDraft('');
     } catch (currentError) {
-      if (followupRunId !== activeFollowupRunIdRef.current) {
+      if (!isCurrentRequestRun(followupRunGuardRef.current, followupRunId)) {
         return;
       }
       setAiFollowupError(currentError instanceof Error ? currentError.message : 'AI 追问失败');
     } finally {
-      if (followupRunId === activeFollowupRunIdRef.current) {
+      if (isCurrentRequestRun(followupRunGuardRef.current, followupRunId)) {
         setAiFollowupLoading(false);
       }
     }
