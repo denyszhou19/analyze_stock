@@ -44,6 +44,12 @@ test('analysis page stores ai follow-up session and turn state', () => {
   assert.match(pageSource, /snapshotKey: aiSession\.snapshotKey/);
 });
 
+test('analysis page narrows follow-up payload before reading markdown', () => {
+  assert.match(pageSource, /const followupPayload = data\.data;/);
+  assert.match(pageSource, /if \(!data\.success \|\| !followupPayload\?\.markdown\)/);
+  assert.match(pageSource, /markdown: followupPayload\.markdown,/);
+});
+
 test('analysis page no longer keeps old first-screen duplicate sections', () => {
   assert.doesNotMatch(pageSource, /AI 智能分析报告/);
   assert.doesNotMatch(pageSource, /多维度跨级别操作建议/);

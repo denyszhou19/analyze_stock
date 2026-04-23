@@ -459,7 +459,9 @@ export default function StockAnalysisPage() {
       });
 
       const data = (await response.json()) as FollowupResponse;
-      if (!data.success || !data.data?.markdown) {
+      const followupPayload = data.data;
+
+      if (!data.success || !followupPayload?.markdown) {
         throw new Error(data.error || 'AI 追问失败');
       }
 
@@ -472,7 +474,7 @@ export default function StockAnalysisPage() {
         {
           id: `${Date.now()}-${prev.length}`,
           question,
-          markdown: data.data.markdown,
+          markdown: followupPayload.markdown,
         },
       ]);
       setAiFollowupDraft('');
