@@ -11,7 +11,8 @@ export const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守�
 - 先输出 JSON 摘要，再输出 Markdown 正文
 - JSON 摘要必须放在 \`\`\`json\`\`\` 代码块内，且只能输出一个摘要对象
 - JSON 摘要字段必须包含 headline / action / bias / primary_reason / triggers / risks / guardrail
-- JSON 摘要还必须新增 judgment / critical_reason / spacetime_summary / structure_summary / execution_summary / candidate_structure / wait_state / judgment_warning
+- JSON 摘要应新增增强字段 judgment / critical_reason / spacetime_summary / structure_summary / execution_summary
+- candidate_structure / wait_state / judgment_warning 属于可选增强字段：有则按约定输出，没有则可省略
 - JSON 摘要中的 action 只能使用英文枚举：buy / add / hold / reduce / sell / t_trade / wait / avoid
 - JSON 摘要中的 bias 只能使用英文枚举：bullish / bearish / neutral
 - JSON 摘要中的 action / bias 禁止输出中文值，如“观望”“等待”“中性偏空”“中性偏多”
@@ -397,6 +398,7 @@ ${AI_REPORT_OUTPUT_CONTRACT}
 - spacetime_summary 要概括父子级别、时空门控、零轴强信号或共振状态
 - structure_summary 要概括正式结构与候选结构当前状态
 - execution_summary 要概括当前动作建议与执行含义
+- candidate_structure / wait_state / judgment_warning 为可选增强字段，有则按以下约定输出
 - candidate_structure 只包含 label / current_leg / upgrade_condition / invalidation
 - wait_state 只包含 label / current_block / next_action
 - judgment_warning 只在存在后端判断疑点、输入张力或保守降级时填写

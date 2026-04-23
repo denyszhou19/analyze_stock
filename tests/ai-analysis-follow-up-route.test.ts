@@ -13,11 +13,17 @@ test('ai-analysis route source upgrades phase3 output contract and session snaps
   assert.match(mainRouteSource, /candidate_structure/);
   assert.match(mainRouteSource, /wait_state/);
   assert.match(mainRouteSource, /judgment_warning/);
+  assert.match(
+    mainRouteSource,
+    /candidate_structure\s*\/\s*wait_state\s*\/\s*judgment_warning[\s\S]*有则按约定输出|candidate_structure[\s\S]*wait_state[\s\S]*judgment_warning[\s\S]*有则按约定输出/
+  );
   assert.match(mainRouteSource, /当前综合判断/);
   assert.match(mainRouteSource, /时空怎么看/);
   assert.match(mainRouteSource, /结构怎么看/);
   assert.match(mainRouteSource, /现在怎么做/);
   assert.match(mainRouteSource, /风险与应对/);
+  assert.match(mainRouteSource, /不能直接改写后端当前正式动作/);
+  assert.match(mainRouteSource, /若\s*X\s*则可升级|若.*则可升级|条件升级预案/);
   assert.match(mainRouteSource, /runCodexStrategyAnalysisWithSession/);
   assert.match(mainRouteSource, /snapshotKey/);
   assert.match(mainRouteSource, /session/);
