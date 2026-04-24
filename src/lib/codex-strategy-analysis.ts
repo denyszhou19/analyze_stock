@@ -93,7 +93,6 @@ export function buildCodexExecArgs({
 export function buildCodexExecResumeArgs({
   sessionId,
   outputPath,
-  workingDir,
   configOverrides = [],
 }: {
   sessionId: string;
@@ -107,10 +106,7 @@ export function buildCodexExecResumeArgs({
     'exec',
     'resume',
     '--skip-git-repo-check',
-    '--color',
-    'never',
-    '--cd',
-    workingDir,
+    '--json',
     '--output-last-message',
     outputPath,
     ...configOverrides.flatMap((override) => ['-c', override]),
