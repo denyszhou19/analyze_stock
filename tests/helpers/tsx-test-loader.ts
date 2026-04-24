@@ -114,6 +114,19 @@ const trinityDecisionLabelsStubUrl = asDataModule(`
 `);
 
 const displayVocabularyStubUrl = asDataModule(`
+  export function normalizeTradingDisplayText(value) {
+    return typeof value === 'string'
+      ? value
+          .trim()
+          .replace(/\\bcomplex(?=候选)/gi, '复杂结构')
+          .replace(/\\bcomplex\\b/gi, '复杂结构')
+          .replace(/→\\s*live\\b/gi, '→进行中')
+          .replace(/\\blive\\b/gi, '进行中')
+          .replace(/current_stage\\s*/gi, '当前阶段')
+          .replace(/next_stage\\s*/gi, '下一阶段')
+      : '';
+  }
+
   export function getActionStatusMeta(status) {
     if (status === 'passed') {
       return { label: '可执行', icon: '✓' };
@@ -318,6 +331,8 @@ async function rewriteImports(code: string, filePath?: string): Promise<string> 
     .replaceAll("'@/lib/utils'", `'${utilsStubUrl}'`)
     .replaceAll('"@/lib/trinity-display-vocabulary"', `'${displayVocabularyStubUrl}'`)
     .replaceAll("'@/lib/trinity-display-vocabulary'", `'${displayVocabularyStubUrl}'`)
+    .replaceAll('"./trinity-display-vocabulary.ts"', `'${displayVocabularyStubUrl}'`)
+    .replaceAll("'./trinity-display-vocabulary.ts'", `'${displayVocabularyStubUrl}'`)
     .replaceAll('"@/components/stock/StructureExplainabilityPanel"', `'${structureExplainabilityPanelStubUrl}'`)
     .replaceAll("'@/components/stock/StructureExplainabilityPanel'", `'${structureExplainabilityPanelStubUrl}'`)
     .replaceAll('"@/lib/stock-execution-view-model"', `'${stockExecutionViewModelStubUrl}'`)

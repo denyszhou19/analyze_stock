@@ -1207,6 +1207,36 @@ test('view model exposes concise summaries and hover payloads for combinations a
   assert.equal(structureRule.detailHover.items[2].label, '当前限制');
 });
 
+test('view model normalizes candidate structure english fragments into Chinese display', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+
+  decision.candidate_structure = {
+    candidate_type: 'complex_candidate',
+    candidate_label: 'complex候选',
+    current_leg: 'p16→live 下行形成中',
+    direction: 'down',
+    upgrade_condition: '有效跌破后延续下行',
+    invalidation: '重新站回平台上沿',
+    reason: '结构复杂，需人工确认方向',
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.equal(
+    vm.summary.structureSummary,
+    '结构：复杂结构候选｜p16→进行中 下行形成中，结构复杂，需人工确认方向'
+  );
+  assert.ok(vm.summary.signalTags.some((tag) => tag.label === '结构｜复杂结构候选'));
+});
+
 test('failed structure rule uses blocking summary instead of observable wording', () => {
   const result = createResult();
   const decision = result.periods.daily.trinity_decision;

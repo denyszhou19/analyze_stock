@@ -3,7 +3,10 @@ import type {
   TrinityDecision,
   TrinityLevelNestingDecision,
 } from '@/lib/stock-structure-types';
-import type { SignalTagTone } from '@/lib/trinity-display-vocabulary';
+import {
+  normalizeTradingDisplayText,
+  type SignalTagTone,
+} from './trinity-display-vocabulary.ts';
 
 export interface SignalTagHover {
   title: string;
@@ -55,7 +58,7 @@ function buildTag(
   tone: SignalTagTone = 'neutral',
   items: Array<{ label: string; value?: string | null } | null | undefined> = []
 ): TrinitySignalTag | null {
-  const cleanedResult = cleanText(result);
+  const cleanedResult = normalizeTradingDisplayText(result);
   if (!cleanedResult) {
     return null;
   }
@@ -67,7 +70,7 @@ function buildTag(
       }
 
       const label = cleanText(item.label);
-      const value = cleanText(item.value);
+      const value = normalizeTradingDisplayText(item.value);
       if (!label || !value) {
         return null;
       }
@@ -107,12 +110,12 @@ export function sortSignalTags(tags: TrinitySignalTag[]): TrinitySignalTag[] {
 }
 
 function structureLabel(type?: string | null): string {
-  const cleaned = cleanText(type);
+  const cleaned = normalizeTradingDisplayText(type);
   return cleaned.endsWith('类') ? cleaned.slice(0, -1) : cleaned;
 }
 
 function structureTagResult(decision?: TrinityDecision | null): string {
-  const candidateLabel = cleanText(decision?.candidate_structure?.candidate_label);
+  const candidateLabel = normalizeTradingDisplayText(decision?.candidate_structure?.candidate_label);
   if (candidateLabel) {
     return candidateLabel;
   }

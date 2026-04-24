@@ -247,6 +247,21 @@ function cleanText(value?: string | null): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+export function normalizeTradingDisplayText(value?: string | null): string {
+  const cleaned = cleanText(value);
+  if (!cleaned) {
+    return '';
+  }
+
+  return cleaned
+    .replace(/\bcomplex(?=候选)/gi, '复杂结构')
+    .replace(/\bcomplex\b/gi, '复杂结构')
+    .replace(/→\s*live\b/gi, '→进行中')
+    .replace(/\blive\b/gi, '进行中')
+    .replace(/current_stage\s*/gi, '当前阶段')
+    .replace(/next_stage\s*/gi, '下一阶段');
+}
+
 function normalizeActionStatus(status?: ActionStatus | string | null): ActionStatus {
   const cleaned = cleanText(status).toLowerCase();
   if (cleaned === 'passed' || cleaned === 'info' || cleaned === 'warning' || cleaned === 'failed') {

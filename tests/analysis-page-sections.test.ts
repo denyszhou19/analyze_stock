@@ -209,6 +209,61 @@ test('TradingCycleBus renders three trading combinations with direction and trig
   assert.doesNotMatch(html, /状态：观察中/);
 });
 
+test('TradingCycleBus groups signal tags into three layered sections', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: [
+        {
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          direction: 'neutral',
+          directionLabel: '中性',
+          actionLabel: '谨慎看',
+          judgmentLabel: '候选可试',
+          relationLabel: '父级强冲突，子级逆父级',
+          relationHint: '日线看背景，30分钟看执行',
+          summary: '日线还没完全放行，30分钟先看确认',
+          recommendation: '先等30分钟放量突破平台上沿',
+          signalTags: [
+            createSignalTag('时空｜中偏弱', 'warning'),
+            createSignalTag('背离｜顶背离压制', 'bearish'),
+            createSignalTag('量能｜突破量弱', 'warning'),
+            createSignalTag('均线｜MA55压制', 'bearish'),
+            createSignalTag('结构｜复杂结构候选', 'neutral'),
+            createSignalTag('级别｜子级逆势', 'warning'),
+            createSignalTag('执行｜等待触发', 'neutral'),
+            createSignalTag('突破/跌破｜有效跌破', 'bearish'),
+          ],
+          parentConstraint: createExplainableField('父级约束', '日线：仍未完全放行'),
+          triggerLevel: createExplainableField('触发级别', '30分钟：放量突破平台上沿'),
+          triggerLevelLabel: '30分钟',
+          suitableAction: createExplainableField('适合动作', '等待30分钟确认后再决定是否轻仓试探'),
+          majorRisk: createExplainableField('主要风险', '30分钟冲高但量能不足会再次回到等待'),
+          explanation: '日线定约束，30分钟给触发；存在约束，不能直接放大动作',
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /当前动作状态/);
+  assert.match(html, /判断依据/);
+  assert.match(html, /补充风险\/次级信息/);
+  assert.match(html, /data-signal-layer="action-state"/);
+  assert.match(html, /data-signal-layer="judgment-basis"/);
+  assert.match(html, /data-signal-layer="secondary-risk"/);
+  assert.match(html, /当前动作状态[\s\S]*级别｜子级逆势[\s\S]*执行｜等待触发/);
+  assert.match(
+    html,
+    /判断依据[\s\S]*时空｜中偏弱[\s\S]*量能｜突破量弱[\s\S]*均线｜MA55压制[\s\S]*结构｜复杂结构候选/
+  );
+  assert.match(html, /补充风险\/次级信息[\s\S]*背离｜顶背离压制[\s\S]*突破\/跌破｜有效跌破/);
+});
+
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {
   const { TrinityRuleChain } = await importTsxModule<TrinityRuleChainModule>(
     'src/components/stock/TrinityRuleChain.tsx'

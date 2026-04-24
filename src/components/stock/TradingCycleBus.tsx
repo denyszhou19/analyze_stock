@@ -10,6 +10,44 @@ interface TradingCycleBusProps {
   combinations: AnalysisPageTradingCombinationViewModel[];
 }
 
+const SIGNAL_LAYERS = [
+  {
+    key: 'action-state',
+    title: '当前动作状态',
+    className: 'border-slate-200 bg-slate-50/90',
+    categories: ['执行', '级别'],
+  },
+  {
+    key: 'judgment-basis',
+    title: '判断依据',
+    className: 'border-sky-200 bg-sky-50/80',
+    categories: ['时空', '结构', '均线', '量能'],
+  },
+  {
+    key: 'secondary-risk',
+    title: '补充风险/次级信息',
+    className: 'border-amber-200 bg-amber-50/80',
+    categories: ['背离', '突破/跌破'],
+  },
+] as const;
+
+function groupSignalTags(tags: AnalysisPageTradingCombinationViewModel['signalTags']) {
+  const layerMap = new Map<string, typeof SIGNAL_LAYERS[number]>();
+  SIGNAL_LAYERS.forEach((layer) => {
+    layer.categories.forEach((category) => {
+      layerMap.set(category, layer);
+    });
+  });
+
+  return SIGNAL_LAYERS.map((layer) => ({
+    ...layer,
+    tags: tags.filter((tag) => {
+      const mappedLayer = layerMap.get(tag.category);
+      return mappedLayer?.key === layer.key;
+    }),
+  })).filter((layer) => layer.tags.length > 0);
+}
+
 export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
   if (!combinations.length) {
     return null;
@@ -27,6 +65,7 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
       <div className="grid gap-3 xl:grid-cols-3">
         {combinations.map((combination) => {
           const directionMeta = getDirectionMeta(combination.direction);
+          const groupedSignalLayers = groupSignalTags(combination.signalTags);
 
           return (
             <Card
@@ -55,7 +94,18 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                   <p className="text-xs text-muted-foreground">{combination.relationHint}</p>
                 </div>
 
-                <SignalTagList tags={combination.signalTags} />
+                <div className="space-y-2">
+                  {groupedSignalLayers.map((layer) => (
+                    <section
+                      key={`${combination.key}-${layer.key}`}
+                      data-signal-layer={layer.key}
+                      className={cn('space-y-2 rounded-xl border px-3 py-2.5', layer.className)}
+                    >
+                      <div className="text-xs font-medium text-muted-foreground">{layer.title}</div>
+                      <SignalTagList tags={layer.tags} />
+                    </section>
+                  ))}
+                </div>
 
                 <div className="grid gap-2 text-xs text-muted-foreground">
                   <ExplainableFact fact={combination.parentConstraint} />

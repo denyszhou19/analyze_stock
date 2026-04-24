@@ -27,6 +27,7 @@ import {
   getActionStatusMeta,
   getDirectionMeta,
   getStructureTagMeta,
+  normalizeTradingDisplayText,
   type DirectionTone,
 } from './trinity-display-vocabulary.ts';
 
@@ -360,9 +361,7 @@ function normalizeRuleChainText(value?: string | null): string {
     return '';
   }
 
-  return value
-    .replace(/current_stage\s*/g, '当前阶段')
-    .replace(/next_stage\s*/g, '下一阶段');
+  return normalizeTradingDisplayText(value);
 }
 
 function formatEntryStyleLabel(entryStyle?: string | null): string {
@@ -817,6 +816,7 @@ function buildStructureSummary(decision: TrinityDecision): string {
   const candidateStructure = decision.candidate_structure;
   if (candidateStructure?.candidate_label) {
     const structureLabel = [candidateStructure.candidate_label, candidateStructure.current_leg]
+      .map((item) => normalizeRuleChainText(item))
       .filter(Boolean)
       .join('｜');
     const detail = resolveChineseReason(
