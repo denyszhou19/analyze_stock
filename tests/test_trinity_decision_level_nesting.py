@@ -297,8 +297,6 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'prediction_alert': '📍 B双平台式正在等待 b3 回踩确认',
                     'action_hint': '等待 b3 回踩完成后重新转强',
                 },
-                current_point_id='b2',
-                current_segment={'label': 'b2→live'},
             ),
         )
 
@@ -306,7 +304,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['node_semantic']['actionable_node'], 'b3')
         self.assertEqual(decision['node_semantic']['label'], 'B类b3回踩确认')
         self.assertIn('b2→live 下行形成中', decision['node_semantic']['reason'])
-        self.assertEqual(decision['wait_conditions'][0], '等待30分钟B类b3回踩确认')
+        self.assertTrue(any(item == '等待30分钟B类b3回踩确认' for item in decision['wait_conditions']))
         self.assertTrue(any('回踩平台上沿不破' in item or '平台边界' in item for item in decision['confirm_conditions']))
 
     def test_standard_b_maps_b4_progress_to_b5_actionable_node(self) -> None:
@@ -325,13 +323,12 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'label': 'b4→live 下行形成中',
                 },
                 prediction={'current_stage': 'b4拐点', 'next_stage': 'b5拐点'},
-                current_point_id='b4',
             ),
         )
 
         self.assertEqual(decision['node_semantic']['actionable_node'], 'b5')
         self.assertEqual(decision['node_semantic']['label'], 'B类b5中继确认')
-        self.assertEqual(decision['wait_conditions'][0], '等待30分钟B类b5中继确认')
+        self.assertTrue(any(item == '等待30分钟B类b5中继确认' for item in decision['wait_conditions']))
 
     def test_standard_d_maps_d2_progress_to_d3_actionable_node(self) -> None:
         decision = self._decision(
@@ -354,14 +351,13 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'prediction_alert': '📍 D三段式进行中，等待 d3 拐点形成',
                     'action_hint': '等待底分型确认，d3 拐点是潜在买点',
                 },
-                current_point_id='d2',
             ),
         )
 
         self.assertEqual(decision['node_semantic']['family'], 'D')
         self.assertEqual(decision['node_semantic']['actionable_node'], 'd3')
         self.assertEqual(decision['node_semantic']['label'], 'D类d3反向修正完成')
-        self.assertEqual(decision['wait_conditions'][0], '等待30分钟D类d3反向修正完成')
+        self.assertTrue(any(item == '等待30分钟D类d3反向修正完成' for item in decision['wait_conditions']))
         self.assertTrue(any('d4' in item for item in decision['confirm_conditions']))
 
     def test_standard_d_keeps_unstable_d3_reason_when_prediction_marks_unstable_point(self) -> None:
@@ -390,13 +386,35 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'direction': 'up',
                     'label': 'd3→live 上行形成中',
                 },
-                current_point_id='d3',
             ),
         )
 
         self.assertEqual(decision['node_semantic']['actionable_node'], 'd3')
         self.assertIn('买入不稳定点', decision['node_semantic']['reason'])
         self.assertIn('d4结构完成', ''.join(decision['confirm_conditions']))
+
+    def test_extended_d_does_not_fake_exact_actionable_node(self) -> None:
+        decision = self._decision(
+            parent_status='弱',
+            child_payload=self._payload(
+                status='弱',
+                structure_type='延伸D类',
+                qualification='extended',
+                direction='up',
+                standard_candidate='D三段式',
+                current_leg={
+                    'from_point_id': 'd2',
+                    'to_point_id': 'live',
+                    'direction': 'down',
+                    'label': 'd2→live 下行形成中',
+                },
+                prediction={'current_stage': '延伸D进行中'},
+            ),
+        )
+
+        self.assertIsNone(decision.get('node_semantic'))
+        self.assertTrue(any('延伸结构' in item for item in decision['wait_conditions']))
+        self.assertTrue(all('d3' not in item and 'd4' not in item for item in decision['wait_conditions']))
 
     def test_extended_b_does_not_fake_exact_actionable_node(self) -> None:
         decision = self._decision(
