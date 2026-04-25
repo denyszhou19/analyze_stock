@@ -597,3 +597,36 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(decision['trade_qualification']['trade_mode'], 'no_trade')
         self.assertFalse(decision['conclusion']['can_trade'])
         self.assertEqual(decision['conclusion']['action'], 'wait')
+
+    def test_boundary_probe_with_b3_node_semantic_still_cannot_upgrade_to_standard_trade(self) -> None:
+        qualification = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': True,
+                'explainability': {'reason': 'B类结构成立'},
+            },
+            spacetime_decision={'mismatch_reason': ''},
+            moving_average_decision={'ma_gate': {'passed': True, 'reason': 'MA55 支撑有效'}},
+            volume_decision={'volume_gate': {'passed': True, 'reason': '放量确认'}},
+            execution_payload={'action': 'buy', 'direction': 'long', 'can_trade': True},
+            level_nesting_decision={
+                'resonance': 'boundary_probe',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '日线仅允许 30 分钟 B类b3 轻仓等待确认',
+                },
+                'node_semantic': {
+                    'family': 'B',
+                    'actionable_node': 'b3',
+                    'label': 'B类b3回踩确认',
+                    'reason': '当前只到 b3 回踩确认阶段',
+                },
+            },
+        )
+
+        self.assertEqual(qualification['trade_mode'], 'conditional_boundary_trade')
+        self.assertEqual(qualification['position_permission'], 'light_probe')
