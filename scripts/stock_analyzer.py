@@ -4561,6 +4561,94 @@ class TrinityStockAnalyzer:
             return f'{parent_label}{status_text}不支持{child_label}当前方向，先等待父级放行'
         return f'{parent_label}{status_text}无法明确放行，{child_label}先等待确认'
 
+    def _extract_level_nesting_stage_token(self, value: Optional[str], prefix: str) -> Optional[str]:
+        if not isinstance(value, str):
+            return None
+        match = re.search(rf'({prefix}\d+)', value.lower())
+        return match.group(1) if match else None
+
+    def _resolve_b_actionable_node(self, stage_token: Optional[str]) -> Optional[str]:
+        mapping = {
+            'b1': 'b1',
+            'b2': 'b3',
+            'b3': 'b3',
+            'b4': 'b5',
+            'b5': 'b5',
+            'b6': 'b7',
+            'b7': 'b7',
+        }
+        return mapping.get(stage_token or '')
+
+    def _resolve_d_actionable_node(self, stage_token: Optional[str]) -> Optional[str]:
+        return {
+            'd1': 'd1',
+            'd2': 'd3',
+            'd3': 'd3',
+            'd4': 'd4',
+        }.get(stage_token or '')
+
+    def _build_level_nesting_node_semantic(
+        self,
+        *,
+        child_payload: Optional[Dict[str, Any]],
+        family: str,
+        qualification: str,
+        level_label: str,
+    ) -> Optional[Dict[str, Any]]:
+        if family not in {'B', 'D'} or qualification != 'standard':
+            return None
+
+        child_payload = child_payload if isinstance(child_payload, dict) else {}
+        structure_payload = child_payload.get('structure') or {}
+        interpretation = structure_payload.get('interpretation') or {}
+        details = structure_payload.get('structure_details') or {}
+        prediction = details.get('prediction') or {}
+        explainability = details.get('explainability') or {}
+        current_leg = interpretation.get('current_leg') or {}
+        stage_token = (
+            self._extract_level_nesting_stage_token(prediction.get('current_stage'), family.lower())
+            or self._extract_level_nesting_stage_token(prediction.get('next_stage'), family.lower())
+            or self._extract_level_nesting_stage_token(current_leg.get('label'), family.lower())
+            or self._extract_level_nesting_stage_token(explainability.get('current_point_id'), family.lower())
+        )
+
+        actionable_node = (
+            self._resolve_b_actionable_node(stage_token)
+            if family == 'B'
+            else self._resolve_d_actionable_node(stage_token)
+        )
+        if not actionable_node:
+            return None
+
+        unstable_point = prediction.get('unstable_point') or {}
+        label_map = {
+            'b1': 'B类b1启动确认',
+            'b3': 'B类b3回踩确认',
+            'b5': 'B类b5中继确认',
+            'b7': 'B类b7末端确认',
+            'd1': 'D类d1起点观察',
+            'd2': 'D类d2修正展开',
+            'd3': 'D类d3反向修正完成',
+            'd4': 'D类d4结构完成',
+        }
+        evidence = [
+            current_leg.get('label') or '',
+            prediction.get('current_stage') or '',
+            prediction.get('next_stage') or '',
+            explainability.get('current_point_id') or '',
+        ]
+        if family == 'D' and unstable_point.get('description'):
+            evidence.insert(0, unstable_point.get('description'))
+
+        reason = '；'.join([item for item in evidence if item]) or f'{level_label}{label_map[actionable_node]}'
+        return {
+            'family': family,
+            'actionable_node': actionable_node,
+            'label': label_map[actionable_node],
+            'reason': reason,
+            'evidence': [item for item in evidence if item][:3],
+        }
+
     def _build_trinity_level_nesting_decision(
         self,
         *,
@@ -4663,6 +4751,12 @@ class TrinityStockAnalyzer:
         if resonance in {'blocked', 'structure_mismatch', 'parent_unclear'} and execution_strength == 'normal':
             execution_strength = 'wait_confirmation'
 
+        node_semantic = self._build_level_nesting_node_semantic(
+            child_payload=child_payload,
+            family=family,
+            qualification=qualification,
+            level_label=child_label,
+        )
         conditions = self._build_level_nesting_conditions(
             child_payload=child_payload,
             level_label=child_label,
@@ -4709,6 +4803,7 @@ class TrinityStockAnalyzer:
             'resonance': resonance,
             'operation_bias': operation_bias,
             'operation_frame': operation_frame,
+            'node_semantic': node_semantic,
             'execution_strength': execution_strength,
             'downgrade_reason': downgrade_reason,
             'permission': permission,
