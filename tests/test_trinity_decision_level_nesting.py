@@ -195,7 +195,8 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['child_structure_family'], 'D')
         self.assertEqual(decision['operation_frame'], 'three_leg_reversal')
         self.assertIn(decision['execution_strength'], {'light_probe', 'risk_control_first'})
-        self.assertTrue(any('d1/d2/d3/d4' in item or 'd3' in item or 'd4' in item for item in decision['wait_conditions']))
+        self.assertIsNone(decision['node_semantic'])
+        self.assertTrue(any('D类' in item or '三段结构' in item for item in decision['wait_conditions']))
 
     def test_unfinished_structure_observe_only(self) -> None:
         decision = self._decision(

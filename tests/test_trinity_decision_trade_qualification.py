@@ -225,6 +225,55 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(decision['position_permission'], 'light_probe')
         self.assertNotEqual(decision['trade_mode'], 'standard_node_trade')
 
+    def test_aligned_unstable_d3_still_stays_conditional_boundary_trade(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': True,
+                'node_map': {'a4': None, 'b8': None, 'd3': 21.6, 'd4': None},
+                'explainability': {'reason': '30分钟D类d3不稳定阶段'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '站上MA55'}},
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_breakdown': False,
+                    'supports_pullback_confirmation': True,
+                    'confidence_adjustment': 'neutral',
+                    'reason': '量能未否决',
+                }
+            },
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bearish',
+                'child_signal': 'long',
+                'resonance': 'aligned',
+                'execution_strength': 'light_probe',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '日线弱支持30分钟D类d3反向修正完成，但仍需按节点确认节奏执行',
+                },
+                'node_semantic': {
+                    'family': 'D',
+                    'actionable_node': 'd3',
+                    'label': 'D类d3反向修正完成',
+                    'reason': 'd3是不稳定买入点，后续仍需等d4完成',
+                },
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'conditional_boundary_trade')
+        self.assertEqual(decision['position_permission'], 'light_probe')
+        self.assertNotEqual(decision['trade_mode'], 'standard_node_trade')
+
     def test_refresh_trinity_decisions_applies_parent_unclear_light_probe_permission(self) -> None:
         results = {
             'daily': {

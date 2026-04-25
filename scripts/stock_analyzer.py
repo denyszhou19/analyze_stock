@@ -3778,6 +3778,27 @@ class TrinityStockAnalyzer:
                 'confidence': apply_confidence('high'),
                 'reason': ['当前信号要求规避或仅做风险控制', *reasons],
             }
+        node_semantic = level_nesting_decision.get('node_semantic') or {}
+        if (
+            light_probe_only
+            and nesting_resonance == 'aligned'
+            and structure_family == 'standard'
+            and qualification == 'standard'
+            and isinstance(node_semantic, dict)
+            and node_semantic.get('family') == 'D'
+            and can_trade_by_boundaries
+            and direction_gate_passed
+            and volume_gate_passed
+        ):
+            return {
+                'trade_mode': 'conditional_boundary_trade',
+                'position_permission': 'light_probe',
+                'confidence': apply_confidence('medium'),
+                'reason': [
+                    nesting_permission.get('reason') or 'D类不稳定节点只允许边界条件轻仓试探',
+                    *reasons,
+                ],
+            }
         if can_trade_by_nodes and direction_matches_structure and direction_gate_passed and volume_gate_passed:
             return {
                 'trade_mode': 'standard_node_trade',
@@ -4423,7 +4444,7 @@ class TrinityStockAnalyzer:
                 'invalid': [f'{level_label}跌回结构内按假突破处理', f'{level_label}跌破MA55且反抽不过失效'],
             },
             'B': {
-                'wait': [f'等待{level_label}B类结构 b1/b3/b5/b7 操作点确认', f'等待{level_label}平台边界回踩不破'],
+                'wait': [f'等待{level_label}B类结构边界确认', f'等待{level_label}平台边界回踩不破'],
                 'confirm': [f'{level_label}边界放量突破确认', f'{level_label}回踩平台上沿不破'],
                 'invalid': [f'{level_label}跌回平台下沿失效', f'{level_label}突破后量能失败并回落结构内，按假突破处理'],
             },
@@ -4433,8 +4454,8 @@ class TrinityStockAnalyzer:
                 'invalid': [f'{level_label}跌破中枢下沿失效', f'{level_label}跌破MA55且反抽不过失效'],
             },
             'D': {
-                'wait': [f'关注{level_label}D类结构 d1/d2/d3/d4 节奏', f'等待{level_label}d3或d4确认'],
-                'confirm': [f'{level_label}d3反向修正完成', f'{level_label}d4结构完成并出现确认信号'],
+                'wait': [f'关注{level_label}D类三段结构节奏演化', f'等待{level_label}三段结构边界确认'],
+                'confirm': [f'{level_label}三段结构关键拐点确认', f'{level_label}结构完成并出现方向选择'],
                 'invalid': [f'{level_label}跌破原建仓级别止损位立即退出', f'{level_label}反抽不过关键均线，按失败处理'],
             },
         }
@@ -4444,6 +4465,59 @@ class TrinityStockAnalyzer:
             'invalid': [f'{level_label}结构失效'],
         })
 
+    def _build_node_semantic_conditions(
+        self,
+        level_label: str,
+        node_semantic: Optional[Dict[str, Any]],
+    ) -> Optional[Dict[str, List[str]]]:
+        node_semantic = node_semantic if isinstance(node_semantic, dict) else {}
+        actionable_node = node_semantic.get('actionable_node')
+        templates = {
+            'b1': {
+                'wait': [f'等待{level_label}B类b1启动确认', f'等待{level_label}启动段放量并站稳平台上沿'],
+                'confirm': [f'{level_label}启动段放量突破确认', f'{level_label}回踩平台上沿不破'],
+                'invalid': [f'{level_label}启动后跌回平台内，按假启动处理', f'{level_label}跌破平台下沿失效'],
+            },
+            'b3': {
+                'wait': [f'等待{level_label}B类b3回踩确认', f'等待{level_label}回踩平台上沿不破'],
+                'confirm': [f'{level_label}回踩平台上沿不破', f'{level_label}回踩后重新转强并放量确认'],
+                'invalid': [f'{level_label}回踩跌回平台下沿失效', f'{level_label}回踩后量能衰竭并重新跌回结构内'],
+            },
+            'b5': {
+                'wait': [f'等待{level_label}B类b5中继确认', f'等待{level_label}中继段回踩边界后止跌'],
+                'confirm': [f'{level_label}中继回踩确认后再度转强', f'{level_label}平台边界支撑有效并恢复放量'],
+                'invalid': [f'{level_label}中继确认失败并跌回平台下沿', f'{level_label}中继段回抽不过关键边界失效'],
+            },
+            'b7': {
+                'wait': [f'等待{level_label}B类b7末端确认', f'等待{level_label}末端确认后给出方向选择'],
+                'confirm': [f'{level_label}末端确认后出现有效突破', f'{level_label}方向选择配合量价共振'],
+                'invalid': [f'{level_label}末端确认失败并重新跌回平台内', f'{level_label}方向选择后快速反抽失败'],
+            },
+            'd1': {
+                'wait': [f'等待{level_label}D类d2修正展开', f'等待{level_label}起点观察后进入修正段'],
+                'confirm': [f'{level_label}D类d2修正展开并守住起点', f'{level_label}修正段开始后仍保持结构完整'],
+                'invalid': [f'{level_label}D类起点观察失效并跌回原趋势内', f'{level_label}修正段未展开且结构重新转弱'],
+            },
+            'd3': {
+                'wait': [f'等待{level_label}D类d3反向修正完成', f'等待{level_label}反向修正结束并确认转向'],
+                'confirm': [f'{level_label}D类d4结构完成并出现确认信号', f'{level_label}反向修正完成后给出方向选择'],
+                'invalid': [f'{level_label}D类d3确认失败并重新跌回修正段', f'{level_label}反向修正后无延续并跌破关键止损位'],
+            },
+            'd4': {
+                'wait': [f'等待{level_label}D类d4结构完成后的方向选择', f'等待{level_label}结构完成后确认突破或转弱'],
+                'confirm': [f'{level_label}D类d4结构完成并出现方向选择', f'{level_label}结构完成后的方向选择获得量价确认'],
+                'invalid': [f'{level_label}D类d4完成后方向选择失败', f'{level_label}结构完成后迅速回到原区间内失效'],
+            },
+        }
+        template = templates.get(actionable_node)
+        if not template:
+            return None
+        return {
+            'wait_conditions': template['wait'],
+            'confirm_conditions': template['confirm'],
+            'invalidation_conditions': template['invalid'],
+        }
+
     def _build_level_nesting_conditions(
         self,
         *,
@@ -4451,28 +4525,30 @@ class TrinityStockAnalyzer:
         level_label: str,
         family: str,
         qualification: str,
+        node_semantic: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, List[str]]:
         child_payload = child_payload if isinstance(child_payload, dict) else {}
         decision = child_payload.get('trinity_decision') or {}
         execution_plan = decision.get('execution_plan') or {}
         wait_state = decision.get('wait_state') or {}
         execution = decision.get('execution') or {}
+        semantic_conditions = self._build_node_semantic_conditions(level_label, node_semantic)
         templates = self._family_condition_templates(level_label, family)
 
         wait_items = [
             execution_plan.get('probe_entry'),
             wait_state.get('next_confirmation_action'),
-            *(templates['wait']),
+            *((semantic_conditions or {}).get('wait_conditions') or templates['wait']),
         ]
         confirm_items = [
             execution_plan.get('confirm_entry'),
             *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
-            *(templates['confirm']),
+            *((semantic_conditions or {}).get('confirm_conditions') or templates['confirm']),
         ]
         invalid_items = [
             execution_plan.get('invalidation'),
             *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
-            *(templates['invalid']),
+            *((semantic_conditions or {}).get('invalidation_conditions') or templates['invalid']),
         ]
 
         if qualification == 'extended':
@@ -4536,6 +4612,7 @@ class TrinityStockAnalyzer:
         qualification: str,
         resonance: str,
         execution_strength: str,
+        node_semantic: Optional[Dict[str, Any]] = None,
     ) -> str:
         status_text = parent_status or '状态未知'
         family_text = f'{family}类' if family in {'A', 'B', 'C', 'D'} else '结构'
@@ -4549,7 +4626,10 @@ class TrinityStockAnalyzer:
             'failed': '结构未通过',
             'unknown': '结构未知',
         }.get(qualification, qualification)
+        node_label = (node_semantic or {}).get('label')
         if resonance == 'aligned':
+            if isinstance(node_label, str) and node_label:
+                return f'{parent_label}{status_text}支持{child_label}{node_label}，但仍需按节点确认节奏执行'
             return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}命中三位一体表，按{child_label}条件执行'
         if resonance == 'boundary_probe':
             return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}命中平台边界逻辑，只允许轻仓等待确认'
@@ -4674,6 +4754,7 @@ class TrinityStockAnalyzer:
                 level_label=child_label,
                 family='unknown',
                 qualification='unknown',
+                node_semantic=None,
             )
             return {
                 'parent_level': parent_level,
@@ -4763,6 +4844,7 @@ class TrinityStockAnalyzer:
             level_label=child_label,
             family=family,
             qualification=qualification,
+            node_semantic=node_semantic,
         )
         allow_position_increase = resonance == 'aligned' and execution_strength == 'normal'
         allow_only_light_probe = execution_strength in {'light_probe', 'wait_confirmation'} and resonance != 'blocked'
@@ -4774,6 +4856,7 @@ class TrinityStockAnalyzer:
             qualification=qualification,
             resonance=resonance,
             execution_strength=execution_strength,
+            node_semantic=node_semantic,
         )
         permission = {
             'allow_position_increase': allow_position_increase,
