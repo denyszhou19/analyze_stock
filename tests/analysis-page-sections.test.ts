@@ -317,6 +317,94 @@ test('TradingCycleBus groups signal tags into three layered sections', async () 
   assert.match(html, /子级综合判断依据[\s\S]*背离｜顶背离压制[\s\S]*父级约束/);
 });
 
+test('TradingCycleBus renders Chinese node semantic contract copy without internal field names', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: [
+        {
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          direction: 'neutral',
+          directionLabel: '中性',
+          actionLabel: '谨慎看',
+          judgmentLabel: '候选可试',
+          relationLabel: '父级支持，子级顺父级',
+          relationHint: '日线看背景，30分钟看执行',
+          summary: '日线给背景，30分钟看B类节点确认',
+          recommendation: '先等等待30分钟B类b3回踩确认',
+          signalTags: [
+            createSignalTag('级别｜日线支持30分钟', 'neutral'),
+            createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
+          ],
+          actionStateTags: [
+            {
+              key: 'level_nesting',
+              category: '级别',
+              result: '日线支持30分钟',
+              label: '级别｜日线支持30分钟',
+              tone: 'neutral',
+              hover: {
+                title: '级别｜日线支持30分钟说明',
+                items: [
+                  { label: '父级别', value: '日线' },
+                  { label: '子级别', value: '30分钟' },
+                  { label: '节点语义', value: 'B类b3回踩确认' },
+                  { label: '说明', value: '日线强支持30分钟B类b3回踩确认，但仍需按节点确认节奏执行' },
+                ],
+              },
+            },
+            {
+              key: 'execution',
+              category: '执行',
+              result: '30分钟等待边界确认',
+              label: '执行｜30分钟等待边界确认',
+              tone: 'neutral',
+              hover: {
+                title: '执行｜30分钟等待边界确认说明',
+                items: [
+                  { label: '执行级别', value: '30分钟' },
+                  { label: '当前动作', value: '继续等待' },
+                  { label: '等待条件', value: '等待30分钟B类b3回踩确认' },
+                ],
+              },
+            },
+          ],
+          judgmentBasisTags: [],
+          parentConstraintTags: [],
+          parentSignalTags: [],
+          parentConstraint: createExplainableField('父级约束', '日线：趋势偏多'),
+          triggerLevel: {
+            label: '触发级别',
+            value: '30分钟：B类b3回踩确认',
+            hoverTitle: '触发级别说明',
+            hoverItems: [
+              { label: '这句话是什么意思', value: '30分钟负责给出更具体的执行触发。' },
+              { label: '为什么这么判断', value: '30分钟当前处于B类b3回踩确认阶段，等待回踩后重新转强' },
+              { label: '当前限制', value: '日线：趋势偏多' },
+              { label: '下一步条件', value: '30分钟回踩平台上沿不破' },
+            ],
+          },
+          triggerLevelLabel: '30分钟',
+          suitableAction: createExplainableField('适合动作', '等待30分钟确认后再考虑介入'),
+          majorRisk: createExplainableField('主要风险', '30分钟回踩跌回平台下沿失效'),
+          explanation: '日线定约束，30分钟给触发；当前按B类节点语义执行',
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /B类b3回踩确认/);
+  assert.match(html, /30分钟当前处于B类b3回踩确认阶段/);
+  assert.match(html, /30分钟回踩跌回平台下沿失效/);
+  assert.doesNotMatch(html, /actionable_node/);
+  assert.doesNotMatch(html, /node_semantic/);
+});
+
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {
   const { TrinityRuleChain } = await importTsxModule<TrinityRuleChainModule>(
     'src/components/stock/TrinityRuleChain.tsx'

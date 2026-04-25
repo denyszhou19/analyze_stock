@@ -557,6 +557,13 @@ export interface TrinityVolumeConfirmationDecision {
 }
 
 export interface TrinityLevelNestingDecision {
+  node_semantic?: {
+    family?: 'B' | 'D' | string;
+    actionable_node?: 'b1' | 'b3' | 'b5' | 'b7' | 'd1' | 'd2' | 'd3' | 'd4' | string;
+    label?: string | null;
+    reason?: string | null;
+    evidence?: string[] | null;
+  } | null;
   parent_level?: string | null;
   child_level?: string | null;
   parent_spacetime_status?: string | null;

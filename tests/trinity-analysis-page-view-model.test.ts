@@ -1309,6 +1309,96 @@ test('trading bus uses executable level nesting conditions before legacy trigger
   assert.match(shortline.suitableAction.hoverItems[3].value, /30分钟放量突破平台上沿/);
 });
 
+test('trading bus prefers node semantic reason and concrete B node conditions from backend contract', () => {
+  const result = createResult();
+  const dailyDecision = result.periods.daily.trinity_decision;
+  if (!dailyDecision) {
+    throw new Error('missing daily decision');
+  }
+  dailyDecision.conclusion = {
+    ...dailyDecision.conclusion,
+    action: 'hold',
+    action_label: '持有观察',
+    can_trade: true,
+  };
+  dailyDecision.trade_qualification = {
+    ...dailyDecision.trade_qualification,
+    trade_mode: 'standard_node_trade',
+    position_permission: 'half_position',
+  };
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'wait',
+        action_label: '等待',
+        bias: 'neutral',
+        confidence: 'medium',
+        can_trade: false,
+        wait_reason: '旧的泛化等待文案',
+      },
+      level_nesting: {
+        parent_level: 'daily',
+        child_level: 'hour30',
+        parent_spacetime_status: '强',
+        child_structure_type: 'B双平台式',
+        child_structure_family: 'B',
+        child_structure_qualification: 'standard',
+        child_structure_direction: 'up',
+        structure_match: true,
+        parent_bias: 'bullish',
+        child_signal: 'long',
+        resonance: 'aligned',
+        operation_bias: 'long',
+        operation_frame: 'swing_platform',
+        execution_strength: 'normal',
+        node_semantic: {
+          family: 'B',
+          actionable_node: 'b3',
+          label: 'B类b3回踩确认',
+          reason: '30分钟当前处于B类b3回踩确认阶段，等待回踩后重新转强',
+          evidence: ['b2→live 下行形成中'],
+        },
+        wait_conditions: ['等待30分钟B类b3回踩确认', '30分钟平台边界回踩不破'],
+        confirm_conditions: ['30分钟回踩平台上沿不破', '30分钟回踩后重新转强并放量确认'],
+        invalidation_conditions: ['30分钟回踩跌回平台下沿失效'],
+        permission: {
+          allow_position_increase: true,
+          allow_t_trade: true,
+          allow_only_light_probe: false,
+          reason: '日线强支持30分钟B类b3回踩确认，但仍需按节点确认节奏执行',
+        },
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.recommendation, '先等等待30分钟B类b3回踩确认');
+  assert.equal(shortline.triggerLevel.value, '30分钟：B类b3回踩确认');
+  assert.equal(
+    shortline.triggerLevel.hoverItems.find((item) => item.label === '为什么这么判断')?.value,
+    '30分钟当前处于B类b3回踩确认阶段，等待回踩后重新转强'
+  );
+  assert.equal(shortline.majorRisk.value, '30分钟回踩跌回平台下沿失效');
+  assert.equal(
+    shortline.suitableAction.hoverItems.find((item) => item.label === '下一步条件')?.value,
+    '30分钟回踩平台上沿不破、30分钟回踩后重新转强并放量确认、重新站上平台上沿'
+  );
+  assert.equal(
+    shortline.actionStateTags.find((tag) => tag.category === '级别')?.hover.items.find((item) => item.label === '节点语义')
+      ?.value,
+    'B类b3回踩确认'
+  );
+});
+
 test('view model normalizes candidate structure english fragments into Chinese display', () => {
   const result = createResult();
   const decision = result.periods.daily.trinity_decision;

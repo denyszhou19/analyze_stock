@@ -163,6 +163,8 @@ test('buildDecisionSignalTags includes level nesting and execution tags by defau
   assert.deepEqual(tags[5]?.hover.items, [
     { label: '父级偏向', value: '父级偏多' },
     { label: '关系状态', value: '子级逆势' },
+    { label: '节点语义', value: '暂无补充说明' },
+    { label: '节点原因', value: '暂无补充说明' },
     { label: '说明', value: '父级偏多但子级等待确认' },
   ]);
   assert.ok(tags[5]?.hover.items.every((item) => !['先手点', '确认点', '失效点'].includes(item.label)));
@@ -292,11 +294,63 @@ test('buildDecisionSignalTags renders executable level nesting conditions in Chi
     { label: '关系状态', value: '边界试探' },
     { label: '结构原型', value: 'C' },
     { label: '结构资格', value: '延伸结构' },
+    { label: '节点语义', value: '暂无补充说明' },
+    { label: '节点原因', value: '暂无补充说明' },
     { label: '等待条件', value: '30分钟延伸C等待平台边界突破' },
     { label: '确认条件', value: '30分钟回踩平台上沿不破' },
     { label: '失效条件', value: '30分钟跌破平台下沿失效' },
     { label: '说明', value: '日线中偏强，30分钟延伸C只允许边界轻仓试探' },
   ]);
+});
+
+test('buildDecisionSignalTags shows node semantic copy without leaking internal field names', () => {
+  const tags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      level_nesting: {
+        parent_level: 'daily',
+        child_level: 'hour30',
+        parent_spacetime_status: '强',
+        child_structure_type: 'B双平台式',
+        child_structure_family: 'B',
+        child_structure_qualification: 'standard',
+        child_structure_direction: 'up',
+        structure_match: true,
+        parent_bias: 'bullish',
+        child_signal: 'long',
+        resonance: 'aligned',
+        operation_bias: 'long',
+        operation_frame: 'swing_platform',
+        execution_strength: 'normal',
+        node_semantic: {
+          family: 'B',
+          actionable_node: 'b3',
+          label: 'B类b3回踩确认',
+          reason: '30分钟当前处于B类b3回踩确认阶段，等待回踩后重新转强',
+          evidence: ['b2→live 下行形成中'],
+        },
+        wait_conditions: ['等待30分钟B类b3回踩确认'],
+        confirm_conditions: ['30分钟回踩平台上沿不破'],
+        invalidation_conditions: ['30分钟回踩跌回平台下沿失效'],
+        permission: {
+          allow_position_increase: true,
+          allow_t_trade: true,
+          allow_only_light_probe: false,
+          reason: '日线强支持30分钟B类b3回踩确认，但仍需按节点确认节奏执行',
+        },
+      },
+    })
+  );
+
+  const levelTag = tags.find((tag) => tag.key === 'level_nesting');
+  assert.ok(levelTag);
+  assert.ok(levelTag.hover.items.some((item) => item.label === '节点语义' && item.value === 'B类b3回踩确认'));
+  assert.ok(
+    levelTag.hover.items.some(
+      (item) => item.label === '节点原因' && item.value === '30分钟当前处于B类b3回踩确认阶段，等待回踩后重新转强'
+    )
+  );
+  assert.ok(levelTag.hover.items.every((item) => item.label !== 'actionable_node'));
+  assert.ok(levelTag.hover.items.every((item) => item.label !== 'node_semantic'));
 });
 
 test('buildDecisionSignalTags exposes zero-axis and divergence decisions from phase2 blocks', () => {

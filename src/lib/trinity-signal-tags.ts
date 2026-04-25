@@ -464,6 +464,8 @@ function buildLevelNestingHoverItems(
     { label: '关系状态', value: levelNestingLabel(levelNesting?.resonance) },
     { label: '结构原型', value: levelNesting?.child_structure_family },
     { label: '结构资格', value: qualificationLabel(levelNesting?.child_structure_qualification) },
+    { label: '节点语义', value: levelNesting?.node_semantic?.label ?? '暂无补充说明' },
+    { label: '节点原因', value: levelNesting?.node_semantic?.reason ?? '暂无补充说明' },
     { label: '等待条件', value: levelNesting?.wait_conditions?.join('、') },
     { label: '确认条件', value: levelNesting?.confirm_conditions?.join('、') },
     { label: '失效条件', value: levelNesting?.invalidation_conditions?.join('、') },

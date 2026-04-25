@@ -582,6 +582,18 @@ function firstLevelNestingCondition(
   return normalizeLevelCondition(value, levelLabel);
 }
 
+function levelNestingConditions(
+  nesting: TrinityDecision['level_nesting'] | undefined,
+  key: 'wait_conditions' | 'confirm_conditions' | 'invalidation_conditions',
+  levelLabel: string
+): string[] {
+  return (
+    nesting?.[key]
+      ?.map((item) => normalizeLevelCondition(item, levelLabel))
+      .filter((item): item is string => Boolean(item)) ?? []
+  );
+}
+
 function scopedLevelCondition(
   value: string,
   levelLabel: string
@@ -644,6 +656,10 @@ function buildCombinationActionStateTags(
     buildCustomSignalTag('level_nesting', '级别', levelResult, levelTone, [
       { label: '父级别', value: majorLabel },
       { label: '子级别', value: minorLabel },
+      {
+        label: '节点语义',
+        value: nesting?.node_semantic?.label ?? '暂无补充说明',
+      },
       {
         label: '说明',
         value:
@@ -1463,7 +1479,7 @@ function buildCombination({
       hoverTitle: '触发级别说明',
       hoverItems: [
         createHoverItem('这句话是什么意思', `${minorLabel}负责给出更具体的执行触发。`),
-        createHoverItem('为什么这么判断', triggerHoverValue),
+        createHoverItem('为什么这么判断', minor?.level_nesting?.node_semantic?.reason ?? triggerHoverValue),
         createHoverItem('当前限制', major ? parentConstraintValue : `${majorLabel}缺失`),
         createHoverItem(
           '下一步条件',
@@ -1487,8 +1503,8 @@ function buildCombination({
           '下一步条件',
           formatList(
             [
-              minor ? firstLevelNestingCondition(minor.level_nesting, 'confirm_conditions', minorLabel) : '',
-              major ? firstLevelNestingCondition(major.level_nesting, 'confirm_conditions', majorLabel) : '',
+              ...(minor ? levelNestingConditions(minor.level_nesting, 'confirm_conditions', minorLabel) : []),
+              ...(major ? levelNestingConditions(major.level_nesting, 'confirm_conditions', majorLabel) : []),
               ...(resolveDecisionTriggerLabels(minor).length > 0
                 ? resolveDecisionTriggerLabels(minor)
                 : resolveDecisionTriggerLabels(major)),
