@@ -43,6 +43,18 @@ export function resolveRelationLabel(levelNesting?: TrinityLevelNestingDecision)
     return '父级支持，子级顺父级';
   }
 
+  if (levelNesting.resonance === 'boundary_probe') {
+    return '父级只允许边界试探';
+  }
+
+  if (levelNesting.resonance === 'structure_mismatch') {
+    return '父级未放行，结构先重配';
+  }
+
+  if (levelNesting.resonance === 'blocked') {
+    return '父级未放行，当前先等待';
+  }
+
   if (
     levelNesting.resonance === 'child_countertrend' ||
     levelNesting.resonance === 'conflict'

@@ -1237,6 +1237,78 @@ test('view model exposes concise summaries and hover payloads for combinations a
   assert.equal(structureRule.detailHover.items[2].label, '当前限制');
 });
 
+test('trading bus uses executable level nesting conditions before legacy trigger text', () => {
+  const result = createResult();
+  const dailyDecision = result.periods.daily.trinity_decision;
+  if (!dailyDecision) {
+    throw new Error('missing daily decision');
+  }
+  dailyDecision.conclusion = {
+    ...dailyDecision.conclusion,
+    action: 'hold',
+    action_label: '持有观察',
+    can_trade: true,
+  };
+  dailyDecision.trade_qualification = {
+    ...dailyDecision.trade_qualification,
+    trade_mode: 'standard_node_trade',
+    position_permission: 'half_position',
+  };
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      level_nesting: {
+        parent_level: 'daily',
+        child_level: 'hour30',
+        parent_spacetime_status: '中偏强',
+        child_structure_type: '延伸C类',
+        child_structure_family: 'C',
+        child_structure_qualification: 'extended',
+        child_structure_direction: 'up',
+        structure_match: true,
+        parent_bias: 'bullish',
+        child_signal: 'long',
+        resonance: 'boundary_probe',
+        operation_bias: 'long',
+        operation_frame: 'platform_boundary',
+        execution_strength: 'light_probe',
+        downgrade_reason: '延伸C沿用C类边界逻辑，但拐点偏多，需等待确认',
+        wait_conditions: ['30分钟延伸C等待平台上沿突破', '30分钟回踩平台边界不破'],
+        confirm_conditions: ['30分钟放量突破平台上沿'],
+        invalidation_conditions: ['30分钟跌破中枢下沿失效'],
+        permission: {
+          allow_position_increase: false,
+          allow_t_trade: true,
+          allow_only_light_probe: true,
+          reason: '日线中偏强，30分钟延伸C只允许边界轻仓试探',
+        },
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.recommendation, '先等30分钟延伸C等待平台上沿突破');
+  assert.match(shortline.triggerLevel.value, /30分钟：延伸C等待平台上沿突破/);
+  assert.ok(
+    shortline.actionStateTags.some((tag) => tag.label === '级别｜30分钟边界试探')
+  );
+  assert.ok(
+    shortline.actionStateTags.some((tag) => tag.label === '执行｜30分钟等待边界确认')
+  );
+  assert.ok(shortline.triggerLevel.hoverItems.every((item) => !item.value.includes('boundary_probe')));
+  assert.ok(shortline.triggerLevel.hoverItems.every((item) => !item.value.includes('extended')));
+  assert.equal(shortline.majorRisk.value, '30分钟跌破中枢下沿失效');
+  assert.match(shortline.suitableAction.hoverItems[3].value, /30分钟放量突破平台上沿/);
+});
+
 test('view model normalizes candidate structure english fragments into Chinese display', () => {
   const result = createResult();
   const decision = result.periods.daily.trinity_decision;

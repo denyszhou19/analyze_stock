@@ -77,6 +77,14 @@ class TrinityStockAnalyzer:
         'hour15': '15',     # 15分钟
     }
 
+    LEVEL_LABELS = {
+        'weekly': '周线',
+        'daily': '日线',
+        'hour60': '60分钟',
+        'hour30': '30分钟',
+        'hour15': '15分钟',
+    }
+
     # 结构分析窗口配置
     STRUCTURE_MIN_KLINES = 60
     STRUCTURE_FRACTAL_DISPLAY_LIMIT = 10
@@ -3695,6 +3703,29 @@ class TrinityStockAnalyzer:
             and level_nesting_decision.get('parent_bias') == 'bearish'
             and (level_nesting_decision.get('child_signal') == 'long' or is_long_intent)
         )
+        nesting_resonance = level_nesting_decision.get('resonance')
+        nesting_reason = nesting_permission.get('reason') or '级别嵌套未放行'
+        if nesting_resonance in {'blocked', 'structure_mismatch', 'parent_unclear'}:
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': 'low',
+                'reason': [nesting_reason, *reasons],
+            }
+        if nesting_resonance == 'boundary_probe':
+            if action in {'buy', 'sell'} and can_trade_by_boundaries and direction_gate_passed and volume_gate_passed:
+                return {
+                    'trade_mode': 'conditional_boundary_trade',
+                    'position_permission': 'light_probe',
+                    'confidence': apply_confidence('medium'),
+                    'reason': [nesting_reason, *reasons],
+                }
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': 'low',
+                'reason': [nesting_reason, *reasons],
+            }
         if action == 'wait':
             return {
                 'trade_mode': 'wait_confirmation',
@@ -4001,6 +4032,20 @@ class TrinityStockAnalyzer:
                 'impact_on_judgment': 'promote',
                 'is_hard_constraint': False,
             }
+        if resonance in {'blocked', 'structure_mismatch', 'parent_unclear'}:
+            return {
+                'status': 'conflicting',
+                'reason': permission.get('reason') or '父级级别嵌套未放行，当前级别先等待确认',
+                'impact_on_judgment': 'suppress',
+                'is_hard_constraint': True,
+            }
+        if resonance == 'boundary_probe':
+            return {
+                'status': 'neutral',
+                'reason': permission.get('reason') or '父级仅允许边界轻仓试探，不能升级标准交易',
+                'impact_on_judgment': 'suppress',
+                'is_hard_constraint': False,
+            }
         if resonance in {'child_countertrend', 'conflict'}:
             return {
                 'status': 'conflicting',
@@ -4276,6 +4321,246 @@ class TrinityStockAnalyzer:
             ],
         }
 
+    def _level_label(self, level: Optional[str]) -> str:
+        return self.LEVEL_LABELS.get(level or '', level or '当前级别')
+
+    def _resolve_level_nesting_parent_status(self, parent_payload: Dict[str, Any]) -> Optional[str]:
+        decision = parent_payload.get('trinity_decision') if isinstance(parent_payload, dict) else {}
+        decision = decision or {}
+        spacetime = decision.get('spacetime') or {}
+        macd = parent_payload.get('macd') or {}
+        return spacetime.get('status') or macd.get('status')
+
+    def _spacetime_parent_bias(self, status: Optional[str]) -> str:
+        if status in ('极强', '强', '中偏强'):
+            return 'bullish'
+        if status in ('极弱', '弱', '中偏弱'):
+            return 'bearish'
+        return 'neutral'
+
+    def _normalize_level_nesting_direction(self, value: Optional[str]) -> str:
+        if value in ('up', '上涨', 'long', 'bullish'):
+            return 'up'
+        if value in ('down', '下跌', 'short', 'bearish'):
+            return 'down'
+        return 'neutral'
+
+    def _resolve_level_nesting_structure_profile(
+        self,
+        child_payload: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        child_payload = child_payload if isinstance(child_payload, dict) else {}
+        decision = child_payload.get('trinity_decision') or {}
+        structure_decision = decision.get('structure') or {}
+        period_structure = child_payload.get('structure') or {}
+        interpretation = period_structure.get('interpretation') or {}
+        focus_structure = interpretation.get('focus_structure') or {}
+
+        structure_type = (
+            structure_decision.get('type')
+            or period_structure.get('structure_type')
+            or focus_structure.get('archetype_label')
+        )
+        standard_candidate = structure_decision.get('standard_candidate')
+        focus_family = focus_structure.get('archetype_family')
+        candidate_for_family = standard_candidate or structure_type
+
+        family, _, resolved_qualification = self._resolve_structure_profile(candidate_for_family)
+        if family not in {'A', 'B', 'C', 'D'} and focus_family in {'A', 'B', 'C', 'D'}:
+            family = focus_family
+
+        structure_group = structure_decision.get('family')
+        qualification = (
+            structure_decision.get('qualification')
+            or focus_structure.get('standard_qualification')
+            or resolved_qualification
+            or 'unknown'
+        )
+        if structure_group in {'range', 'channel'}:
+            qualification = structure_group
+        elif qualification == 'over_limit' and structure_group in {'range', 'channel'}:
+            qualification = structure_group
+        elif qualification == 'failed' and family == 'complex':
+            qualification = 'complex'
+
+        direction = self._normalize_level_nesting_direction(
+            structure_decision.get('direction')
+            or focus_structure.get('directional_bias')
+            or period_structure.get('trend_direction')
+        )
+        if direction == 'neutral':
+            direction = {
+                'A': 'up',
+                'B': 'up',
+                'C': 'up',
+                'D': 'down',
+            }.get(family, direction)
+
+        return {
+            'type': structure_type or '未知结构',
+            'family': family if family in {'A', 'B', 'C', 'D'} else 'unknown',
+            'qualification': qualification,
+            'direction': direction,
+        }
+
+    def _compact_condition_list(self, items: List[Optional[str]], fallback: str) -> List[str]:
+        result: List[str] = []
+        for item in items:
+            if not isinstance(item, str):
+                continue
+            value = item.strip()
+            if value and value not in result:
+                result.append(value)
+        if result:
+            return result[:3]
+        return [fallback]
+
+    def _family_condition_templates(self, level_label: str, family: str) -> Dict[str, List[str]]:
+        templates = {
+            'A': {
+                'wait': [f'等待{level_label}有效突破结构上沿', f'等待{level_label}站上MA55后回踩不破'],
+                'confirm': [f'{level_label}放量突破确认', f'{level_label}回踩MA55不破'],
+                'invalid': [f'{level_label}跌回结构内按假突破处理', f'{level_label}跌破MA55且反抽不过失效'],
+            },
+            'B': {
+                'wait': [f'等待{level_label}B类结构 b1/b3/b5/b7 操作点确认', f'等待{level_label}平台边界回踩不破'],
+                'confirm': [f'{level_label}边界放量突破确认', f'{level_label}回踩平台上沿不破'],
+                'invalid': [f'{level_label}跌回平台下沿失效', f'{level_label}突破后量能失败并回落结构内，按假突破处理'],
+            },
+            'C': {
+                'wait': [f'等待{level_label}突破平台上沿', f'等待{level_label}回踩平台边界不破'],
+                'confirm': [f'{level_label}放量突破平台上沿', f'{level_label}突破后回踩不破'],
+                'invalid': [f'{level_label}跌破中枢下沿失效', f'{level_label}跌破MA55且反抽不过失效'],
+            },
+            'D': {
+                'wait': [f'关注{level_label}D类结构 d1/d2/d3/d4 节奏', f'等待{level_label}d3或d4确认'],
+                'confirm': [f'{level_label}d3反向修正完成', f'{level_label}d4结构完成并出现确认信号'],
+                'invalid': [f'{level_label}跌破原建仓级别止损位立即退出', f'{level_label}反抽不过关键均线，按失败处理'],
+            },
+        }
+        return templates.get(family, {
+            'wait': [f'等待{level_label}结构确认'],
+            'confirm': [f'{level_label}确认信号形成'],
+            'invalid': [f'{level_label}结构失效'],
+        })
+
+    def _build_level_nesting_conditions(
+        self,
+        *,
+        child_payload: Optional[Dict[str, Any]],
+        level_label: str,
+        family: str,
+        qualification: str,
+    ) -> Dict[str, List[str]]:
+        child_payload = child_payload if isinstance(child_payload, dict) else {}
+        decision = child_payload.get('trinity_decision') or {}
+        execution_plan = decision.get('execution_plan') or {}
+        wait_state = decision.get('wait_state') or {}
+        execution = decision.get('execution') or {}
+        templates = self._family_condition_templates(level_label, family)
+
+        wait_items = [
+            execution_plan.get('probe_entry'),
+            wait_state.get('next_confirmation_action'),
+            *(templates['wait']),
+        ]
+        confirm_items = [
+            execution_plan.get('confirm_entry'),
+            *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
+            *(templates['confirm']),
+        ]
+        invalid_items = [
+            execution_plan.get('invalidation'),
+            *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
+            *(templates['invalid']),
+        ]
+
+        if qualification == 'extended':
+            wait_items.insert(0, f'{level_label}延伸结构沿用{family}类框架，等待边界确认')
+        elif qualification == 'unfinished':
+            wait_items.insert(0, f'{level_label}结构未完成，先观察不执行')
+        elif qualification == 'complex':
+            wait_items.insert(0, f'{level_label}复杂结构只看边界，不套标准节点')
+        elif qualification in {'range', 'channel'}:
+            wait_items.insert(0, f'{level_label}按上下沿边界等待突破/跌破确认')
+
+        return {
+            'wait_conditions': self._compact_condition_list(wait_items, f'等待{level_label}结构确认'),
+            'confirm_conditions': self._compact_condition_list(confirm_items, f'{level_label}确认信号形成'),
+            'invalidation_conditions': self._compact_condition_list(invalid_items, f'{level_label}结构失效'),
+        }
+
+    def _operation_frame_for_family(self, family: str, qualification: str) -> str:
+        if qualification in {'range', 'channel'}:
+            return 'range_boundary'
+        return {
+            'A': 'trend_continuation',
+            'B': 'swing_platform',
+            'C': 'platform_boundary',
+            'D': 'three_leg_reversal',
+        }.get(family, 'wait_structure')
+
+    def _downgrade_execution_strength(
+        self,
+        *,
+        resonance: str,
+        family: str,
+        qualification: str,
+        parent_status: Optional[str],
+    ) -> Tuple[str, Optional[str]]:
+        if qualification == 'standard' and resonance == 'aligned':
+            if family == 'D':
+                return 'light_probe', 'D类结构按三段节奏处理，执行需谨慎'
+            return 'normal', None
+        if qualification == 'extended':
+            return 'light_probe', f'延伸{family}沿用{family}类框架，但拐点偏多，需等待确认'
+        if qualification == 'unfinished':
+            return 'observe_only', '结构未完成，只观察不执行'
+        if qualification == 'complex':
+            return 'wait_confirmation', '复杂结构只看边界，不套标准节点'
+        if qualification in {'range', 'channel'}:
+            return 'wait_confirmation', '区间/通道结构按上下沿边界等待确认'
+        if resonance in {'boundary_probe', 'structure_mismatch', 'parent_unclear'}:
+            return 'wait_confirmation', None
+        if resonance == 'child_countertrend':
+            return 'light_probe', '子级逆父级，只允许轻仓试探或做T'
+        return 'wait_confirmation', None
+
+    def _build_level_nesting_permission_reason(
+        self,
+        *,
+        parent_label: str,
+        child_label: str,
+        parent_status: Optional[str],
+        family: str,
+        qualification: str,
+        resonance: str,
+        execution_strength: str,
+    ) -> str:
+        status_text = parent_status or '状态未知'
+        family_text = f'{family}类' if family in {'A', 'B', 'C', 'D'} else '结构'
+        qualification_text = {
+            'standard': '标准结构',
+            'extended': '延伸结构',
+            'unfinished': '未完成结构',
+            'complex': '复杂结构',
+            'range': '区间结构',
+            'channel': '通道结构',
+            'failed': '结构未通过',
+            'unknown': '结构未知',
+        }.get(qualification, qualification)
+        if resonance == 'aligned':
+            return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}命中三位一体表，按{child_label}条件执行'
+        if resonance == 'boundary_probe':
+            return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}命中平台边界逻辑，只允许轻仓等待确认'
+        if resonance == 'child_countertrend':
+            return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}逆父级，只允许轻仓试探或做T'
+        if resonance == 'structure_mismatch':
+            return f'{parent_label}{status_text}与{child_label}{qualification_text}{family_text}不匹配，先等待结构重新确认'
+        if resonance == 'blocked':
+            return f'{parent_label}{status_text}不支持{child_label}当前方向，先等待父级放行'
+        return f'{parent_label}{status_text}无法明确放行，{child_label}先等待确认'
+
     def _build_trinity_level_nesting_decision(
         self,
         *,
@@ -4290,71 +4575,144 @@ class TrinityStockAnalyzer:
             'hour15': 'hour60',
         }
         parent_level = parent_map.get(level)
+        parent_label = self._level_label(parent_level)
+        child_label = self._level_label(level)
         parent_payload = normalized_results.get(parent_level or '') if parent_level else None
         child_payload = normalized_results.get(level)
 
         if not parent_level or not isinstance(parent_payload, dict):
+            conditions = self._build_level_nesting_conditions(
+                child_payload=child_payload,
+                level_label=child_label,
+                family='unknown',
+                qualification='unknown',
+            )
             return {
                 'parent_level': parent_level,
                 'child_level': level,
+                'parent_spacetime_status': None,
+                'child_structure_type': '未知结构',
+                'child_structure_family': 'unknown',
+                'child_structure_qualification': 'unknown',
+                'child_structure_direction': 'neutral',
+                'structure_match': False,
                 'parent_bias': 'neutral',
                 'child_signal': 'wait',
                 'resonance': 'parent_unclear',
+                'operation_bias': 'wait',
+                'operation_frame': 'wait_structure',
+                'execution_strength': 'wait_confirmation',
+                'downgrade_reason': f'{parent_label}缺失或尚未归一化',
                 'permission': {
                     'allow_position_increase': False,
                     'allow_t_trade': level in ('hour30', 'hour15'),
                     'allow_only_light_probe': True,
-                    'reason': '父级别缺失或尚未归一化，降级为轻仓/等待',
+                    'reason': f'{parent_label}缺失，{child_label}只能等待确认',
                 },
+                **conditions,
             }
 
-        parent_status = ((parent_payload.get('macd') or {}).get('status'))
-        child_structure = (((child_payload or {}).get('trinity_decision') or {}).get('structure') or {}).get('type')
-        parent_bias = (
-            'bullish'
-            if parent_status in ('极强', '强', '中偏强')
-            else 'bearish'
-            if parent_status in ('极弱', '弱', '中偏弱')
-            else 'neutral'
+        parent_status = self._resolve_level_nesting_parent_status(parent_payload)
+        profile = self._resolve_level_nesting_structure_profile(child_payload)
+        parent_bias = self._spacetime_parent_bias(parent_status)
+        family = profile['family']
+        qualification = profile['qualification']
+        direction = profile['direction']
+        child_signal = 'long' if direction == 'up' else 'short' if direction == 'down' else 'wait'
+        operation_bias = child_signal
+        table_config = self.SPACETIME_STRUCTURE_TABLE.get(parent_status or '')
+
+        if not table_config:
+            resonance = 'parent_unclear'
+            structure_match = False
+        else:
+            if direction == 'up':
+                expected_structures = table_config.get('上涨结构') or []
+            elif direction == 'down':
+                expected_structures = table_config.get('下跌结构') or []
+            else:
+                expected_structures = list(dict.fromkeys((table_config.get('上涨结构') or []) + (table_config.get('下跌结构') or [])))
+            structure_match = family in expected_structures
+
+            if direction == 'up' and not table_config.get('上涨结构'):
+                resonance = 'blocked'
+            elif direction == 'down' and not table_config.get('下跌结构'):
+                resonance = 'blocked'
+            elif family == 'C' and parent_status in ('中偏强', '中偏弱') and structure_match:
+                resonance = 'boundary_probe'
+            elif structure_match and direction in {'up', 'down'}:
+                resonance = 'aligned'
+            elif parent_bias == 'bearish' and child_signal == 'long':
+                resonance = 'child_countertrend'
+            elif parent_bias == 'bullish' and child_signal == 'short':
+                resonance = 'child_countertrend'
+            elif not structure_match:
+                resonance = 'structure_mismatch'
+            else:
+                resonance = 'parent_unclear'
+
+        operation_frame = self._operation_frame_for_family(family, qualification)
+        execution_strength, downgrade_reason = self._downgrade_execution_strength(
+            resonance=resonance,
+            family=family,
+            qualification=qualification,
+            parent_status=parent_status,
         )
-        child_signal = (
-            'long'
-            if child_structure in ('A五段式', 'B双平台式', 'C单平台式')
-            else 'short'
-            if child_structure == 'D三段式'
-            else 'wait'
+        if resonance == 'boundary_probe':
+            execution_strength = 'light_probe'
+        if resonance in {'blocked', 'structure_mismatch', 'parent_unclear'} and execution_strength == 'normal':
+            execution_strength = 'wait_confirmation'
+
+        conditions = self._build_level_nesting_conditions(
+            child_payload=child_payload,
+            level_label=child_label,
+            family=family,
+            qualification=qualification,
         )
-        aligned = parent_status in ('极强', '强', '中偏强') and child_structure in ('A五段式', 'B双平台式', 'C单平台式')
-        conflict = parent_status in ('极弱', '弱', '中偏弱') and child_structure in ('A五段式', 'B双平台式')
-        resonance = 'aligned' if aligned else 'conflict' if conflict else 'parent_unclear'
+        allow_position_increase = resonance == 'aligned' and execution_strength == 'normal'
+        allow_only_light_probe = execution_strength in {'light_probe', 'wait_confirmation'} and resonance != 'blocked'
+        reason = self._build_level_nesting_permission_reason(
+            parent_label=parent_label,
+            child_label=child_label,
+            parent_status=parent_status,
+            family=family,
+            qualification=qualification,
+            resonance=resonance,
+            execution_strength=execution_strength,
+        )
         permission = {
-            'allow_position_increase': aligned,
-            'allow_t_trade': level in ('hour30', 'hour15'),
-            'allow_only_light_probe': not aligned,
-            'reason': (
-                raw_level_nesting.get('summary')
-                if isinstance(raw_level_nesting, dict) and raw_level_nesting.get('summary')
-                else '父子级别共振'
-                if aligned
-                else '父级别信号不明确，降级执行'
-            ),
+            'allow_position_increase': allow_position_increase,
+            'allow_t_trade': level in ('hour30', 'hour15') and resonance != 'blocked',
+            'allow_only_light_probe': allow_only_light_probe,
+            'reason': reason,
         }
-        if parent_bias == 'bearish' and child_signal == 'long':
+        if resonance == 'child_countertrend':
             resonance = 'child_countertrend'
             permission = {
                 'allow_position_increase': False,
                 'allow_t_trade': level in ('hour30', 'hour15'),
                 'allow_only_light_probe': True,
-                'reason': '子级别逆父级别，只允许轻仓试探或做T',
+                'reason': reason,
             }
 
         return {
             'parent_level': parent_level,
             'child_level': level,
+            'parent_spacetime_status': parent_status,
+            'child_structure_type': profile['type'],
+            'child_structure_family': family,
+            'child_structure_qualification': qualification,
+            'child_structure_direction': direction,
+            'structure_match': structure_match,
             'parent_bias': parent_bias,
             'child_signal': child_signal,
             'resonance': resonance,
+            'operation_bias': operation_bias,
+            'operation_frame': operation_frame,
+            'execution_strength': execution_strength,
+            'downgrade_reason': downgrade_reason,
             'permission': permission,
+            **conditions,
         }
 
     def _refresh_trinity_decisions_with_level_nesting(

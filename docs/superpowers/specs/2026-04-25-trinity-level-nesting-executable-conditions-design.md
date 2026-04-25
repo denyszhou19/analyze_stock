@@ -39,6 +39,16 @@
 
 前端仍然不直接暴露英文枚举。后端字段名可以使用英文；所有进入页面、hover、summary、recommendation 的用户可见文案必须是自然中文，并带具体级别。
 
+### 1.1 策略硬闸门
+
+`level_nesting` 不只是展示解释，而是最终交易权限的硬闸门：
+
+- `blocked` / `structure_mismatch` / `parent_unclear`：最终交易资格只能是等待确认或不交易，不能给标准节点交易。
+- `boundary_probe`：最多轻仓边界试探，不能升级为标准节点交易。
+- `aligned + execution_strength == normal`：才允许进入标准节点交易候选。
+
+因此，子级结构节点、均线门控、量能门控和执行触发只能在级别嵌套放行后参与细化，不能绕过父级级别嵌套。
+
 ## 2. 目标与非目标
 
 ### 2.1 目标
@@ -56,8 +66,9 @@
    - `wait_conditions`
    - `confirm_conditions`
    - `invalidation_conditions`
-5. 让 view model 优先使用后端新条件展示交易周期总线，缺失时兼容旧字段。
-6. 保证用户可见中文，不泄漏内部英文枚举。
+5. 让最终交易资格读取 `level_nesting` 作为硬闸门，防止父级未放行时子级局部信号被升级成标准交易。
+6. 让 view model 优先使用后端新条件展示交易周期总线，缺失时兼容旧字段。
+7. 保证用户可见中文，不泄漏内部英文枚举。
 
 ### 2.2 非目标
 

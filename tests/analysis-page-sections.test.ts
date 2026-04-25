@@ -252,8 +252,8 @@ test('TradingCycleBus groups signal tags into three layered sections', async () 
             createSignalTag('突破/跌破｜有效跌破', 'bearish'),
           ],
           actionStateTags: [
-            createSignalTag('级别｜日线未放行', 'warning'),
-            createSignalTag('执行｜30分钟等待触发', 'neutral'),
+            createSignalTag('级别｜30分钟边界试探', 'warning'),
+            createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
           ],
           judgmentBasisTags: [
             createSignalTag('时空｜中偏强', 'bullish'),
@@ -299,11 +299,13 @@ test('TradingCycleBus groups signal tags into three layered sections', async () 
   assert.match(html, /data-signal-layer="judgment-basis"/);
   assert.doesNotMatch(html, /data-signal-layer="parent-child-detail"/);
   assert.match(html, /data-signal-layer="parent-constraint"/);
-  assert.match(html, /级别｜日线未放行/);
-  assert.match(html, /执行｜30分钟等待触发/);
+  assert.match(html, /级别｜30分钟边界试探/);
+  assert.match(html, /执行｜30分钟等待边界确认/);
   assert.doesNotMatch(html, /级别｜父级不明/);
   assert.doesNotMatch(html, /次级别结构继续共振/);
-  assert.match(html, /当前动作状态[\s\S]*级别｜日线未放行[\s\S]*执行｜30分钟等待触发/);
+  assert.doesNotMatch(html, /boundary_probe/);
+  assert.doesNotMatch(html, /extended/);
+  assert.match(html, /当前动作状态[\s\S]*级别｜30分钟边界试探[\s\S]*执行｜30分钟等待边界确认/);
   assert.match(
     html,
     /子级综合判断依据[\s\S]*时空｜中偏强[\s\S]*结构｜复杂结构候选[\s\S]*均线｜MA55压制/
@@ -825,7 +827,7 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
   assert.doesNotMatch(html, /突破\/跌破｜普通突破/);
   assert.match(html, /量能｜突破量弱/);
   assert.match(html, /均线｜MA55支撑/);
-  assert.match(html, /级别｜共振一致/);
+  assert.match(html, /级别｜父子级支持/);
   assert.match(html, /执行｜回踩执行/);
   assert.match(html, /信号含义/);
   assert.match(html, /交易含义/);

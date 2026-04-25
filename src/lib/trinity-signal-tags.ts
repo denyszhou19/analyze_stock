@@ -333,9 +333,15 @@ function breakthroughPeriodTone(patternType?: string | null, direction?: string 
 function levelNestingLabel(resonance?: TrinityLevelNestingDecision['resonance']): string {
   switch (resonance) {
     case 'aligned':
-      return '共振一致';
+      return '父子级支持';
+    case 'boundary_probe':
+      return '边界试探';
     case 'child_countertrend':
       return '子级逆势';
+    case 'structure_mismatch':
+      return '结构错配';
+    case 'blocked':
+      return '父级未放行';
     case 'conflict':
       return '级别冲突';
     case 'parent_unclear':
@@ -358,9 +364,14 @@ function levelNestingTone(
         return 'bearish';
       }
       return 'neutral';
+    case 'boundary_probe':
+      return 'warning';
     case 'child_countertrend':
     case 'conflict':
+    case 'structure_mismatch':
       return 'warning';
+    case 'blocked':
+      return 'bearish';
     case 'parent_unclear':
       return 'neutral';
     default:
@@ -450,9 +461,37 @@ function buildLevelNestingHoverItems(
   const levelNesting = decision.level_nesting;
   return [
     { label: '父级偏向', value: parentBiasLabel(levelNesting?.parent_bias) },
-    { label: '共振状态', value: levelNestingLabel(levelNesting?.resonance) },
+    { label: '关系状态', value: levelNestingLabel(levelNesting?.resonance) },
+    { label: '结构原型', value: levelNesting?.child_structure_family },
+    { label: '结构资格', value: qualificationLabel(levelNesting?.child_structure_qualification) },
+    { label: '等待条件', value: levelNesting?.wait_conditions?.join('、') },
+    { label: '确认条件', value: levelNesting?.confirm_conditions?.join('、') },
+    { label: '失效条件', value: levelNesting?.invalidation_conditions?.join('、') },
     { label: '说明', value: levelNesting?.permission.reason ?? decision.conclusion.wait_reason },
   ];
+}
+
+function qualificationLabel(value?: string | null): string {
+  switch (value) {
+    case 'standard':
+      return '标准结构';
+    case 'extended':
+      return '延伸结构';
+    case 'unfinished':
+      return '未完成结构';
+    case 'complex':
+      return '复杂结构';
+    case 'range':
+      return '区间结构';
+    case 'channel':
+      return '通道结构';
+    case 'failed':
+      return '结构未通过';
+    case 'unknown':
+      return '结构未知';
+    default:
+      return value ?? '';
+  }
 }
 
 function buildFallbackStructureTag(period?: PeriodAnalysisData | null): TrinitySignalTag | null {

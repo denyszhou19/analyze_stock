@@ -351,7 +351,7 @@ class StructurePhaseExecutionTest(unittest.TestCase):
         )
         standard = self.analyzer._build_trinity_structure_decision(
             {
-                'structure_type': 'A五段式',
+                'structure_type': 'B双平台式',
                 'trend_direction': '上涨',
                 'description': '标准 A 结构',
                 'interpretation': {'focus_structure': {}},
@@ -867,7 +867,7 @@ class StructurePhaseExecutionTest(unittest.TestCase):
             'moving_averages': {},
             'breakthrough': {},
             'structure': {
-                'structure_type': 'A五段式',
+                'structure_type': 'B双平台式',
                 'structure_stage': '趋势启动阶段',
                 'trend_direction': '上涨',
                 'description': 'mock',
@@ -887,12 +887,12 @@ class StructurePhaseExecutionTest(unittest.TestCase):
                 'version': 'v2',
                 'level': level,
                 'conclusion': {'bias': 'bullish'},
-                'structure': {'type': 'A五段式'},
+                'structure': {'type': 'B双平台式'},
             },
         }
         self.analyzer.convert_to_dataframe = lambda rows: pd.DataFrame(rows)
         self.analyzer._apply_spacetime_gate_to_results = lambda results: None
-        self.analyzer.analyze_level_nesting = lambda results: {'summary': '周线强 / 日线强'}
+        self.analyzer.analyze_level_nesting = lambda results: {'summary': '周线强 / 日线B双平台式'}
         self.analyzer.analyze_level_operation = lambda results: {}
 
         result = self.analyzer.analyze_with_local_data(
@@ -923,7 +923,7 @@ class StructurePhaseExecutionTest(unittest.TestCase):
             'moving_averages': {},
             'breakthrough': {},
             'structure': {
-                'structure_type': 'A五段式',
+                'structure_type': 'B双平台式',
                 'structure_stage': '趋势启动阶段',
                 'trend_direction': '上涨',
                 'description': 'mock',
@@ -943,11 +943,11 @@ class StructurePhaseExecutionTest(unittest.TestCase):
                 'version': 'v2',
                 'level': level,
                 'conclusion': {'bias': 'bullish'},
-                'structure': {'type': 'A五段式'},
+                'structure': {'type': 'B双平台式'},
             },
         }
         self.analyzer._apply_spacetime_gate_to_results = lambda results: None
-        self.analyzer.analyze_level_nesting = lambda results: {'summary': '周线强 / 日线强'}
+        self.analyzer.analyze_level_nesting = lambda results: {'summary': '周线强 / 日线B双平台式'}
 
         result = self.analyzer.analyze('300274', levels=['weekly', 'daily'])
 

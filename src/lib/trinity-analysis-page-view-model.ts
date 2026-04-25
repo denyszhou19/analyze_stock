@@ -343,6 +343,27 @@ const RESONANCE_LABELS: Record<NonNullable<TrinityDecision['level_nesting']>['re
   conflict: '级别冲突',
   child_countertrend: '子级逆势',
   parent_unclear: '父级不明',
+  boundary_probe: '边界试探',
+  structure_mismatch: '结构错配',
+  blocked: '父级未放行',
+};
+
+const COMBINATION_RESONANCE_LABELS: Record<NonNullable<TrinityDecision['level_nesting']>['resonance'], string> = {
+  aligned: '支持',
+  conflict: '级别冲突',
+  child_countertrend: '逆父级',
+  parent_unclear: '父级不明',
+  boundary_probe: '边界试探',
+  structure_mismatch: '结构错配',
+  blocked: '父级未放行',
+};
+
+const EXECUTION_STRENGTH_LABELS: Record<string, string> = {
+  normal: '按确认执行',
+  light_probe: '等待边界确认',
+  wait_confirmation: '等待确认',
+  observe_only: '只观察',
+  risk_control_first: '风控优先',
 };
 
 
@@ -460,7 +481,12 @@ function buildCombinationRecommendation(
 
   const triggerDecision = minor ?? major;
   const triggerLevelLabel = minor ? LEVEL_LABELS[minor.level] : LEVEL_LABELS[major.level];
-  const primaryTrigger = resolveCombinationTriggerText(triggerDecision, triggerLevelLabel);
+  const levelCondition = firstLevelNestingCondition(
+    triggerDecision.level_nesting,
+    'wait_conditions',
+    triggerLevelLabel
+  );
+  const primaryTrigger = levelCondition || resolveCombinationTriggerText(triggerDecision, triggerLevelLabel);
   return `先等${primaryTrigger}`;
 }
 
@@ -533,6 +559,38 @@ function resolveScopedCombinationTriggerText(
   return stripLevelPrefix(resolveCombinationTriggerText(decision, levelLabel), levelLabel) || '等待确认信号';
 }
 
+function normalizeLevelCondition(value: string | undefined, levelLabel: string): string {
+  if (!value) {
+    return '';
+  }
+  const cleaned = replaceAbstractLevelText(normalizeRuleChainText(value), levelLabel);
+  if (!cleaned) {
+    return '';
+  }
+  if (cleaned.startsWith(levelLabel) || cleaned.startsWith(`等待${levelLabel}`)) {
+    return cleaned;
+  }
+  return `${levelLabel}${cleaned}`;
+}
+
+function firstLevelNestingCondition(
+  nesting: TrinityDecision['level_nesting'] | undefined,
+  key: 'wait_conditions' | 'confirm_conditions' | 'invalidation_conditions',
+  levelLabel: string
+): string {
+  const value = nesting?.[key]?.find((item) => Boolean(item?.trim()));
+  return normalizeLevelCondition(value, levelLabel);
+}
+
+function scopedLevelCondition(
+  value: string,
+  levelLabel: string
+): string {
+  if (value.startsWith(`等待${levelLabel}`)) {
+    return value.slice(`等待${levelLabel}`.length).trim();
+  }
+  return value.startsWith(levelLabel) ? value.slice(levelLabel.length).trim() : value;
+}
 function formatCombinationList(
   items: string[],
   fallback: string,
@@ -559,24 +617,38 @@ function buildCombinationActionStateTags(
   minor: TrinityDecision | null
 ): AnalysisPageSignalTagViewModel[] {
   const majorBlocked = !major || major.trade_qualification.position_permission === 'no_position';
-  const relation = minor?.level_nesting ?? major?.level_nesting;
+  const nesting = minor?.level_nesting ?? major?.level_nesting;
+  const relationCopy = nesting ? COMBINATION_RESONANCE_LABELS[nesting.resonance] : '';
   const levelResult = majorBlocked
     ? `${majorLabel}未放行`
-    : relation?.resonance === 'aligned'
-      ? `${majorLabel}支持`
-      : relation?.resonance === 'child_countertrend' || relation?.resonance === 'conflict'
-        ? `${minorLabel}逆${majorLabel}`
-        : `${majorLabel}未放行`;
-  const trigger = minor ? resolveCombinationTriggerText(minor, minorLabel) : '';
-  const executionResult = `${minorLabel}等待触发`;
+    : nesting?.resonance === 'boundary_probe'
+      ? `${minorLabel}${relationCopy}`
+      : nesting?.resonance === 'structure_mismatch'
+        ? `${minorLabel}${relationCopy}`
+        : nesting?.resonance === 'blocked'
+          ? `${majorLabel}未放行`
+          : nesting?.resonance === 'aligned'
+            ? `${majorLabel}${relationCopy}${minorLabel}`
+            : nesting?.resonance === 'child_countertrend' || nesting?.resonance === 'conflict'
+              ? `${minorLabel}逆${majorLabel}`
+              : `${majorLabel}未放行`;
+  const waitCondition = firstLevelNestingCondition(minor?.level_nesting, 'wait_conditions', minorLabel);
+  const trigger = waitCondition || (minor ? resolveCombinationTriggerText(minor, minorLabel) : '');
+  const executionResult = `${minorLabel}${EXECUTION_STRENGTH_LABELS[nesting?.execution_strength ?? ''] ?? '等待触发'}`;
+  const levelTone =
+    majorBlocked || nesting?.resonance === 'boundary_probe' || nesting?.resonance === 'structure_mismatch' || nesting?.resonance === 'blocked'
+      ? 'warning'
+      : 'neutral';
 
   return [
-    buildCustomSignalTag('level_nesting', '级别', levelResult, majorBlocked ? 'warning' : 'neutral', [
+    buildCustomSignalTag('level_nesting', '级别', levelResult, levelTone, [
       { label: '父级别', value: majorLabel },
       { label: '子级别', value: minorLabel },
       {
         label: '说明',
-        value: `${majorLabel}未完全放行，${minorLabel}只能等待确认。`,
+        value:
+          nesting?.permission.reason ??
+          `${majorLabel}未完全放行，${minorLabel}只能等待确认。`,
       },
     ]),
     buildCustomSignalTag('execution', '执行', executionResult, 'neutral', [
@@ -1304,15 +1376,25 @@ function buildCombination({
   const suitableActionValue = minor
     ? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
     : '等待数据补齐';
+  const minorNestingRisk = minor ? firstLevelNestingCondition(minor.level_nesting, 'invalidation_conditions', minorLabel) : '';
+  const majorNestingRisk = major ? firstLevelNestingCondition(major.level_nesting, 'invalidation_conditions', majorLabel) : '';
+  const nestingRisk = minorNestingRisk || majorNestingRisk;
   const majorRiskValue =
-    resolveDecisionRiskLabels(minor).at(0) ??
-    resolveDecisionRiskLabels(major).at(0) ??
+    nestingRisk ||
+    resolveDecisionRiskLabels(minor).at(0) ||
+    resolveDecisionRiskLabels(major).at(0) ||
     '暂无明确风险';
+  const minorNestingWait = minor ? firstLevelNestingCondition(minor.level_nesting, 'wait_conditions', minorLabel) : '';
+  const majorNestingWait = major ? firstLevelNestingCondition(major.level_nesting, 'wait_conditions', majorLabel) : '';
   const triggerValue =
+    (minorNestingWait ? scopedLevelCondition(minorNestingWait, minorLabel) : '') ||
+    (majorNestingWait ? scopedLevelCondition(majorNestingWait, majorLabel) : '') ||
     (minor ? resolveScopedCombinationTriggerText(minor, minorLabel) : '') ||
     (major ? resolveScopedCombinationTriggerText(major, majorLabel) : '') ||
     `${minorLabel}等待触发`;
   const triggerHoverValue =
+    minorNestingWait ||
+    majorNestingWait ||
     (minor ? resolveCombinationTriggerText(minor, minorLabel) : '') ||
     (major ? resolveCombinationTriggerText(major, majorLabel) : '') ||
     `${minorLabel}等待触发`;
@@ -1386,7 +1468,8 @@ function buildCombination({
         createHoverItem(
           '下一步条件',
           minor
-            ? formatCombinationList(resolveDecisionConfirmationLabels(minor), '等待更明确确认', minorLabel)
+            ? firstLevelNestingCondition(minor.level_nesting, 'confirm_conditions', minorLabel) ||
+                formatCombinationList(resolveDecisionConfirmationLabels(minor), '等待更明确确认', minorLabel)
             : `先补齐${minorLabel}主判定`
         ),
       ],
@@ -1403,9 +1486,13 @@ function buildCombination({
         createHoverItem(
           '下一步条件',
           formatList(
-            resolveDecisionTriggerLabels(minor).length > 0
-              ? resolveDecisionTriggerLabels(minor)
-              : resolveDecisionTriggerLabels(major),
+            [
+              minor ? firstLevelNestingCondition(minor.level_nesting, 'confirm_conditions', minorLabel) : '',
+              major ? firstLevelNestingCondition(major.level_nesting, 'confirm_conditions', majorLabel) : '',
+              ...(resolveDecisionTriggerLabels(minor).length > 0
+                ? resolveDecisionTriggerLabels(minor)
+                : resolveDecisionTriggerLabels(major)),
+            ],
             '等待进一步确认'
           )
         ),
@@ -1420,9 +1507,12 @@ function buildCombination({
         createHoverItem(
           '为什么这么判断',
           formatList(
-            resolveDecisionRiskLabels(minor).length > 0
-              ? resolveDecisionRiskLabels(minor)
-              : resolveDecisionRiskLabels(major),
+            [
+              nestingRisk,
+              ...(resolveDecisionRiskLabels(minor).length > 0
+                ? resolveDecisionRiskLabels(minor)
+                : resolveDecisionRiskLabels(major)),
+            ],
             majorRiskValue
           )
         ),
@@ -1430,9 +1520,12 @@ function buildCombination({
         createHoverItem(
           '下一步条件',
           formatList(
-            resolveDecisionInvalidationLabels(minor).length > 0
-              ? resolveDecisionInvalidationLabels(minor)
-              : resolveDecisionInvalidationLabels(major),
+            [
+              nestingRisk,
+              ...(resolveDecisionInvalidationLabels(minor).length > 0
+                ? resolveDecisionInvalidationLabels(minor)
+                : resolveDecisionInvalidationLabels(major)),
+            ],
             '等待失效条件明确'
           )
         ),

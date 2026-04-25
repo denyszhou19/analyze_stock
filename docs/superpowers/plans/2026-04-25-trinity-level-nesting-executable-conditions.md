@@ -4,11 +4,20 @@
 
 **Goal:** 将三位一体级别嵌套判断接入 `SPACETIME_STRUCTURE_TABLE`，并产出可展示的等待 / 确认 / 失效条件。
 
-**Architecture:** 后端在 `trinity_decision.level_nesting` 内新增结构化合同字段，不改变现有 `trinity_decision.structure.family` 的语义；A/B/C/D 原型写入 `level_nesting.child_structure_family`。前端 view model 只做中文映射和展示选择，策略判断以后端 level nesting 为准。
+**Architecture:** 后端在 `trinity_decision.level_nesting` 内新增结构化合同字段，不改变现有 `trinity_decision.structure.family` 的语义；A/B/C/D 原型写入 `level_nesting.child_structure_family`。`level_nesting` 是最终交易权限的硬闸门：父级未放行或结构错配时，任何子级局部信号都不能升级成标准交易；边界试探只能轻仓或等待确认。前端 view model 只做中文映射和展示选择，策略判断以后端 level nesting 为准。
 
 **Tech Stack:** Python 3, `unittest`, Next.js App Router, React 19, TypeScript, node:test, pnpm, HTTP regression via local Next API。
 
 ---
+
+## 策略硬闸门决策
+
+本计划执行前已确认以下策略口径：
+
+1. `level_nesting.resonance in {'blocked', 'structure_mismatch', 'parent_unclear'}` 时，最终交易资格必须降级为 `wait_confirmation` 或 `no_trade`，且 `position_permission = 'no_position'`。
+2. `level_nesting.resonance == 'boundary_probe'` 时，最终交易资格最多是 `conditional_boundary_trade + light_probe`；条件未满足时必须是 `wait_confirmation + no_position`。
+3. 只有 `level_nesting.resonance == 'aligned'` 且 `execution_strength == 'normal'` 时，才允许升级为 `standard_node_trade`。
+4. 上述规则优先级高于子级结构节点、均线门控、量能门控和执行触发。也就是说，子级出现买点、站上 MA55、量能支持，都不能绕过父级级别嵌套闸门。
 
 ## 当前工作区前置条件
 
@@ -34,17 +43,25 @@
   - 新增查表匹配 helper。
   - 新增 A/B/C/D 第一版条件模板。
   - 修改 `_build_trinity_level_nesting_decision()` 产出新合同字段。
+  - 修改 `_build_trinity_trade_qualification()`，让 `level_nesting` 成为最终交易资格硬闸门。
+  - 修改 `_build_trinity_resonance_state()`，让 `blocked` / `structure_mismatch` / `boundary_probe` 进入判断摘要和硬约束链路。
 - Modify: `src/lib/stock-structure-types.ts`
   - 扩展 `TrinityLevelNestingDecision` 类型。
   - 保持 `TrinityStructureDecision.family` 现有语义不变。
 - Modify: `src/lib/trinity-signal-tags.ts`
   - 增加新 resonance 中文标签和 tone。
   - level nesting hover 增加等待 / 确认 / 失效条件。
+- Modify: `src/lib/trinity-judgment-display.ts`
+  - 增加新 resonance 的中文关系短句，避免 `boundary_probe` / `structure_mismatch` / `blocked` 被误显示为父级不明。
 - Modify: `src/lib/trinity-analysis-page-view-model.ts`
   - view model 优先使用 `level_nesting.wait_conditions` 等新字段。
   - action state / recommendation / trigger hover 使用具体级别条件。
 - Modify: `tests/test_trinity_decision_level_nesting.py`
   - 锁定查表、归一、降级、条件合同。
+- Modify: `tests/test_trinity_decision_trade_qualification.py`
+  - 锁定级别嵌套对最终交易资格的硬闸门优先级。
+- Modify: `tests/trinity-judgment-display.test.ts`
+  - 锁定新 resonance 的中文关系短句。
 - Modify: `tests/trinity-analysis-page-view-model.test.ts`
   - 锁定前端 VM 消费新条件和中文展示。
 - Modify: `tests/analysis-page-sections.test.ts`
@@ -96,6 +113,7 @@ Expected: commit succeeds. If user does not approve, skip commit and continue wi
 
 **Files:**
 - Modify: `tests/test_trinity_decision_level_nesting.py`
+- Modify: `tests/test_trinity_decision_trade_qualification.py`
 
 - [ ] **Step 1: 增加测试 helper**
 
@@ -302,15 +320,132 @@ Expected: commit succeeds. If user does not approve, skip commit and continue wi
         self.assertTrue(any('观察' in item or '等待' in item for item in decision['wait_conditions']))
 ```
 
-- [ ] **Step 8: 运行 Python 测试确认失败**
+- [ ] **Step 8: 更新父级不明旧断言为硬闸门**
+
+在 `tests/test_trinity_decision_trade_qualification.py` 中，把旧测试 `test_parent_unclear_light_probe_permission_downgrades_standard_node_position` 的最后断言从标准交易轻仓改成等待确认：
+
+```python
+        self.assertEqual(decision['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['position_permission'], 'no_position')
+        self.assertEqual(decision['confidence'], 'low')
+        self.assertTrue(any('父级' in reason for reason in decision['reason']))
+```
+
+同时把测试名改为：
+
+```python
+    def test_parent_unclear_blocks_standard_node_trade_even_when_child_conditions_pass(self) -> None:
+```
+
+- [ ] **Step 9: 增加结构错配阻断标准交易测试**
+
+在 `tests/test_trinity_decision_trade_qualification.py` 中追加：
+
+```python
+    def test_structure_mismatch_blocks_standard_node_trade_even_when_child_conditions_pass(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': True,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': '日线A类标准多头节点已确认'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '站上MA55'}},
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_breakdown': False,
+                    'supports_pullback_confirmation': True,
+                    'confidence_adjustment': 'upgrade',
+                    'reason': '量能支持突破',
+                }
+            },
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'parent_level': 'weekly',
+                'child_level': 'daily',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'structure_mismatch',
+                'execution_strength': 'wait_confirmation',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': False,
+                    'allow_only_light_probe': False,
+                    'reason': '周线强与日线A类不匹配，先等待结构重新确认',
+                },
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['position_permission'], 'no_position')
+        self.assertEqual(decision['confidence'], 'low')
+        self.assertTrue(any('结构重新确认' in reason for reason in decision['reason']))
+```
+
+- [ ] **Step 10: 增加边界试探最多轻仓测试**
+
+在 `tests/test_trinity_decision_trade_qualification.py` 中追加：
+
+```python
+    def test_boundary_probe_never_upgrades_to_standard_node_trade(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': True,
+                'node_map': {'a4': None, 'b8': 21.6, 'd3': None, 'd4': None},
+                'explainability': {'reason': '30分钟C类平台边界触发'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '边界上方'}},
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_breakdown': False,
+                    'supports_pullback_confirmation': True,
+                    'confidence_adjustment': 'neutral',
+                    'reason': '量能未否决',
+                }
+            },
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'boundary_probe',
+                'execution_strength': 'light_probe',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '日线中偏强，30分钟C类只允许平台边界轻仓试探',
+                },
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'conditional_boundary_trade')
+        self.assertEqual(decision['position_permission'], 'light_probe')
+        self.assertNotEqual(decision['trade_mode'], 'standard_node_trade')
+```
+
+- [ ] **Step 11: 运行 Python 测试确认失败**
 
 Run:
 
 ```bash
 python3 -m unittest tests/test_trinity_decision_level_nesting.py
+python3 -m unittest tests/test_trinity_decision_trade_qualification.py
 ```
 
-Expected: FAIL，失败原因包含缺少 `parent_spacetime_status`、`child_structure_family`、`wait_conditions` 或 resonance 仍是旧值。
+Expected: FAIL，失败原因包含缺少 `parent_spacetime_status`、`child_structure_family`、`wait_conditions`，或最终交易资格仍把 `parent_unclear` / `structure_mismatch` / `boundary_probe` 升级成标准交易。
 
 ## Task 2: 后端实现结构归一与查表合同
 
@@ -751,12 +886,75 @@ Expected: FAIL，失败原因包含缺少 `parent_spacetime_status`、`child_str
         return f'{parent_label}{status_text}无法明确放行，{child_label}先等待确认'
 ```
 
-- [ ] **Step 9: 运行 Python 测试**
+- [ ] **Step 9: 更新 `_build_trinity_trade_qualification()` 的硬闸门优先级**
+
+在 `_build_trinity_trade_qualification()` 中，`is_child_countertrend_long` 变量之后、`if action == 'wait':` 之前增加：
+
+```python
+        nesting_resonance = level_nesting_decision.get('resonance')
+        nesting_reason = nesting_permission.get('reason') or '级别嵌套未放行'
+        if nesting_resonance in {'blocked', 'structure_mismatch', 'parent_unclear'}:
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': apply_confidence('low'),
+                'reason': [nesting_reason, *reasons],
+            }
+        if nesting_resonance == 'boundary_probe':
+            if action in {'buy', 'sell'} and can_trade_by_boundaries and direction_gate_passed and volume_gate_passed:
+                return {
+                    'trade_mode': 'conditional_boundary_trade',
+                    'position_permission': 'light_probe',
+                    'confidence': apply_confidence('medium'),
+                    'reason': [nesting_reason, *reasons],
+                }
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': apply_confidence('low'),
+                'reason': [nesting_reason, *reasons],
+            }
+```
+
+注意：这段必须放在标准结构节点交易判断之前。目标是让级别嵌套先决定“是否有交易权限”，再让结构节点、均线、量能决定“是否满足执行细节”。
+
+- [ ] **Step 10: 更新 `_build_trinity_resonance_state()` 的硬约束语义**
+
+在 `_build_trinity_resonance_state()` 中，保留 `aligned` 分支，并把冲突分支替换为：
+
+```python
+        if resonance in {'blocked', 'structure_mismatch', 'parent_unclear'}:
+            return {
+                'status': 'conflicting',
+                'reason': permission.get('reason') or '父级级别嵌套未放行，当前级别先等待确认',
+                'impact_on_judgment': 'suppress',
+                'is_hard_constraint': True,
+            }
+        if resonance == 'boundary_probe':
+            return {
+                'status': 'neutral',
+                'reason': permission.get('reason') or '父级仅允许边界轻仓试探，不能升级标准交易',
+                'impact_on_judgment': 'suppress',
+                'is_hard_constraint': False,
+            }
+        if resonance in {'child_countertrend', 'conflict'}:
+            return {
+                'status': 'conflicting',
+                'reason': permission.get('reason') or '父级强冲突，子级逆父级',
+                'impact_on_judgment': 'suppress',
+                'is_hard_constraint': True,
+            }
+```
+
+Expected: `blocked`、`structure_mismatch`、`parent_unclear` 会把 `judgment.level` 压到严格等待；`boundary_probe` 不作为硬阻断，但会抑制升级，最终只允许轻仓边界试探。
+
+- [ ] **Step 11: 运行 Python 测试**
 
 Run:
 
 ```bash
 python3 -m unittest tests/test_trinity_decision_level_nesting.py
+python3 -m unittest tests/test_trinity_decision_trade_qualification.py
 ```
 
 Expected: PASS。
@@ -766,7 +964,9 @@ Expected: PASS。
 **Files:**
 - Modify: `src/lib/stock-structure-types.ts`
 - Modify: `src/lib/trinity-signal-tags.ts`
+- Modify: `src/lib/trinity-judgment-display.ts`
 - Test: `tests/trinity-decision-types.test.ts`
+- Test: `tests/trinity-judgment-display.test.ts`
 
 - [ ] **Step 1: 扩展 `TrinityLevelNestingDecision` 类型**
 
@@ -940,12 +1140,66 @@ function qualificationLabel(value?: string | null): string {
 }
 ```
 
-- [ ] **Step 5: 运行类型相关测试**
+- [ ] **Step 5: 更新判断关系短句**
+
+在 `tests/trinity-judgment-display.test.ts` 的 `resolveRelationLabel compresses parent-child resonance into fixed short copy` 测试中追加：
+
+```ts
+  assert.equal(
+    judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'boundary_probe' })),
+    '父级只允许边界试探'
+  );
+  assert.equal(
+    judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'structure_mismatch' })),
+    '父级未放行，结构先重配'
+  );
+  assert.equal(
+    judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'blocked' })),
+    '父级未放行，当前先等待'
+  );
+```
+
+然后在 `src/lib/trinity-judgment-display.ts` 中更新 `resolveRelationLabel()`：
+
+```ts
+export function resolveRelationLabel(levelNesting?: TrinityLevelNestingDecision): string {
+  if (!levelNesting) {
+    return '父级未明，子级先看确认';
+  }
+
+  if (levelNesting.resonance === 'aligned') {
+    return '父级支持，子级顺父级';
+  }
+
+  if (levelNesting.resonance === 'boundary_probe') {
+    return '父级只允许边界试探';
+  }
+
+  if (levelNesting.resonance === 'structure_mismatch') {
+    return '父级未放行，结构先重配';
+  }
+
+  if (levelNesting.resonance === 'blocked') {
+    return '父级未放行，当前先等待';
+  }
+
+  if (
+    levelNesting.resonance === 'child_countertrend' ||
+    levelNesting.resonance === 'conflict'
+  ) {
+    return '父级强冲突，子级逆父级';
+  }
+
+  return '父级未明，子级先看确认';
+}
+```
+
+- [ ] **Step 6: 运行类型相关测试**
 
 Run:
 
 ```bash
-node --test tests/trinity-decision-types.test.ts tests/trinity-signal-tags.test.ts
+node --test tests/trinity-decision-types.test.ts tests/trinity-signal-tags.test.ts tests/trinity-judgment-display.test.ts
 ```
 
 Expected: PASS。
@@ -1233,7 +1487,7 @@ Expected: PASS。若后两组因既有环境依赖失败，记录失败输出，
 Run:
 
 ```bash
-node --test tests/trinity-analysis-page-view-model.test.ts tests/analysis-page-sections.test.ts tests/trinity-signal-tags.test.ts tests/trinity-decision-types.test.ts
+node --test tests/trinity-analysis-page-view-model.test.ts tests/analysis-page-sections.test.ts tests/trinity-signal-tags.test.ts tests/trinity-decision-types.test.ts tests/trinity-judgment-display.test.ts
 ```
 
 Expected: PASS。
@@ -1344,8 +1598,11 @@ Expected: each printed nesting object has `resonance`, `execution_strength`, and
 - `scripts/stock_analyzer.py`
 - `src/lib/stock-structure-types.ts`
 - `src/lib/trinity-signal-tags.ts`
+- `src/lib/trinity-judgment-display.ts`
 - `src/lib/trinity-analysis-page-view-model.ts`
 - `tests/test_trinity_decision_level_nesting.py`
+- `tests/test_trinity_decision_trade_qualification.py`
+- `tests/trinity-judgment-display.test.ts`
 - `tests/trinity-analysis-page-view-model.test.ts`
 - `tests/analysis-page-sections.test.ts`
 
@@ -1357,8 +1614,11 @@ Run:
 git diff -- scripts/stock_analyzer.py \
   src/lib/stock-structure-types.ts \
   src/lib/trinity-signal-tags.ts \
+  src/lib/trinity-judgment-display.ts \
   src/lib/trinity-analysis-page-view-model.ts \
   tests/test_trinity_decision_level_nesting.py \
+  tests/test_trinity_decision_trade_qualification.py \
+  tests/trinity-judgment-display.test.ts \
   tests/trinity-analysis-page-view-model.test.ts \
   tests/analysis-page-sections.test.ts
 ```
@@ -1383,8 +1643,11 @@ Expected: 只包含本计划相关改动和用户明确保留的既有 WIP。不
 git add scripts/stock_analyzer.py \
   src/lib/stock-structure-types.ts \
   src/lib/trinity-signal-tags.ts \
+  src/lib/trinity-judgment-display.ts \
   src/lib/trinity-analysis-page-view-model.ts \
   tests/test_trinity_decision_level_nesting.py \
+  tests/test_trinity_decision_trade_qualification.py \
+  tests/trinity-judgment-display.test.ts \
   tests/trinity-analysis-page-view-model.test.ts \
   tests/analysis-page-sections.test.ts
 git commit -m "实现：接入三位一体级别嵌套可执行条件"

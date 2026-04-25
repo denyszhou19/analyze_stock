@@ -162,7 +162,7 @@ test('buildDecisionSignalTags includes level nesting and execution tags by defau
   assert.equal(tags[5]?.key, 'level_nesting');
   assert.deepEqual(tags[5]?.hover.items, [
     { label: '父级偏向', value: '父级偏多' },
-    { label: '共振状态', value: '子级逆势' },
+    { label: '关系状态', value: '子级逆势' },
     { label: '说明', value: '父级偏多但子级等待确认' },
   ]);
   assert.ok(tags[5]?.hover.items.every((item) => !['先手点', '确认点', '失效点'].includes(item.label)));
@@ -250,6 +250,53 @@ test('buildDecisionSignalTags keeps parent bias hover labels in Chinese across b
   assert.equal(bearishTags[5]?.hover.items[0]?.value, '父级偏空');
   assert.equal(neutralTags[5]?.hover.items[0]?.value, '父级中性');
   assert.ok(!fallbackTags.some((tag) => tag.key === 'level_nesting'));
+});
+
+test('buildDecisionSignalTags renders executable level nesting conditions in Chinese', () => {
+  const tags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      level_nesting: {
+        parent_level: 'daily',
+        child_level: 'hour30',
+        parent_spacetime_status: '中偏强',
+        child_structure_type: '延伸C类',
+        child_structure_family: 'C',
+        child_structure_qualification: 'extended',
+        child_structure_direction: 'up',
+        structure_match: true,
+        parent_bias: 'bullish',
+        child_signal: 'long',
+        resonance: 'boundary_probe',
+        operation_bias: 'long',
+        operation_frame: 'platform_boundary',
+        execution_strength: 'light_probe',
+        downgrade_reason: '延伸C沿用C类边界逻辑，但拐点偏多，需等待确认',
+        wait_conditions: ['30分钟延伸C等待平台边界突破'],
+        confirm_conditions: ['30分钟回踩平台上沿不破'],
+        invalidation_conditions: ['30分钟跌破平台下沿失效'],
+        permission: {
+          allow_position_increase: false,
+          allow_t_trade: true,
+          allow_only_light_probe: true,
+          reason: '日线中偏强，30分钟延伸C只允许边界轻仓试探',
+        },
+      },
+    })
+  );
+
+  const levelTag = tags.find((tag) => tag.key === 'level_nesting');
+  assert.equal(levelTag?.label, '级别｜边界试探');
+  assert.equal(levelTag?.tone, 'warning');
+  assert.deepEqual(levelTag?.hover.items, [
+    { label: '父级偏向', value: '父级偏多' },
+    { label: '关系状态', value: '边界试探' },
+    { label: '结构原型', value: 'C' },
+    { label: '结构资格', value: '延伸结构' },
+    { label: '等待条件', value: '30分钟延伸C等待平台边界突破' },
+    { label: '确认条件', value: '30分钟回踩平台上沿不破' },
+    { label: '失效条件', value: '30分钟跌破平台下沿失效' },
+    { label: '说明', value: '日线中偏强，30分钟延伸C只允许边界轻仓试探' },
+  ]);
 });
 
 test('buildDecisionSignalTags exposes zero-axis and divergence decisions from phase2 blocks', () => {

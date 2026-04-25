@@ -103,10 +103,11 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertFalse(decision['conclusion']['can_trade'])
         self.assertEqual(decision['conclusion']['action'], 'wait')
 
-    def test_parent_unclear_light_probe_permission_downgrades_standard_node_position(self) -> None:
+    def test_parent_unclear_blocks_standard_node_trade_even_when_child_conditions_pass(self) -> None:
         decision = self.analyzer._build_trinity_trade_qualification(
             structure_decision={
                 'family': 'standard',
+                'qualification': 'standard',
                 'direction': 'up',
                 'can_trade_by_structure_nodes': True,
                 'can_trade_by_boundaries': False,
@@ -132,8 +133,97 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
             },
         )
 
-        self.assertEqual(decision['trade_mode'], 'standard_node_trade')
+        self.assertEqual(decision['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['position_permission'], 'no_position')
+        self.assertEqual(decision['confidence'], 'low')
+        self.assertTrue(any('父级' in reason for reason in decision['reason']))
+
+    def test_structure_mismatch_blocks_standard_node_trade_even_when_child_conditions_pass(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': True,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': '日线A类标准多头节点已确认'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '站上MA55'}},
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_breakdown': False,
+                    'supports_pullback_confirmation': True,
+                    'confidence_adjustment': 'upgrade',
+                    'reason': '量能支持突破',
+                }
+            },
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'parent_level': 'weekly',
+                'child_level': 'daily',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'structure_mismatch',
+                'execution_strength': 'wait_confirmation',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': False,
+                    'allow_only_light_probe': False,
+                    'reason': '周线强与日线A类不匹配，先等待结构重新确认',
+                },
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['position_permission'], 'no_position')
+        self.assertEqual(decision['confidence'], 'low')
+        self.assertTrue(any('结构重新确认' in reason for reason in decision['reason']))
+
+    def test_boundary_probe_never_upgrades_to_standard_node_trade(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': True,
+                'node_map': {'a4': None, 'b8': 21.6, 'd3': None, 'd4': None},
+                'explainability': {'reason': '30分钟C类平台边界触发'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '边界上方'}},
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_breakdown': False,
+                    'supports_pullback_confirmation': True,
+                    'confidence_adjustment': 'neutral',
+                    'reason': '量能未否决',
+                }
+            },
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'boundary_probe',
+                'execution_strength': 'light_probe',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '日线中偏强，30分钟C类只允许平台边界轻仓试探',
+                },
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'conditional_boundary_trade')
         self.assertEqual(decision['position_permission'], 'light_probe')
+        self.assertNotEqual(decision['trade_mode'], 'standard_node_trade')
 
     def test_refresh_trinity_decisions_applies_parent_unclear_light_probe_permission(self) -> None:
         results = {
@@ -187,12 +277,12 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         decision = normalized_results['daily']['trinity_decision']
 
         self.assertEqual(decision['level_nesting']['resonance'], 'parent_unclear')
-        self.assertEqual(decision['trade_qualification']['trade_mode'], 'standard_node_trade')
-        self.assertEqual(decision['trade_qualification']['position_permission'], 'light_probe')
-        self.assertTrue(decision['conclusion']['can_trade'])
-        self.assertEqual(decision['conclusion']['action'], 'buy')
-        self.assertEqual(decision['judgment']['level'], 'confirmed_execute')
-        self.assertEqual(decision['judgment']['current_best_action'], 'buy')
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')
+        self.assertFalse(decision['conclusion']['can_trade'])
+        self.assertEqual(decision['conclusion']['action'], 'wait')
+        self.assertEqual(decision['judgment']['level'], 'strict_wait')
+        self.assertEqual(decision['judgment']['current_best_action'], '继续等待')
 
     def test_standard_node_trade_requires_volume_gate_support(self) -> None:
         decision = self.analyzer._build_trinity_trade_qualification(

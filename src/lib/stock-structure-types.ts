@@ -559,9 +559,51 @@ export interface TrinityVolumeConfirmationDecision {
 export interface TrinityLevelNestingDecision {
   parent_level?: string | null;
   child_level?: string | null;
+  parent_spacetime_status?: string | null;
+  child_structure_type?: string | null;
+  child_structure_family?: 'A' | 'B' | 'C' | 'D' | 'unknown' | string;
+  child_structure_qualification?:
+    | 'standard'
+    | 'extended'
+    | 'unfinished'
+    | 'complex'
+    | 'range'
+    | 'channel'
+    | 'failed'
+    | 'unknown'
+    | string;
+  child_structure_direction?: 'up' | 'down' | 'neutral' | string;
+  structure_match?: boolean;
   parent_bias: 'bullish' | 'bearish' | 'neutral';
   child_signal: 'long' | 'short' | 'wait';
-  resonance: 'aligned' | 'conflict' | 'child_countertrend' | 'parent_unclear';
+  resonance:
+    | 'aligned'
+    | 'conflict'
+    | 'child_countertrend'
+    | 'parent_unclear'
+    | 'boundary_probe'
+    | 'structure_mismatch'
+    | 'blocked';
+  operation_bias?: 'long' | 'short' | 'wait' | string;
+  operation_frame?:
+    | 'trend_continuation'
+    | 'swing_platform'
+    | 'platform_boundary'
+    | 'three_leg_reversal'
+    | 'range_boundary'
+    | 'wait_structure'
+    | string;
+  execution_strength?:
+    | 'normal'
+    | 'light_probe'
+    | 'wait_confirmation'
+    | 'observe_only'
+    | 'risk_control_first'
+    | string;
+  downgrade_reason?: string | null;
+  wait_conditions?: string[];
+  confirm_conditions?: string[];
+  invalidation_conditions?: string[];
   permission: {
     allow_position_increase: boolean;
     allow_t_trade: boolean;

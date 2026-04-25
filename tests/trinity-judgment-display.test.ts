@@ -182,6 +182,18 @@ test('resolveRelationLabel compresses parent-child resonance into fixed short co
     judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'aligned' })),
     '父级支持，子级顺父级'
   );
+  assert.equal(
+    judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'boundary_probe' })),
+    '父级只允许边界试探'
+  );
+  assert.equal(
+    judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'structure_mismatch' })),
+    '父级未放行，结构先重配'
+  );
+  assert.equal(
+    judgmentDisplay.resolveRelationLabel(createLevelNesting({ resonance: 'blocked' })),
+    '父级未放行，当前先等待'
+  );
 });
 
 test('buildExecutionPreview returns fallback-safe execution copy', () => {
