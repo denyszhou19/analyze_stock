@@ -603,13 +603,28 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
             structure_decision={
                 'family': 'standard',
                 'qualification': 'standard',
+                'direction': 'up',
                 'can_trade_by_structure_nodes': True,
                 'can_trade_by_boundaries': True,
                 'explainability': {'reason': 'B类结构成立'},
             },
             spacetime_decision={'mismatch_reason': ''},
-            moving_average_decision={'ma_gate': {'passed': True, 'reason': 'MA55 支撑有效'}},
-            volume_decision={'volume_gate': {'passed': True, 'reason': '放量确认'}},
+            moving_average_decision={
+                'ma_gate': {
+                    'allow_long': True,
+                    'allow_short': False,
+                    'passed': True,
+                    'reason': 'MA55 支撑有效',
+                }
+            },
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_pullback_confirmation': True,
+                    'passed': True,
+                    'reason': '放量确认',
+                }
+            },
             execution_payload={'action': 'buy', 'direction': 'long', 'can_trade': True},
             level_nesting_decision={
                 'resonance': 'boundary_probe',
