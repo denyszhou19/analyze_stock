@@ -305,8 +305,29 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['node_semantic']['actionable_node'], 'b3')
         self.assertEqual(decision['node_semantic']['label'], 'B类b3回踩确认')
         self.assertIn('b2→live 下行形成中', decision['node_semantic']['reason'])
-        self.assertTrue(any(item == '等待30分钟B类b3回踩确认' for item in decision['wait_conditions']))
+        self.assertEqual(decision['wait_conditions'][0], '等待30分钟B类b3回踩确认')
         self.assertTrue(any('回踩平台上沿不破' in item or '平台边界' in item for item in decision['confirm_conditions']))
+
+    def test_standard_b_keeps_node_semantic_wait_first_even_with_execution_plan_copy(self) -> None:
+        decision = self._decision(
+            parent_status='强',
+            child_payload=self._payload(
+                status='强',
+                structure_type='B双平台式',
+                qualification='standard',
+                direction='up',
+                standard_candidate='B双平台式',
+                prediction={'current_stage': 'b4拐点', 'next_stage': 'b5拐点'},
+                probe_entry='30分钟先看平台边界回踩',
+                confirm_entry='30分钟执行计划中的确认文案',
+                invalidation='30分钟执行计划中的失效文案',
+            ),
+        )
+
+        self.assertEqual(decision['node_semantic']['actionable_node'], 'b5')
+        self.assertEqual(decision['wait_conditions'][0], '等待30分钟B类b5中继确认')
+        self.assertEqual(decision['confirm_conditions'][0], '30分钟中继回踩确认后再度转强')
+        self.assertEqual(decision['invalidation_conditions'][0], '30分钟中继确认失败并跌回平台下沿')
 
     def test_standard_b_maps_b4_progress_to_b5_actionable_node(self) -> None:
         decision = self._decision(
@@ -358,7 +379,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['node_semantic']['family'], 'D')
         self.assertEqual(decision['node_semantic']['actionable_node'], 'd3')
         self.assertEqual(decision['node_semantic']['label'], 'D类d3反向修正完成')
-        self.assertTrue(any(item == '等待30分钟D类d3反向修正完成' for item in decision['wait_conditions']))
+        self.assertEqual(decision['wait_conditions'][0], '等待30分钟D类d3反向修正完成')
         self.assertTrue(any('d4' in item for item in decision['confirm_conditions']))
 
     def test_standard_d_keeps_unstable_d3_reason_when_prediction_marks_unstable_point(self) -> None:

@@ -3786,6 +3786,7 @@ class TrinityStockAnalyzer:
             and qualification == 'standard'
             and isinstance(node_semantic, dict)
             and node_semantic.get('family') == 'D'
+            and node_semantic.get('actionable_node') == 'd3'
             and can_trade_by_boundaries
             and direction_gate_passed
             and volume_gate_passed
@@ -4471,7 +4472,12 @@ class TrinityStockAnalyzer:
         node_semantic: Optional[Dict[str, Any]],
     ) -> Optional[Dict[str, List[str]]]:
         node_semantic = node_semantic if isinstance(node_semantic, dict) else {}
+        family = node_semantic.get('family')
         actionable_node = node_semantic.get('actionable_node')
+        if family == 'B' and (not isinstance(actionable_node, str) or not actionable_node.startswith('b')):
+            return None
+        if family == 'D' and (not isinstance(actionable_node, str) or not actionable_node.startswith('d')):
+            return None
         templates = {
             'b1': {
                 'wait': [f'等待{level_label}B类b1启动确认', f'等待{level_label}启动段放量并站稳平台上沿'],
@@ -4535,21 +4541,38 @@ class TrinityStockAnalyzer:
         semantic_conditions = self._build_node_semantic_conditions(level_label, node_semantic)
         templates = self._family_condition_templates(level_label, family)
 
-        wait_items = [
-            execution_plan.get('probe_entry'),
-            wait_state.get('next_confirmation_action'),
-            *((semantic_conditions or {}).get('wait_conditions') or templates['wait']),
-        ]
-        confirm_items = [
-            execution_plan.get('confirm_entry'),
-            *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
-            *((semantic_conditions or {}).get('confirm_conditions') or templates['confirm']),
-        ]
-        invalid_items = [
-            execution_plan.get('invalidation'),
-            *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
-            *((semantic_conditions or {}).get('invalidation_conditions') or templates['invalid']),
-        ]
+        if semantic_conditions:
+            wait_items = [
+                *(semantic_conditions.get('wait_conditions') or []),
+                execution_plan.get('probe_entry'),
+                wait_state.get('next_confirmation_action'),
+            ]
+            confirm_items = [
+                *(semantic_conditions.get('confirm_conditions') or []),
+                execution_plan.get('confirm_entry'),
+                *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
+            ]
+            invalid_items = [
+                *(semantic_conditions.get('invalidation_conditions') or []),
+                execution_plan.get('invalidation'),
+                *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
+            ]
+        else:
+            wait_items = [
+                execution_plan.get('probe_entry'),
+                wait_state.get('next_confirmation_action'),
+                *templates['wait'],
+            ]
+            confirm_items = [
+                execution_plan.get('confirm_entry'),
+                *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
+                *templates['confirm'],
+            ]
+            invalid_items = [
+                execution_plan.get('invalidation'),
+                *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
+                *templates['invalid'],
+            ]
 
         if qualification == 'extended':
             wait_items.insert(0, f'{level_label}延伸结构沿用{family}类框架，等待边界确认')
