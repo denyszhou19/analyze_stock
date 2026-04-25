@@ -163,8 +163,6 @@ test('buildDecisionSignalTags includes level nesting and execution tags by defau
   assert.deepEqual(tags[5]?.hover.items, [
     { label: '父级偏向', value: '父级偏多' },
     { label: '关系状态', value: '子级逆势' },
-    { label: '节点语义', value: '暂无补充说明' },
-    { label: '节点原因', value: '暂无补充说明' },
     { label: '说明', value: '父级偏多但子级等待确认' },
   ]);
   assert.ok(tags[5]?.hover.items.every((item) => !['先手点', '确认点', '失效点'].includes(item.label)));
@@ -294,13 +292,13 @@ test('buildDecisionSignalTags renders executable level nesting conditions in Chi
     { label: '关系状态', value: '边界试探' },
     { label: '结构原型', value: 'C' },
     { label: '结构资格', value: '延伸结构' },
-    { label: '节点语义', value: '暂无补充说明' },
-    { label: '节点原因', value: '暂无补充说明' },
     { label: '等待条件', value: '30分钟延伸C等待平台边界突破' },
     { label: '确认条件', value: '30分钟回踩平台上沿不破' },
     { label: '失效条件', value: '30分钟跌破平台下沿失效' },
     { label: '说明', value: '日线中偏强，30分钟延伸C只允许边界轻仓试探' },
   ]);
+  assert.ok(levelTag?.hover.items.every((item) => item.label !== '节点语义'));
+  assert.ok(levelTag?.hover.items.every((item) => item.label !== '节点原因'));
 });
 
 test('buildDecisionSignalTags shows node semantic copy without leaking internal field names', () => {

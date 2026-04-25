@@ -336,7 +336,7 @@ test('TradingCycleBus renders Chinese node semantic contract copy without intern
           relationLabel: '父级支持，子级顺父级',
           relationHint: '日线看背景，30分钟看执行',
           summary: '日线给背景，30分钟看B类节点确认',
-          recommendation: '先等等待30分钟B类b3回踩确认',
+          recommendation: '先等待30分钟B类b3回踩确认',
           signalTags: [
             createSignalTag('级别｜日线支持30分钟', 'neutral'),
             createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
@@ -403,6 +403,7 @@ test('TradingCycleBus renders Chinese node semantic contract copy without intern
   assert.match(html, /30分钟回踩跌回平台下沿失效/);
   assert.doesNotMatch(html, /actionable_node/);
   assert.doesNotMatch(html, /node_semantic/);
+  assert.doesNotMatch(html, /暂无补充说明/);
 });
 
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {

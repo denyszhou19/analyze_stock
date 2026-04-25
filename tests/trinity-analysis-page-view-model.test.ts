@@ -1381,7 +1381,7 @@ test('trading bus prefers node semantic reason and concrete B node conditions fr
   const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
 
   assert.ok(shortline);
-  assert.equal(shortline.recommendation, '先等等待30分钟B类b3回踩确认');
+  assert.equal(shortline.recommendation, '先等待30分钟B类b3回踩确认');
   assert.equal(shortline.triggerLevel.value, '30分钟：B类b3回踩确认');
   assert.equal(
     shortline.triggerLevel.hoverItems.find((item) => item.label === '为什么这么判断')?.value,
@@ -1396,6 +1396,22 @@ test('trading bus prefers node semantic reason and concrete B node conditions fr
     shortline.actionStateTags.find((tag) => tag.category === '级别')?.hover.items.find((item) => item.label === '节点语义')
       ?.value,
     'B类b3回踩确认'
+  );
+});
+
+test('combination level hover hides node semantic row when backend did not provide it', () => {
+  const vm = buildAnalysisPageViewModel({
+    result: createResult(),
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.ok(
+    shortline.actionStateTags
+      .find((tag) => tag.category === '级别')
+      ?.hover.items.every((item) => item.label !== '节点语义')
   );
 });
 

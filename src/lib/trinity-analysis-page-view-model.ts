@@ -487,6 +487,9 @@ function buildCombinationRecommendation(
     triggerLevelLabel
   );
   const primaryTrigger = levelCondition || resolveCombinationTriggerText(triggerDecision, triggerLevelLabel);
+  if (primaryTrigger.startsWith('等待')) {
+    return `先${primaryTrigger}`;
+  }
   return `先等${primaryTrigger}`;
 }
 
@@ -587,11 +590,11 @@ function levelNestingConditions(
   key: 'wait_conditions' | 'confirm_conditions' | 'invalidation_conditions',
   levelLabel: string
 ): string[] {
-  return (
+  const items =
     nesting?.[key]
       ?.map((item) => normalizeLevelCondition(item, levelLabel))
-      .filter((item): item is string => Boolean(item)) ?? []
-  );
+      .filter((item): item is string => Boolean(item)) ?? [];
+  return [...new Set(items)].slice(0, 3);
 }
 
 function scopedLevelCondition(
@@ -653,20 +656,23 @@ function buildCombinationActionStateTags(
       : 'neutral';
 
   return [
-    buildCustomSignalTag('level_nesting', '级别', levelResult, levelTone, [
-      { label: '父级别', value: majorLabel },
-      { label: '子级别', value: minorLabel },
-      {
-        label: '节点语义',
-        value: nesting?.node_semantic?.label ?? '暂无补充说明',
-      },
-      {
-        label: '说明',
-        value:
-          nesting?.permission.reason ??
-          `${majorLabel}未完全放行，${minorLabel}只能等待确认。`,
-      },
-    ]),
+    buildCustomSignalTag(
+      'level_nesting',
+      '级别',
+      levelResult,
+      levelTone,
+      [
+        { label: '父级别', value: majorLabel },
+        { label: '子级别', value: minorLabel },
+        { label: '节点语义', value: nesting?.node_semantic?.label },
+        {
+          label: '说明',
+          value:
+            nesting?.permission.reason ??
+            `${majorLabel}未完全放行，${minorLabel}只能等待确认。`,
+        },
+      ].filter((item): item is { label: string; value: string } => Boolean(item.value))
+    ),
     buildCustomSignalTag('execution', '执行', executionResult, 'neutral', [
       { label: '执行级别', value: minorLabel },
       { label: '当前动作', value: '继续等待' },
