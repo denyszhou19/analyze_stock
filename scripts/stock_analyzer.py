@@ -4689,6 +4689,7 @@ class TrinityStockAnalyzer:
                 'resonance': 'parent_unclear',
                 'operation_bias': 'wait',
                 'operation_frame': 'wait_structure',
+                'node_semantic': None,
                 'execution_strength': 'wait_confirmation',
                 'downgrade_reason': f'{parent_label}缺失或尚未归一化',
                 'permission': {
