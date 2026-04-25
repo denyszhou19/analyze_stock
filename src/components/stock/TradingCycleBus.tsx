@@ -2,50 +2,31 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExplainableFact } from '@/components/stock/ExplainableFact';
 import { SignalTagList } from '@/components/stock/SignalTagList';
+import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type { AnalysisPageTradingCombinationViewModel } from '@/lib/trinity-analysis-page-view-model';
 import { getDirectionMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
+import { Info } from 'lucide-react';
 
 interface TradingCycleBusProps {
   combinations: AnalysisPageTradingCombinationViewModel[];
 }
 
-const SIGNAL_LAYERS = [
-  {
-    key: 'action-state',
-    title: '当前动作状态',
-    className: 'border-slate-200 bg-slate-50/90',
-    categories: ['执行', '级别'],
-  },
-  {
-    key: 'judgment-basis',
-    title: '判断依据',
-    className: 'border-sky-200 bg-sky-50/80',
-    categories: ['时空', '结构', '均线', '量能'],
-  },
-  {
-    key: 'secondary-risk',
-    title: '补充风险/次级信息',
-    className: 'border-amber-200 bg-amber-50/80',
-    categories: ['背离', '突破/跌破'],
-  },
-] as const;
+const ACTION_STATE_CATEGORIES = new Set(['执行', '级别']);
+const JUDGMENT_BASIS_CATEGORIES = new Set([
+  '时空',
+  '结构',
+  '均线',
+  '量能',
+  '背离',
+  '突破/跌破',
+]);
 
-function groupSignalTags(tags: AnalysisPageTradingCombinationViewModel['signalTags']) {
-  const layerMap = new Map<string, typeof SIGNAL_LAYERS[number]>();
-  SIGNAL_LAYERS.forEach((layer) => {
-    layer.categories.forEach((category) => {
-      layerMap.set(category, layer);
-    });
-  });
-
-  return SIGNAL_LAYERS.map((layer) => ({
-    ...layer,
-    tags: tags.filter((tag) => {
-      const mappedLayer = layerMap.get(tag.category);
-      return mappedLayer?.key === layer.key;
-    }),
-  })).filter((layer) => layer.tags.length > 0);
+function filterSignalTags(
+  tags: AnalysisPageTradingCombinationViewModel['signalTags'],
+  categories: Set<string>
+) {
+  return tags.filter((tag) => categories.has(tag.category));
 }
 
 export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
@@ -65,7 +46,15 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
       <div className="grid gap-3 xl:grid-cols-3">
         {combinations.map((combination) => {
           const directionMeta = getDirectionMeta(combination.direction);
-          const groupedSignalLayers = groupSignalTags(combination.signalTags);
+          const actionStateTags = combination.actionStateTags?.length
+            ? combination.actionStateTags
+            : filterSignalTags(combination.signalTags, ACTION_STATE_CATEGORIES);
+          const judgmentBasisTags = combination.judgmentBasisTags?.length
+            ? combination.judgmentBasisTags
+            : filterSignalTags(combination.signalTags, JUDGMENT_BASIS_CATEGORIES);
+          const parentConstraintTags = combination.parentConstraintTags?.length
+            ? combination.parentConstraintTags
+            : combination.parentSignalTags ?? [];
 
           return (
             <Card
@@ -95,20 +84,90 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                 </div>
 
                 <div className="space-y-2">
-                  {groupedSignalLayers.map((layer) => (
+                  {actionStateTags.length > 0 ? (
                     <section
-                      key={`${combination.key}-${layer.key}`}
-                      data-signal-layer={layer.key}
-                      className={cn('space-y-2 rounded-xl border px-3 py-2.5', layer.className)}
+                      data-signal-layer="action-state"
+                      className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2.5"
                     >
-                      <div className="text-xs font-medium text-muted-foreground">{layer.title}</div>
-                      <SignalTagList tags={layer.tags} />
+                      <div className="text-xs font-medium text-muted-foreground">当前动作状态</div>
+                      <SignalTagList tags={actionStateTags} />
                     </section>
-                  ))}
+                  ) : null}
+
+                  {judgmentBasisTags.length > 0 ? (
+                    <section
+                      data-signal-layer="judgment-basis"
+                      className="space-y-2 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2.5"
+                    >
+                      <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
+                        <span>子级综合判断依据</span>
+                        <Tooltip>
+                          <TooltipTrigger
+                            asChild
+                            aria-label="子级综合判断依据说明"
+                            className="inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground"
+                          >
+                            <span>
+                              <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                            </span>
+                          </TooltipTrigger>
+                          <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                            <div className="space-y-1">
+                              <div className="font-medium">子级综合判断依据说明</div>
+                              <p>
+                                这组标签默认取子级主执行层标签，用来解释为什么当前这张组合卡会给出现在的综合判断。
+                              </p>
+                              <p>
+                                当前这张卡默认取 {combination.triggerLevelLabel}
+                                这一层作为主执行层；父级信息会收敛在“父级约束”里。
+                              </p>
+                            </div>
+                          </TooltipContent>
+                        </Tooltip>
+                      </div>
+                      <SignalTagList tags={judgmentBasisTags} />
+                    </section>
+                  ) : null}
+
                 </div>
 
                 <div className="grid gap-2 text-xs text-muted-foreground">
-                  <ExplainableFact fact={combination.parentConstraint} />
+                  <div data-signal-layer="parent-constraint" className="rounded-lg border bg-background/70 p-2">
+                    <div className="flex items-start justify-between gap-2">
+                      <div className="space-y-1">
+                        <div className="font-medium text-foreground">
+                          {combination.parentConstraint.label}
+                        </div>
+                        <div>{combination.parentConstraint.value}</div>
+                      </div>
+                      <Tooltip>
+                        <TooltipTrigger
+                          asChild
+                          aria-label={combination.parentConstraint.hoverTitle}
+                          className="mt-0.5 inline-flex h-5 w-5 shrink-0 items-center justify-center rounded-full text-muted-foreground"
+                        >
+                          <span>
+                            <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
+                          </span>
+                        </TooltipTrigger>
+                        <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                          <div className="space-y-1">
+                            <div className="font-medium">{combination.parentConstraint.hoverTitle}</div>
+                            {combination.parentConstraint.hoverItems.map((item) => (
+                              <p key={`${combination.key}-parent-constraint-${item.label}`}>
+                                {item.label}：{item.value}
+                              </p>
+                            ))}
+                          </div>
+                        </TooltipContent>
+                      </Tooltip>
+                    </div>
+                    {parentConstraintTags.length > 0 ? (
+                      <div className="mt-2">
+                        <SignalTagList tags={parentConstraintTags} />
+                      </div>
+                    ) : null}
+                  </div>
                   <ExplainableFact fact={combination.triggerLevel} />
                   <ExplainableFact fact={combination.suitableAction} />
                   <ExplainableFact fact={combination.majorRisk} />

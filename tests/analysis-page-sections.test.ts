@@ -122,6 +122,10 @@ test('TradingCycleBus renders three trading combinations with direction and trig
             createSignalTag('结构｜C单平台式', 'neutral'),
             createSignalTag('执行｜等待触发', 'warning'),
           ],
+          actionStateTags: [],
+          judgmentBasisTags: [],
+          parentConstraintTags: [],
+          parentSignalTags: [],
           parentConstraint: createExplainableField('父级约束', '周线：大方向偏多'),
           triggerLevel: createExplainableField('触发级别', '日线：等待确认'),
           triggerLevelLabel: '日线',
@@ -145,6 +149,10 @@ test('TradingCycleBus renders three trading combinations with direction and trig
             createSignalTag('时空｜中偏弱', 'warning'),
             createSignalTag('级别｜子级逆势', 'warning'),
           ],
+          actionStateTags: [],
+          judgmentBasisTags: [],
+          parentConstraintTags: [],
+          parentSignalTags: [],
           parentConstraint: {
             label: '父级约束',
             value: '日线：仍未完全放行',
@@ -173,6 +181,10 @@ test('TradingCycleBus renders three trading combinations with direction and trig
           summary: '60分钟偏弱，15分钟不单独放行',
           recommendation: '先继续等待',
           signalTags: [createSignalTag('执行｜空仓等待', 'bearish')],
+          actionStateTags: [],
+          judgmentBasisTags: [],
+          parentConstraintTags: [],
+          parentSignalTags: [],
           parentConstraint: createExplainableField('父级约束', '60分钟：偏弱'),
           triggerLevel: createExplainableField('触发级别', '15分钟：等待确认'),
           triggerLevelLabel: '15分钟',
@@ -239,6 +251,32 @@ test('TradingCycleBus groups signal tags into three layered sections', async () 
             createSignalTag('执行｜等待触发', 'neutral'),
             createSignalTag('突破/跌破｜有效跌破', 'bearish'),
           ],
+          actionStateTags: [
+            createSignalTag('级别｜日线未放行', 'warning'),
+            createSignalTag('执行｜30分钟等待触发', 'neutral'),
+          ],
+          judgmentBasisTags: [
+            createSignalTag('时空｜中偏强', 'bullish'),
+            createSignalTag('结构｜复杂结构候选', 'neutral'),
+            createSignalTag('均线｜MA55压制', 'bearish'),
+            createSignalTag('量能｜突破量弱', 'warning'),
+            createSignalTag('突破/跌破｜有效跌破', 'bearish'),
+            createSignalTag('背离｜顶背离压制', 'bearish'),
+          ],
+          parentSignalTags: [
+            createSignalTag('时空｜中偏弱', 'warning'),
+            createSignalTag('结构｜C候选', 'neutral'),
+            createSignalTag('均线｜MA55支撑', 'bullish'),
+            createSignalTag('量能｜突破量弱', 'warning'),
+            createSignalTag('级别｜父级不明', 'neutral'),
+            createSignalTag('执行｜等待触发', 'neutral'),
+          ],
+          parentConstraintTags: [
+            createSignalTag('时空｜中偏弱', 'warning'),
+            createSignalTag('结构｜C候选', 'neutral'),
+            createSignalTag('均线｜MA55支撑', 'bullish'),
+            createSignalTag('量能｜突破量弱', 'warning'),
+          ],
           parentConstraint: createExplainableField('父级约束', '日线：仍未完全放行'),
           triggerLevel: createExplainableField('触发级别', '30分钟：放量突破平台上沿'),
           triggerLevelLabel: '30分钟',
@@ -251,17 +289,30 @@ test('TradingCycleBus groups signal tags into three layered sections', async () 
   );
 
   assert.match(html, /当前动作状态/);
-  assert.match(html, /判断依据/);
-  assert.match(html, /补充风险\/次级信息/);
+  assert.match(html, /子级综合判断依据/);
+  assert.doesNotMatch(html, /父子级明细/);
+  assert.doesNotMatch(html, /父级判断/);
+  assert.doesNotMatch(html, /子级判断/);
+  assert.match(html, /子级综合判断依据说明/);
+  assert.match(html, /默认取子级主执行层标签/);
   assert.match(html, /data-signal-layer="action-state"/);
   assert.match(html, /data-signal-layer="judgment-basis"/);
-  assert.match(html, /data-signal-layer="secondary-risk"/);
-  assert.match(html, /当前动作状态[\s\S]*级别｜子级逆势[\s\S]*执行｜等待触发/);
+  assert.doesNotMatch(html, /data-signal-layer="parent-child-detail"/);
+  assert.match(html, /data-signal-layer="parent-constraint"/);
+  assert.match(html, /级别｜日线未放行/);
+  assert.match(html, /执行｜30分钟等待触发/);
+  assert.doesNotMatch(html, /级别｜父级不明/);
+  assert.doesNotMatch(html, /次级别结构继续共振/);
+  assert.match(html, /当前动作状态[\s\S]*级别｜日线未放行[\s\S]*执行｜30分钟等待触发/);
   assert.match(
     html,
-    /判断依据[\s\S]*时空｜中偏弱[\s\S]*量能｜突破量弱[\s\S]*均线｜MA55压制[\s\S]*结构｜复杂结构候选/
+    /子级综合判断依据[\s\S]*时空｜中偏强[\s\S]*结构｜复杂结构候选[\s\S]*均线｜MA55压制/
   );
-  assert.match(html, /补充风险\/次级信息[\s\S]*背离｜顶背离压制[\s\S]*突破\/跌破｜有效跌破/);
+  assert.match(html, /父级约束[\s\S]*日线：仍未完全放行[\s\S]*时空｜中偏弱[\s\S]*结构｜C候选[\s\S]*均线｜MA55支撑/);
+  const parentConstraintHtml = html.slice(html.indexOf('data-signal-layer="parent-constraint"'));
+  assert.doesNotMatch(parentConstraintHtml, /级别｜/);
+  assert.doesNotMatch(parentConstraintHtml, /执行｜/);
+  assert.match(html, /子级综合判断依据[\s\S]*背离｜顶背离压制[\s\S]*父级约束/);
 });
 
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {

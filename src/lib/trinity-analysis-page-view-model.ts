@@ -165,6 +165,10 @@ export interface AnalysisPageTradingCombinationViewModel {
   summary: string;
   recommendation: string;
   signalTags: AnalysisPageSignalTagViewModel[];
+  actionStateTags: AnalysisPageSignalTagViewModel[];
+  judgmentBasisTags: AnalysisPageSignalTagViewModel[];
+  parentConstraintTags: AnalysisPageSignalTagViewModel[];
+  parentSignalTags: AnalysisPageSignalTagViewModel[];
   parentConstraint: AnalysisPageExplainableField;
   triggerLevel: AnalysisPageExplainableField;
   triggerLevelLabel: string;
@@ -341,6 +345,7 @@ const RESONANCE_LABELS: Record<NonNullable<TrinityDecision['level_nesting']>['re
   parent_unclear: '父级不明',
 };
 
+
 function pickPrimaryDecision(result: AnalysisResultData): TrinityDecision {
   for (const level of PRIMARY_DECISION_ORDER) {
     const decision = result.periods[level]?.trinity_decision;
@@ -453,7 +458,9 @@ function buildCombinationRecommendation(
     return `先等${LEVEL_LABELS[majorLevel]}数据补齐`;
   }
 
-  const primaryTrigger = minor ? resolvePrimaryTriggerText(minor) : resolvePrimaryTriggerText(major);
+  const triggerDecision = minor ?? major;
+  const triggerLevelLabel = minor ? LEVEL_LABELS[minor.level] : LEVEL_LABELS[major.level];
+  const primaryTrigger = resolveCombinationTriggerText(triggerDecision, triggerLevelLabel);
   return `先等${primaryTrigger}`;
 }
 
@@ -466,6 +473,129 @@ function buildCombinationSignalTags(
     (tag) => !majorTags.some((majorTag) => majorTag.key === tag.key && majorTag.label === tag.label)
   );
   return [...majorTags, ...minorTags];
+}
+
+function filterSignalTagsByKeys(
+  tags: AnalysisPageSignalTagViewModel[],
+  keys: TrinitySignalTag['key'][]
+): AnalysisPageSignalTagViewModel[] {
+  return tags.filter((tag) => keys.includes(tag.key));
+}
+
+function buildCustomSignalTag(
+  key: TrinitySignalTag['key'],
+  category: TrinitySignalTag['category'],
+  result: string,
+  tone: TrinitySignalTag['tone'],
+  items: Array<{ label: string; value: string }>
+): AnalysisPageSignalTagViewModel {
+  const label = `${category}｜${result}`;
+  return {
+    key,
+    category,
+    result,
+    label,
+    tone,
+    hover: {
+      title: `${label}说明`,
+      items,
+    },
+  };
+}
+
+function replaceAbstractLevelText(value: string, levelLabel: string): string {
+  return value.replace(/次级别/g, levelLabel);
+}
+
+function ensureLevelPrefix(value: string, levelLabel: string): string {
+  const normalized = value.trim();
+  if (!normalized) {
+    return `${levelLabel}等待确认信号`;
+  }
+  return normalized.startsWith(levelLabel) ? normalized : `${levelLabel}${normalized}`;
+}
+
+function stripLevelPrefix(value: string, levelLabel: string): string {
+  return value.startsWith(levelLabel) ? value.slice(levelLabel.length).trim() : value;
+}
+
+function resolveCombinationTriggerText(
+  decision: TrinityDecision | null | undefined,
+  levelLabel: string
+): string {
+  return ensureLevelPrefix(replaceAbstractLevelText(resolvePrimaryTriggerText(decision), levelLabel), levelLabel);
+}
+
+function resolveScopedCombinationTriggerText(
+  decision: TrinityDecision | null | undefined,
+  levelLabel: string
+): string {
+  return stripLevelPrefix(resolveCombinationTriggerText(decision, levelLabel), levelLabel) || '等待确认信号';
+}
+
+function formatCombinationList(
+  items: string[],
+  fallback: string,
+  levelLabel: string
+): string {
+  return replaceAbstractLevelText(formatList(items, fallback), levelLabel);
+}
+
+function buildParentConstraintTags(decision: TrinityDecision | null): AnalysisPageSignalTagViewModel[] {
+  return filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
+    'spacetime',
+    'divergence',
+    'breakthrough',
+    'volume',
+    'moving_average',
+    'structure',
+  ]);
+}
+
+function buildCombinationActionStateTags(
+  majorLabel: string,
+  minorLabel: string,
+  major: TrinityDecision | null,
+  minor: TrinityDecision | null
+): AnalysisPageSignalTagViewModel[] {
+  const majorBlocked = !major || major.trade_qualification.position_permission === 'no_position';
+  const relation = minor?.level_nesting ?? major?.level_nesting;
+  const levelResult = majorBlocked
+    ? `${majorLabel}未放行`
+    : relation?.resonance === 'aligned'
+      ? `${majorLabel}支持`
+      : relation?.resonance === 'child_countertrend' || relation?.resonance === 'conflict'
+        ? `${minorLabel}逆${majorLabel}`
+        : `${majorLabel}未放行`;
+  const trigger = minor ? resolveCombinationTriggerText(minor, minorLabel) : '';
+  const executionResult = `${minorLabel}等待触发`;
+
+  return [
+    buildCustomSignalTag('level_nesting', '级别', levelResult, majorBlocked ? 'warning' : 'neutral', [
+      { label: '父级别', value: majorLabel },
+      { label: '子级别', value: minorLabel },
+      {
+        label: '说明',
+        value: `${majorLabel}未完全放行，${minorLabel}只能等待确认。`,
+      },
+    ]),
+    buildCustomSignalTag('execution', '执行', executionResult, 'neutral', [
+      { label: '执行级别', value: minorLabel },
+      { label: '当前动作', value: '继续等待' },
+      { label: '等待条件', value: trigger || `${minorLabel}等待更明确确认` },
+    ]),
+  ];
+}
+
+function buildCombinationBasisTags(decision: TrinityDecision | null): AnalysisPageSignalTagViewModel[] {
+  return filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
+    'spacetime',
+    'divergence',
+    'breakthrough',
+    'volume',
+    'moving_average',
+    'structure',
+  ]);
 }
 
 function buildCategorySignalTags(
@@ -1179,9 +1309,19 @@ function buildCombination({
     resolveDecisionRiskLabels(major).at(0) ??
     '暂无明确风险';
   const triggerValue =
-    (minor ? resolvePrimaryTriggerText(minor) : '') ||
-    (major ? resolvePrimaryTriggerText(major) : '') ||
+    (minor ? resolveScopedCombinationTriggerText(minor, minorLabel) : '') ||
+    (major ? resolveScopedCombinationTriggerText(major, majorLabel) : '') ||
     `${minorLabel}等待触发`;
+  const triggerHoverValue =
+    (minor ? resolveCombinationTriggerText(minor, minorLabel) : '') ||
+    (major ? resolveCombinationTriggerText(major, majorLabel) : '') ||
+    `${minorLabel}等待触发`;
+  const parentConstraintTags = buildParentConstraintTags(major);
+  const parentSignalTags = parentConstraintTags;
+  const relationLabel =
+    major?.trade_qualification.position_permission === 'no_position'
+      ? `${majorLabel}未放行，${minorLabel}先看确认`
+      : resolveRelationLabel(minor?.level_nesting ?? major?.level_nesting);
 
   return {
     key,
@@ -1192,11 +1332,15 @@ function buildCombination({
     directionLabel,
     actionLabel: statusMeta.label,
     judgmentLabel: resolveJudgmentLabel(minor ?? major ?? undefined),
-    relationLabel: resolveRelationLabel(minor?.level_nesting ?? major?.level_nesting),
+    relationLabel,
     relationHint: `${majorLabel}看背景，${minorLabel}看执行`,
     summary: buildCombinationSummary(majorLevel, minorLevel, major, minor),
     recommendation: buildCombinationRecommendation(majorLevel, major, minor),
     signalTags: buildCombinationSignalTags(major, minor),
+    actionStateTags: buildCombinationActionStateTags(majorLabel, minorLabel, major, minor),
+    judgmentBasisTags: buildCombinationBasisTags(minor ?? major),
+    parentConstraintTags,
+    parentSignalTags,
     parentConstraint: buildExplainableField({
       label: '父级约束',
       value: parentConstraintValue,
@@ -1225,7 +1369,9 @@ function buildCombination({
         ),
         createHoverItem(
           '下一步条件',
-          major ? formatList(resolveDecisionTriggerLabels(major), '等待父级确认信号') : `先补齐${majorLabel}主判定`
+          major
+            ? formatCombinationList(resolveDecisionTriggerLabels(major), `等待${majorLabel}确认信号`, majorLabel)
+            : `先补齐${majorLabel}主判定`
         ),
       ],
     }),
@@ -1235,11 +1381,13 @@ function buildCombination({
       hoverTitle: '触发级别说明',
       hoverItems: [
         createHoverItem('这句话是什么意思', `${minorLabel}负责给出更具体的执行触发。`),
-        createHoverItem('为什么这么判断', triggerValue),
+        createHoverItem('为什么这么判断', triggerHoverValue),
         createHoverItem('当前限制', major ? parentConstraintValue : `${majorLabel}缺失`),
         createHoverItem(
           '下一步条件',
-          minor ? formatList(resolveDecisionConfirmationLabels(minor), '等待更明确确认') : `先补齐${minorLabel}主判定`
+          minor
+            ? formatCombinationList(resolveDecisionConfirmationLabels(minor), '等待更明确确认', minorLabel)
+            : `先补齐${minorLabel}主判定`
         ),
       ],
     }),

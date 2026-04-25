@@ -709,7 +709,7 @@ test('trading combinations and execution rule chain prefer phase2 execution copy
   assert.ok(shortline);
   assert.ok(executionRule);
   assert.equal(shortline.recommendation, '先等30分钟回抽确认后轻仓试');
-  assert.equal(shortline.triggerLevel.value, '30分钟：30分钟回抽确认后轻仓试');
+  assert.equal(shortline.triggerLevel.value, '30分钟：回抽确认后轻仓试');
   assert.match(shortline.triggerLevel.hoverItems[1].value, /30分钟回抽确认后轻仓试/);
   assert.match(shortline.triggerLevel.hoverItems[3].value, /30分钟放量站稳后加仓/);
   assert.match(shortline.suitableAction.hoverItems[1].value, /轻仓试|30分钟当前仍缺少确认回抽/);
@@ -1162,7 +1162,7 @@ test('view model exposes concise summaries and hover payloads for combinations a
       },
       execution: {
         entry_style: 'pullback_confirm' as never,
-        triggers: ['30分钟重新站上平台上沿'],
+        triggers: ['次级别重新站上平台上沿'],
         invalidation: ['30分钟跌回平台下沿'],
         confirmation: ['30分钟放量确认突破有效'],
         position_sizing: { max_ratio: 0.2, reason: '日线仍未完全放行' },
@@ -1183,9 +1183,39 @@ test('view model exposes concise summaries and hover payloads for combinations a
   assert.ok(shortline);
   assert.ok(structureRule);
   assert.equal(shortline.judgmentLabel, '严格等待');
-  assert.equal(shortline.relationLabel, '父级强冲突，子级逆父级');
+  assert.equal(shortline.relationLabel, '日线未放行，30分钟先看确认');
   assert.equal(shortline.summary, '日线还没完全放行，30分钟先看确认');
-  assert.equal(shortline.recommendation, '先等重新站上平台上沿');
+  assert.equal(shortline.recommendation, '先等30分钟重新站上平台上沿');
+  assert.deepEqual(shortline.actionStateTags?.map((tag) => tag.label), [
+    '级别｜日线未放行',
+    '执行｜30分钟等待触发',
+  ]);
+  assert.deepEqual(shortline.judgmentBasisTags?.map((tag) => tag.label), [
+    '时空｜中偏强',
+    '突破/跌破｜有效突破',
+    '量能｜突破量弱',
+    '均线｜MA55支撑',
+    '结构｜A五段式',
+  ]);
+  assert.deepEqual(shortline.parentConstraintTags?.map((tag) => tag.label), [
+    '时空｜中偏强',
+    '突破/跌破｜有效突破',
+    '量能｜突破量弱',
+    '均线｜MA55支撑',
+    '结构｜A五段式',
+  ]);
+  assert.ok(
+    shortline.actionStateTags?.every((tag) =>
+      tag.hover.items.every((item) => !item.value.includes('次级别'))
+    )
+  );
+  assert.equal(
+    shortline.actionStateTags
+      ?.find((tag) => tag.category === '执行')
+      ?.hover.items.find((item) => item.label === '等待条件')?.value,
+    '30分钟重新站上平台上沿'
+  );
+  assert.ok(shortline.triggerLevel.hoverItems.every((item) => !item.value.includes('次级别')));
   assert.deepEqual(shortline.signalTags.map((tag) => tag.label), [
     '时空｜中偏强',
     '突破/跌破｜有效突破',
