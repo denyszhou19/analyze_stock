@@ -217,6 +217,51 @@ function createIntegrity(): DataIntegritySnapshot {
   };
 }
 
+function createTopologyRenderPayload() {
+  return {
+    version: 1,
+    viewport: {
+      width: 320,
+      height: 180,
+      padding: { top: 12, right: 12, bottom: 12, left: 12 },
+      draw_width: 296,
+      draw_height: 156,
+      date_label_y: 168,
+      label_box: { width: 44, height: 20, radius: 6 },
+    },
+    price_range: { min: 9.8, max: 11.2, range: 1.4 },
+    points: [],
+    segments: [],
+    point_count: 0,
+    segment_count: 0,
+  };
+}
+
+function createTopologyExplainability(overrides: Record<string, unknown> = {}) {
+  return {
+    structure_family: 'A',
+    standard_qualification: 'standard',
+    structure_start_point_id: 'p1',
+    current_point_id: 'p5',
+    live_point_id: 'live',
+    current_segment: {
+      from_point_id: 'p4',
+      to_point_id: 'p5',
+      label: '主升段',
+    },
+    next_segment_preview: {
+      from_point_id: 'p5',
+      to_point_id: 'p6',
+      label: '放量突破确认',
+      status: 'completion',
+    },
+    point_labels: [],
+    segment_labels: [],
+    display_reason: '主升段推进中，等待放量突破确认',
+    ...overrides,
+  };
+}
+
 test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chain', () => {
   const vm = buildAnalysisPageViewModel({
     result: createResult(),
@@ -1724,4 +1769,136 @@ test('non-structure rule hover basis and signal tags stay category-safe', () => 
   assert.doesNotMatch(executionRule.detailHover.items[4].value, /结构证据：五段式成立/);
   assert.match(levelRule.detailHover.items[4].value, /父级未放行|级别权限|父子级别/);
   assert.match(executionRule.detailHover.items[4].value, /执行层先控制仓位|触发|失效/);
+});
+
+test('trading combination exposes parent daily and child 30-minute topology previews', () => {
+  const result = createResult();
+  result.periods.daily.structure = {
+    ...result.periods.daily.structure,
+    structure_type: '日线主升结构',
+    description: '日线主升段已形成，当前等待上沿确认',
+    structure_details: {
+      ...result.periods.daily.structure?.structure_details,
+      render_payload: createTopologyRenderPayload(),
+      explainability: createTopologyExplainability({
+        current_segment: {
+          from_point_id: 'd4',
+          to_point_id: 'd5',
+          label: '日线主升阶段',
+        },
+        next_segment_preview: {
+          from_point_id: 'd5',
+          to_point_id: 'd6',
+          label: '日线放量突破确认',
+          status: 'completion',
+        },
+      }),
+    },
+  };
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({ level: 'hour30' }),
+    structure: {
+      structure_type: '30分钟平台整理',
+      description: '30分钟处于平台整理尾段，等待方向确认',
+      structure_details: {
+        render_payload: createTopologyRenderPayload(),
+        explainability: createTopologyExplainability({
+          structure_family: 'C',
+          current_segment: {
+            from_point_id: 'm4',
+            to_point_id: 'm5',
+            label: '30分钟平台整理阶段',
+          },
+          next_segment_preview: {
+            from_point_id: 'm5',
+            to_point_id: 'm6',
+            label: '30分钟突破平台上沿确认',
+            status: 'completion',
+          },
+        }),
+      },
+    },
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.parentTopologyPreview?.mode, 'annotated');
+  assert.deepEqual(shortline.parentTopologyPreview?.summaryRows, [
+    { label: '当前结构', value: '日线主升结构' },
+    { label: '当前阶段', value: '日线主升阶段' },
+    { label: '下一确认', value: '日线放量突破确认' },
+  ]);
+  assert.equal(shortline.childTopologyPreview?.mode, 'annotated');
+  assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
+    { label: '当前结构', value: '30分钟平台整理' },
+    { label: '当前阶段', value: '30分钟平台整理阶段' },
+    { label: '下一确认', value: '30分钟突破平台上沿确认' },
+  ]);
+});
+
+test('trading combination topology preview falls back to raw lines when explainability is missing', () => {
+  const result = createResult();
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({ level: 'hour30' }),
+    structure: {
+      structure_type: '30分钟箱体震荡',
+      description: '原始描述：箱体仍在震荡，先等边界',
+      structure_details: {
+        render_payload: createTopologyRenderPayload(),
+        explainability: null,
+      },
+    },
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.childTopologyPreview?.mode, 'raw_lines');
+  assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
+    { label: '当前结构', value: '30分钟箱体震荡' },
+    { label: '原始描述', value: '原始描述：箱体仍在震荡，先等边界' },
+    { label: '数据状态', value: '已生成 render_payload，缺少 explainability' },
+  ]);
+});
+
+test('trading combination topology preview falls back to unavailable when render payload is missing', () => {
+  const result = createResult();
+  result.periods.daily.structure = {
+    ...result.periods.daily.structure,
+    structure_type: '日线观察结构',
+    description: '日线结构识别完成，但没有拓扑渲染数据',
+    structure_details: {
+      ...result.periods.daily.structure?.structure_details,
+      render_payload: null,
+      explainability: null,
+    },
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.parentTopologyPreview?.mode, 'unavailable');
+  assert.deepEqual(shortline.parentTopologyPreview?.summaryRows, [
+    { label: '当前结构', value: '日线观察结构' },
+    { label: '原始描述', value: '日线结构识别完成，但没有拓扑渲染数据' },
+    { label: '数据状态', value: '缺少 render_payload' },
+  ]);
 });

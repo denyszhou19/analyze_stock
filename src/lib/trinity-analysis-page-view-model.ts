@@ -135,6 +135,13 @@ export interface AnalysisPageSignalTagViewModel extends TrinitySignalTag {}
 
 export type TradingCombinationKey = 'midline' | 'shortline' | 'intraday_t';
 
+export interface AnalysisPageTopologyPreviewViewModel {
+  level: TrinityLevel;
+  levelLabel: string;
+  mode: 'annotated' | 'raw_lines' | 'unavailable';
+  summaryRows: AnalysisPageHoverItem[];
+}
+
 export interface AnalysisPageGlobalStrategyViewModel {
   scopeLabel: string;
   primaryCombination: TradingCombinationKey;
@@ -157,6 +164,8 @@ export interface AnalysisPageTradingCombinationViewModel {
   key: TradingCombinationKey;
   label: string;
   levels: [TrinityLevel, TrinityLevel];
+  parentTopologyPreview?: AnalysisPageTopologyPreviewViewModel | null;
+  childTopologyPreview?: AnalysisPageTopologyPreviewViewModel | null;
   direction: DirectionTone;
   directionLabel: string;
   actionLabel: string;
@@ -1344,6 +1353,72 @@ function findLevelDecision(result: AnalysisResultData, level: TrinityLevel): Tri
   return result.periods[level]?.trinity_decision ?? null;
 }
 
+function findLevelPeriod(result: AnalysisResultData, level: TrinityLevel): PeriodAnalysisData | null {
+  return result.periods[level] ?? null;
+}
+
+function buildTopologyPreview(
+  result: AnalysisResultData,
+  level: TrinityLevel
+): AnalysisPageTopologyPreviewViewModel | null {
+  const period = findLevelPeriod(result, level);
+  const structure = period?.structure;
+  if (!structure) {
+    return null;
+  }
+
+  const structureType = normalizeRuleChainText(structure.structure_type) || '未生成结构';
+  const description = normalizeRuleChainText(structure.description) || '暂无原始描述';
+  const details = structure.structure_details;
+  const renderPayload = details?.render_payload;
+  const explainability = details?.explainability;
+
+  if (renderPayload && explainability) {
+    return {
+      level,
+      levelLabel: LEVEL_LABELS[level],
+      mode: 'annotated',
+      summaryRows: [
+        createHoverItem('当前结构', structureType, structureType),
+        createHoverItem(
+          '当前阶段',
+          explainability.current_segment?.label ?? explainability.display_reason ?? description,
+          description
+        ),
+        createHoverItem(
+          '下一确认',
+          explainability.next_segment_preview?.label ?? explainability.display_reason ?? description,
+          description
+        ),
+      ],
+    };
+  }
+
+  if (renderPayload) {
+    return {
+      level,
+      levelLabel: LEVEL_LABELS[level],
+      mode: 'raw_lines',
+      summaryRows: [
+        createHoverItem('当前结构', structureType, structureType),
+        createHoverItem('原始描述', description, description),
+        createHoverItem('数据状态', '已生成 render_payload，缺少 explainability', '已生成 render_payload，缺少 explainability'),
+      ],
+    };
+  }
+
+  return {
+    level,
+    levelLabel: LEVEL_LABELS[level],
+    mode: 'unavailable',
+    summaryRows: [
+      createHoverItem('当前结构', structureType, structureType),
+      createHoverItem('原始描述', description, description),
+      createHoverItem('数据状态', '缺少 render_payload', '缺少 render_payload'),
+    ],
+  };
+}
+
 function describePeriod(period?: PeriodAnalysisData): string {
   return period?.structure?.structure_type || period?.trinity_decision?.structure.type || '未生成结构';
 }
@@ -1431,6 +1506,8 @@ function buildCombination({
     triggerHoverValue;
   const parentConstraintTags = buildParentConstraintTags(major);
   const parentSignalTags = parentConstraintTags;
+  const parentTopologyPreview = buildTopologyPreview(result, majorLevel);
+  const childTopologyPreview = buildTopologyPreview(result, minorLevel);
   const relationLabel =
     major?.trade_qualification.position_permission === 'no_position'
       ? `${majorLabel}未放行，${minorLabel}先看确认`
@@ -1440,6 +1517,8 @@ function buildCombination({
     key,
     label,
     levels,
+    parentTopologyPreview,
+    childTopologyPreview,
     status,
     direction,
     directionLabel,
