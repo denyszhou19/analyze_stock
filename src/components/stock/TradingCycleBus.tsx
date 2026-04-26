@@ -2,8 +2,12 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExplainableFact } from '@/components/stock/ExplainableFact';
 import { SignalTagList } from '@/components/stock/SignalTagList';
+import { TradingCycleTopologyPreviewCard } from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { AnalysisPageTradingCombinationViewModel } from '@/lib/trinity-analysis-page-view-model';
+import type {
+  AnalysisPageTopologyPreviewSource,
+  AnalysisPageTradingCombinationViewModel,
+} from '@/lib/trinity-analysis-page-view-model';
 import { getDirectionMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
 import { Info } from 'lucide-react';
@@ -46,6 +50,19 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
       <div className="grid gap-3 xl:grid-cols-3">
         {combinations.map((combination) => {
           const directionMeta = getDirectionMeta(combination.direction);
+          const resolveTopologyPreview = (
+            source: AnalysisPageTopologyPreviewSource
+          ) => {
+            if (source === 'parent') {
+              return combination.parentTopologyPreview ?? null;
+            }
+
+            if (source === 'child') {
+              return combination.childTopologyPreview ?? null;
+            }
+
+            return null;
+          };
           const actionStateTags = combination.actionStateTags?.length
             ? combination.actionStateTags
             : filterSignalTags(combination.signalTags, ACTION_STATE_CATEGORIES);
@@ -90,7 +107,10 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                       className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2.5"
                     >
                       <div className="text-xs font-medium text-muted-foreground">当前动作状态</div>
-                      <SignalTagList tags={actionStateTags} />
+                      <SignalTagList
+                        tags={actionStateTags}
+                        resolveTopologyPreview={resolveTopologyPreview}
+                      />
                     </section>
                   ) : null}
 
@@ -125,7 +145,10 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                           </TooltipContent>
                         </Tooltip>
                       </div>
-                      <SignalTagList tags={judgmentBasisTags} />
+                      <SignalTagList
+                        tags={judgmentBasisTags}
+                        resolveTopologyPreview={resolveTopologyPreview}
+                      />
                     </section>
                   ) : null}
 
@@ -158,19 +181,37 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                                 {item.label}：{item.value}
                               </p>
                             ))}
+                            <TradingCycleTopologyPreviewCard
+                              preview={resolveTopologyPreview(
+                                combination.parentConstraint.topologyPreviewSource ?? null
+                              )}
+                              source={combination.parentConstraint.topologyPreviewSource ?? null}
+                            />
                           </div>
                         </TooltipContent>
                       </Tooltip>
                     </div>
                     {parentConstraintTags.length > 0 ? (
                       <div className="mt-2">
-                        <SignalTagList tags={parentConstraintTags} />
+                        <SignalTagList
+                          tags={parentConstraintTags}
+                          resolveTopologyPreview={resolveTopologyPreview}
+                        />
                       </div>
                     ) : null}
                   </div>
-                  <ExplainableFact fact={combination.triggerLevel} />
-                  <ExplainableFact fact={combination.suitableAction} />
-                  <ExplainableFact fact={combination.majorRisk} />
+                  <ExplainableFact
+                    fact={combination.triggerLevel}
+                    resolveTopologyPreview={resolveTopologyPreview}
+                  />
+                  <ExplainableFact
+                    fact={combination.suitableAction}
+                    resolveTopologyPreview={resolveTopologyPreview}
+                  />
+                  <ExplainableFact
+                    fact={combination.majorRisk}
+                    resolveTopologyPreview={resolveTopologyPreview}
+                  />
                 </div>
               </CardContent>
             </Card>

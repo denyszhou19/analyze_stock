@@ -1,14 +1,22 @@
 import { Badge } from '@/components/ui/badge';
+import { TradingCycleTopologyPreviewCard } from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { AnalysisPageSignalTagViewModel } from '@/lib/trinity-analysis-page-view-model';
+import type {
+  AnalysisPageSignalTagViewModel,
+  AnalysisPageTopologyPreviewSource,
+  AnalysisPageTopologyPreviewViewModel,
+} from '@/lib/trinity-analysis-page-view-model';
 import { getSignalTagToneMeta } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
 
 interface SignalTagListProps {
   tags: AnalysisPageSignalTagViewModel[];
+  resolveTopologyPreview?: (
+    source: AnalysisPageTopologyPreviewSource
+  ) => AnalysisPageTopologyPreviewViewModel | null | undefined;
 }
 
-export function SignalTagList({ tags }: SignalTagListProps) {
+export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListProps) {
   if (!tags.length) {
     return null;
   }
@@ -17,6 +25,9 @@ export function SignalTagList({ tags }: SignalTagListProps) {
     <div className="flex flex-wrap gap-1.5">
       {tags.map((tag) => {
         const toneMeta = getSignalTagToneMeta(tag.tone);
+        const topologyPreview = tag.topologyPreviewSource
+          ? resolveTopologyPreview?.(tag.topologyPreviewSource) ?? null
+          : null;
 
         return (
           <Tooltip key={`${tag.key}-${tag.label}`}>
@@ -39,6 +50,10 @@ export function SignalTagList({ tags }: SignalTagListProps) {
                     {item.label}：{item.value}
                   </p>
                 ))}
+                <TradingCycleTopologyPreviewCard
+                  preview={topologyPreview}
+                  source={tag.topologyPreviewSource ?? null}
+                />
               </div>
             </TooltipContent>
           </Tooltip>

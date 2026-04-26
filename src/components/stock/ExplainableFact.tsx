@@ -1,12 +1,24 @@
 import { Info } from 'lucide-react';
+import { TradingCycleTopologyPreviewCard } from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
-import type { AnalysisPageExplainableField } from '@/lib/trinity-analysis-page-view-model';
+import type {
+  AnalysisPageExplainableField,
+  AnalysisPageTopologyPreviewSource,
+  AnalysisPageTopologyPreviewViewModel,
+} from '@/lib/trinity-analysis-page-view-model';
 
 interface ExplainableFactProps {
   fact: AnalysisPageExplainableField;
+  resolveTopologyPreview?: (
+    source: AnalysisPageTopologyPreviewSource
+  ) => AnalysisPageTopologyPreviewViewModel | null | undefined;
 }
 
-export function ExplainableFact({ fact }: ExplainableFactProps) {
+export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFactProps) {
+  const topologyPreview = fact.topologyPreviewSource
+    ? resolveTopologyPreview?.(fact.topologyPreviewSource) ?? null
+    : null;
+
   return (
     <div className="rounded-lg border bg-background/70 p-2">
       <div className="flex items-start justify-between gap-2">
@@ -32,6 +44,10 @@ export function ExplainableFact({ fact }: ExplainableFactProps) {
                   {item.label}：{item.value}
                 </p>
               ))}
+              <TradingCycleTopologyPreviewCard
+                preview={topologyPreview}
+                source={fact.topologyPreviewSource ?? null}
+              />
             </div>
           </TooltipContent>
         </Tooltip>

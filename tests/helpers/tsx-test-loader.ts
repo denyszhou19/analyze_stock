@@ -246,6 +246,10 @@ async function rewriteImports(code: string, filePath?: string): Promise<string> 
       specifier: '@/components/stock/ExplainableFact',
       target: path.resolve(process.cwd(), 'src/components/stock/ExplainableFact.tsx'),
     },
+    {
+      specifier: '@/components/stock/TradingCycleTopologyPreviewCard',
+      target: path.resolve(process.cwd(), 'src/components/stock/TradingCycleTopologyPreviewCard.tsx'),
+    },
   ];
 
   for (const item of stockComponentAliases) {
@@ -269,6 +273,10 @@ async function rewriteImports(code: string, filePath?: string): Promise<string> 
       {
         specifier: './ExplainableFact',
         target: path.resolve(fileDir, 'ExplainableFact.tsx'),
+      },
+      {
+        specifier: './TradingCycleTopologyPreviewCard',
+        target: path.resolve(fileDir, 'TradingCycleTopologyPreviewCard.tsx'),
       },
     ];
 

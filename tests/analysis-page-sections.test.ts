@@ -233,6 +233,19 @@ function createSignalTag(label: string, tone: 'bullish' | 'bearish' | 'warning' 
   };
 }
 
+function createTopologyPreview(
+  levelLabel: string,
+  mode: 'annotated' | 'raw_lines' | 'unavailable',
+  summaryRows: Array<{ label: string; value: string }>
+) {
+  return {
+    level: 'daily' as const,
+    levelLabel,
+    mode,
+    summaryRows,
+  };
+}
+
 function createRuleItem(
   overrides: Partial<{
     title: string;
@@ -504,6 +517,124 @@ test('TradingCycleBus groups signal tags into three layered sections', async () 
   assert.doesNotMatch(parentConstraintHtml, /级别｜/);
   assert.doesNotMatch(parentConstraintHtml, /执行｜/);
   assert.match(html, /子级综合判断依据[\s\S]*背离｜顶背离压制[\s\S]*父级约束/);
+});
+
+test('TradingCycleBus and hover consumers render topology preview summaries from mapped sources', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: [
+        {
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          parentTopologyPreview: createTopologyPreview('日线', 'annotated', [
+            { label: '当前结构', value: '日线主升结构' },
+            { label: '当前阶段', value: '日线主升阶段' },
+            { label: '下一确认', value: '日线放量突破确认' },
+          ]),
+          childTopologyPreview: createTopologyPreview('30分钟', 'annotated', [
+            { label: '当前结构', value: '30分钟平台整理' },
+            { label: '当前阶段', value: '30分钟平台整理阶段' },
+            { label: '下一确认', value: '30分钟突破平台上沿确认' },
+          ]),
+          direction: 'neutral',
+          directionLabel: '中性',
+          actionLabel: '谨慎看',
+          judgmentLabel: '候选可试',
+          relationLabel: '父级强冲突，子级逆父级',
+          relationHint: '日线看背景，30分钟看执行',
+          summary: '日线还没完全放行，30分钟先看确认',
+          recommendation: '先等30分钟放量突破平台上沿',
+          signalTags: [],
+          actionStateTags: [
+            {
+              ...createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
+              topologyPreviewSource: 'child' as const,
+            },
+          ],
+          judgmentBasisTags: [
+            {
+              ...createSignalTag('结构｜30分钟平台整理', 'neutral'),
+              topologyPreviewSource: 'child' as const,
+            },
+          ],
+          parentConstraintTags: [
+            {
+              ...createSignalTag('结构｜日线主升结构', 'bullish'),
+              topologyPreviewSource: 'parent' as const,
+            },
+          ],
+          parentSignalTags: [],
+          parentConstraint: {
+            ...createExplainableField('父级约束', '日线：仍未完全放行'),
+            topologyPreviewSource: 'parent' as const,
+          },
+          triggerLevel: {
+            ...createExplainableField('触发级别', '30分钟：放量突破平台上沿'),
+            topologyPreviewSource: 'child' as const,
+          },
+          triggerLevelLabel: '30分钟',
+          suitableAction: createExplainableField('适合动作', '等待30分钟确认后再决定是否轻仓试探'),
+          majorRisk: createExplainableField('主要风险', '30分钟冲高但量能不足会再次回到等待'),
+          explanation: '日线定约束，30分钟给触发；存在约束，不能直接放大动作',
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /父级拓扑摘要/);
+  assert.match(html, /父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
+  assert.match(html, /子级拓扑摘要/);
+  assert.match(html, /子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+});
+
+test('SignalTagList and ExplainableFact render raw-lines topology preview details', async () => {
+  const { SignalTagList } = await importTsxModule<typeof import('../src/components/stock/SignalTagList.tsx')>(
+    'src/components/stock/SignalTagList.tsx'
+  );
+  const { ExplainableFact } = await importTsxModule<typeof import('../src/components/stock/ExplainableFact.tsx')>(
+    'src/components/stock/ExplainableFact.tsx'
+  );
+
+  const preview = createTopologyPreview('30分钟', 'raw_lines', [
+    { label: '当前结构', value: '30分钟箱体震荡' },
+    { label: '原始描述', value: '原始描述：箱体仍在震荡，先等边界' },
+    { label: '数据状态', value: '已生成 render_payload，缺少 explainability' },
+  ]);
+
+  const signalHtml = renderQuietly(
+    React.createElement(SignalTagList, {
+      tags: [
+        {
+          ...createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
+          topologyPreviewSource: 'child',
+        },
+      ],
+      resolveTopologyPreview: (source) => (source === 'child' ? preview : null),
+    })
+  );
+
+  const factHtml = renderQuietly(
+    React.createElement(ExplainableFact, {
+      fact: {
+        ...createExplainableField('触发级别', '30分钟：放量突破平台上沿'),
+        topologyPreviewSource: 'child',
+      },
+      resolveTopologyPreview: (source) => (source === 'child' ? preview : null),
+    })
+  );
+
+  assert.match(signalHtml, /子级拓扑摘要/);
+  assert.match(signalHtml, /原始描述：原始描述：箱体仍在震荡，先等边界/);
+  assert.match(signalHtml, /数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(factHtml, /子级拓扑摘要/);
+  assert.match(factHtml, /当前结构：30分钟箱体震荡/);
+  assert.match(factHtml, /原始描述：原始描述：箱体仍在震荡，先等边界/);
+  assert.match(factHtml, /数据状态：已生成 render_payload，缺少 explainability/);
 });
 
 test('TradingCycleBus renders Chinese node semantic contract copy without internal field names', async () => {
