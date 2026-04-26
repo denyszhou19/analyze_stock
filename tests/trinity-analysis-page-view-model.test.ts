@@ -1960,6 +1960,41 @@ test('trading combination topology preview falls back to raw lines when explaina
   ]);
 });
 
+test('trading combination topology preview falls back to raw lines when explainability is incomplete', () => {
+  const result = createResult();
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({ level: 'hour30' }),
+    structure: {
+      structure_type: '30分钟平台整理',
+      description: '原始描述：拓扑线已生成，但解释层还不完整',
+      structure_details: {
+        render_payload: createTopologyRenderPayload(),
+        explainability: createTopologyExplainability({
+          next_segment_preview: null,
+        }),
+      },
+    },
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.childTopologyPreview?.mode, 'raw_lines');
+  assert.deepEqual(shortline.childTopologyPreview?.renderPayload, createTopologyRenderPayload());
+  assert.equal(shortline.childTopologyPreview?.explainability, null);
+  assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
+    { label: '当前结构', value: '30分钟平台整理' },
+    { label: '原始描述', value: '原始描述：拓扑线已生成，但解释层还不完整' },
+    { label: '数据状态', value: '已生成 render_payload，explainability 不完整' },
+  ]);
+});
+
 test('trading combination topology preview falls back to unavailable when render payload is missing', () => {
   const result = createResult();
   result.periods.daily.structure = {

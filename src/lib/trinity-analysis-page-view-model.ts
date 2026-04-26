@@ -1406,6 +1406,18 @@ function findLevelPeriod(result: AnalysisResultData, level: TrinityLevel): Perio
   return result.periods[level] ?? null;
 }
 
+function hasCompleteTopologyExplainability(
+  explainability: StructureExplainabilityData | null | undefined
+): explainability is StructureExplainabilityData {
+  return Boolean(
+    explainability &&
+      explainability.structure_start_point_id &&
+      explainability.current_point_id &&
+      explainability.current_segment &&
+      explainability.next_segment_preview
+  );
+}
+
 function buildTopologyPreview(
   result: AnalysisResultData,
   level: TrinityLevel
@@ -1431,9 +1443,9 @@ function buildTopologyPreview(
   const description = normalizeRuleChainText(structure.description) || '暂无原始描述';
   const details = structure.structure_details;
   const renderPayload = (details?.render_payload ?? null) as StructureRenderPayload | null;
-  const explainability = details?.explainability;
+  const explainability = details?.explainability ?? null;
 
-  if (renderPayload && explainability) {
+  if (renderPayload && hasCompleteTopologyExplainability(explainability)) {
     return {
       level,
       levelLabel: LEVEL_LABELS[level],
@@ -1457,6 +1469,10 @@ function buildTopologyPreview(
   }
 
   if (renderPayload) {
+    const rawLinesStatus = explainability
+      ? '已生成 render_payload，explainability 不完整'
+      : '已生成 render_payload，缺少 explainability';
+
     return {
       level,
       levelLabel: LEVEL_LABELS[level],
@@ -1466,7 +1482,7 @@ function buildTopologyPreview(
       summaryRows: [
         createHoverItem('当前结构', structureType, structureType),
         createHoverItem('原始描述', description, description),
-        createHoverItem('数据状态', '已生成 render_payload，缺少 explainability', '已生成 render_payload，缺少 explainability'),
+        createHoverItem('数据状态', rawLinesStatus, rawLinesStatus),
       ],
     };
   }
