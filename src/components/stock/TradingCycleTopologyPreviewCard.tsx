@@ -5,10 +5,21 @@ import type {
   AnalysisPageTopologyPreviewSource,
   AnalysisPageTopologyPreviewViewModel,
 } from '@/lib/trinity-analysis-page-view-model';
+import { cn } from '@/lib/utils';
 
 interface TradingCycleTopologyPreviewCardProps {
   preview: AnalysisPageTopologyPreviewViewModel | null | undefined;
   source: AnalysisPageTopologyPreviewSource;
+}
+
+export const DEFAULT_TOOLTIP_CONTENT_CLASSNAME = 'max-w-sm text-sm leading-6';
+export const TOPOLOGY_PREVIEW_TOOLTIP_CONTENT_CLASSNAME =
+  'max-w-[min(86vw,52rem)] p-0 text-left text-sm leading-6 [text-wrap:wrap]';
+
+export function getTradingCycleTooltipContentClassName(
+  preview: AnalysisPageTopologyPreviewViewModel | null | undefined
+) {
+  return preview ? TOPOLOGY_PREVIEW_TOOLTIP_CONTENT_CLASSNAME : DEFAULT_TOOLTIP_CONTENT_CLASSNAME;
 }
 
 function getPreviewTitle(source: AnalysisPageTopologyPreviewSource) {
@@ -36,7 +47,7 @@ export function TradingCycleTopologyPreviewCard({
   const shouldRenderGraph = preview.mode !== 'unavailable' && Boolean(payload);
 
   return (
-    <div className="mt-2 rounded-md border border-border/60 bg-background/80 p-2">
+    <div className="mt-2 rounded-md border border-border/60 bg-background/80 p-3">
       <div className="font-medium text-foreground">
         {getPreviewTitle(source)}
       </div>
@@ -50,11 +61,29 @@ export function TradingCycleTopologyPreviewCard({
           />
         </div>
       ) : null}
-      <div className="mt-1.5 space-y-1">
+      <div
+        data-slot="trading-cycle-topology-summary"
+        className="mt-2 grid gap-2"
+      >
         {preview.summaryRows.map((row) => (
-          <p key={`${preview.level}-${preview.mode}-${row.label}`}>
-            {row.label}：{row.value}
-          </p>
+          <div
+            key={`${preview.level}-${preview.mode}-${row.label}`}
+            data-slot="trading-cycle-topology-summary-row"
+            className="grid grid-cols-[5.5rem_minmax(0,1fr)] gap-x-2 text-sm leading-6"
+          >
+            <div
+              data-slot="trading-cycle-topology-summary-label"
+              className="text-muted-foreground"
+            >
+              {row.label}
+            </div>
+            <div
+              data-slot="trading-cycle-topology-summary-value"
+              className={cn('min-w-0 text-foreground', '[overflow-wrap:anywhere]')}
+            >
+              {row.value}
+            </div>
+          </div>
         ))}
       </div>
     </div>

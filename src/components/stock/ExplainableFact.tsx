@@ -1,5 +1,8 @@
 import { Info } from 'lucide-react';
-import { TradingCycleTopologyPreviewCard } from '@/components/stock/TradingCycleTopologyPreviewCard';
+import {
+  getTradingCycleTooltipContentClassName,
+  TradingCycleTopologyPreviewCard,
+} from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type {
   AnalysisPageExplainableField,
@@ -36,7 +39,10 @@ export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFac
               <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
             </span>
           </TooltipTrigger>
-          <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+          <TooltipContent
+            side="top"
+            className={getTradingCycleTooltipContentClassName(topologyPreview)}
+          >
             <div className="space-y-1">
               <div className="font-medium">{fact.hoverTitle}</div>
               {fact.hoverItems.map((item) => (

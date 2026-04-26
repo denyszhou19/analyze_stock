@@ -2,7 +2,10 @@ import { Badge } from '@/components/ui/badge';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExplainableFact } from '@/components/stock/ExplainableFact';
 import { SignalTagList } from '@/components/stock/SignalTagList';
-import { TradingCycleTopologyPreviewCard } from '@/components/stock/TradingCycleTopologyPreviewCard';
+import {
+  getTradingCycleTooltipContentClassName,
+  TradingCycleTopologyPreviewCard,
+} from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type {
   AnalysisPageTopologyPreviewSource,
@@ -72,6 +75,9 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
           const parentConstraintTags = combination.parentConstraintTags?.length
             ? combination.parentConstraintTags
             : combination.parentSignalTags ?? [];
+          const parentConstraintPreview = resolveTopologyPreview(
+            combination.parentConstraint.topologyPreviewSource ?? null
+          );
 
           return (
             <Card
@@ -173,7 +179,10 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                             <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
                           </span>
                         </TooltipTrigger>
-                        <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+                        <TooltipContent
+                          side="top"
+                          className={getTradingCycleTooltipContentClassName(parentConstraintPreview)}
+                        >
                           <div className="space-y-1">
                             <div className="font-medium">{combination.parentConstraint.hoverTitle}</div>
                             {combination.parentConstraint.hoverItems.map((item) => (
@@ -182,9 +191,7 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                               </p>
                             ))}
                             <TradingCycleTopologyPreviewCard
-                              preview={resolveTopologyPreview(
-                                combination.parentConstraint.topologyPreviewSource ?? null
-                              )}
+                              preview={parentConstraintPreview}
                               source={combination.parentConstraint.topologyPreviewSource ?? null}
                             />
                           </div>

@@ -1,5 +1,8 @@
 import { Badge } from '@/components/ui/badge';
-import { TradingCycleTopologyPreviewCard } from '@/components/stock/TradingCycleTopologyPreviewCard';
+import {
+  getTradingCycleTooltipContentClassName,
+  TradingCycleTopologyPreviewCard,
+} from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type {
   AnalysisPageSignalTagViewModel,
@@ -42,7 +45,10 @@ export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListPro
                 {tag.label}
               </Badge>
             </TooltipTrigger>
-            <TooltipContent side="top" className="max-w-sm text-sm leading-6">
+            <TooltipContent
+              side="top"
+              className={getTradingCycleTooltipContentClassName(topologyPreview)}
+            >
               <div className="space-y-1">
                 <div className="font-medium">{tag.hover.title}</div>
                 {tag.hover.items.map((item) => (
