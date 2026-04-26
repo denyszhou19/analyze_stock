@@ -1835,12 +1835,19 @@ test('trading combination exposes parent daily and child 30-minute topology prev
     { label: '当前阶段', value: '日线主升阶段' },
     { label: '下一确认', value: '日线放量突破确认' },
   ]);
+  assert.equal(shortline.parentConstraint.topologyPreviewSource, 'parent');
+  assert.ok(shortline.parentConstraintTags.every((tag) => tag.topologyPreviewSource === 'parent'));
   assert.equal(shortline.childTopologyPreview?.mode, 'annotated');
   assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '30分钟平台整理' },
     { label: '当前阶段', value: '30分钟平台整理阶段' },
     { label: '下一确认', value: '30分钟突破平台上沿确认' },
   ]);
+  assert.ok(shortline.actionStateTags.every((tag) => tag.topologyPreviewSource === 'child'));
+  assert.ok(shortline.judgmentBasisTags.every((tag) => tag.topologyPreviewSource === 'child'));
+  assert.equal(shortline.triggerLevel.topologyPreviewSource, 'child');
+  assert.equal(shortline.suitableAction.topologyPreviewSource, 'child');
+  assert.equal(shortline.majorRisk.topologyPreviewSource, 'child');
 });
 
 test('trading combination topology preview falls back to raw lines when explainability is missing', () => {

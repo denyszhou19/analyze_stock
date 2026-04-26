@@ -124,14 +124,19 @@ export interface AnalysisPageHoverItem {
   value: string;
 }
 
+export type AnalysisPageTopologyPreviewSource = 'parent' | 'child' | null;
+
 export interface AnalysisPageExplainableField {
   label: string;
   value: string;
   hoverTitle: string;
   hoverItems: AnalysisPageHoverItem[];
+  topologyPreviewSource?: AnalysisPageTopologyPreviewSource;
 }
 
-export interface AnalysisPageSignalTagViewModel extends TrinitySignalTag {}
+export interface AnalysisPageSignalTagViewModel extends TrinitySignalTag {
+  topologyPreviewSource?: AnalysisPageTopologyPreviewSource;
+}
 
 export type TradingCombinationKey = 'midline' | 'shortline' | 'intraday_t';
 
@@ -433,18 +438,31 @@ function buildExplainableField({
   value,
   hoverTitle,
   hoverItems,
+  topologyPreviewSource = null,
 }: {
   label: string;
   value?: string | null;
   hoverTitle: string;
   hoverItems: AnalysisPageHoverItem[];
+  topologyPreviewSource?: AnalysisPageTopologyPreviewSource;
 }): AnalysisPageExplainableField {
   return {
     label,
     value: normalizeRuleChainText(value) || '暂无明确说明',
     hoverTitle,
     hoverItems,
+    topologyPreviewSource,
   };
+}
+
+function annotateSignalTagsWithTopologySource(
+  tags: AnalysisPageSignalTagViewModel[],
+  topologyPreviewSource: AnalysisPageTopologyPreviewSource
+): AnalysisPageSignalTagViewModel[] {
+  return tags.map((tag) => ({
+    ...tag,
+    topologyPreviewSource,
+  }));
 }
 
 function compactTriggerText(trigger?: string | null): string {
@@ -625,14 +643,17 @@ function formatCombinationList(
 }
 
 function buildParentConstraintTags(decision: TrinityDecision | null): AnalysisPageSignalTagViewModel[] {
-  return filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
-    'spacetime',
-    'divergence',
-    'breakthrough',
-    'volume',
-    'moving_average',
-    'structure',
-  ]);
+  return annotateSignalTagsWithTopologySource(
+    filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
+      'spacetime',
+      'divergence',
+      'breakthrough',
+      'volume',
+      'moving_average',
+      'structure',
+    ]),
+    'parent'
+  );
 }
 
 function buildCombinationActionStateTags(
@@ -666,7 +687,7 @@ function buildCombinationActionStateTags(
       ? 'warning'
       : 'neutral';
 
-  return [
+  return annotateSignalTagsWithTopologySource([
     buildCustomSignalTag(
       'level_nesting',
       '级别',
@@ -692,18 +713,21 @@ function buildCombinationActionStateTags(
       { label: '当前动作', value: '继续等待' },
       { label: '等待条件', value: trigger || `${minorLabel}等待更明确确认` },
     ]),
-  ];
+  ], 'child');
 }
 
 function buildCombinationBasisTags(decision: TrinityDecision | null): AnalysisPageSignalTagViewModel[] {
-  return filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
-    'spacetime',
-    'divergence',
-    'breakthrough',
-    'volume',
-    'moving_average',
-    'structure',
-  ]);
+  return annotateSignalTagsWithTopologySource(
+    filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
+      'spacetime',
+      'divergence',
+      'breakthrough',
+      'volume',
+      'moving_average',
+      'structure',
+    ]),
+    'child'
+  );
 }
 
 function buildCategorySignalTags(
@@ -1537,6 +1561,7 @@ function buildCombination({
       label: '父级约束',
       value: parentConstraintValue,
       hoverTitle: '父级约束说明',
+      topologyPreviewSource: 'parent',
       hoverItems: [
         createHoverItem('这句话是什么意思', `${majorLabel}负责决定这组交易能不能放行。`),
         createHoverItem(
@@ -1571,6 +1596,7 @@ function buildCombination({
       label: '触发级别',
       value: `${minorLabel}：${triggerValue}`,
       hoverTitle: '触发级别说明',
+      topologyPreviewSource: 'child',
       hoverItems: [
         createHoverItem('这句话是什么意思', `${minorLabel}负责给出更具体的执行触发。`),
         createHoverItem('为什么这么判断', triggerHoverReason),
@@ -1589,6 +1615,7 @@ function buildCombination({
       label: '适合动作',
       value: suitableActionValue,
       hoverTitle: '适合动作说明',
+      topologyPreviewSource: 'child',
       hoverItems: [
         createHoverItem('这句话是什么意思', '这是在当前父子级别约束下更适合采用的动作。'),
         createHoverItem('为什么这么判断', resolveDecisionActionReason(minor) || resolveDecisionActionReason(major)),
@@ -1612,6 +1639,7 @@ function buildCombination({
       label: '主要风险',
       value: majorRiskValue,
       hoverTitle: '主要风险说明',
+      topologyPreviewSource: 'child',
       hoverItems: [
         createHoverItem('这句话是什么意思', '这是当前组合最需要优先防守的风险点。'),
         createHoverItem(
