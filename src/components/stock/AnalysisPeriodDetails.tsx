@@ -5,17 +5,8 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
 import type { PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
 import { normalizeStructureDisplayText } from '@/lib/structure-explainability-view-model';
-import {
-  buildExecutionPreview,
-  resolveJudgmentLabel,
-  resolveRelationLabel,
-} from '@/lib/trinity-judgment-display';
-import {
-  buildDecisionSignalTags,
-  buildPeriodSignalTags,
-  buildPeriodSummarySignalTags,
-  type TrinitySignalTag,
-} from '@/lib/trinity-signal-tags';
+import { resolveJudgmentLabel, resolveRelationLabel } from '@/lib/trinity-judgment-display';
+import { buildPeriodSummarySignalTags, type TrinitySignalTag } from '@/lib/trinity-signal-tags';
 import {
   directionFromBias,
   getDirectionMeta,
@@ -48,25 +39,12 @@ const STRUCTURE_COLORS: Record<string, string> = {
   山谷形态: 'bg-gradient-to-r from-green-100 to-red-100 text-gray-800 border border-gray-300',
 };
 
-const PERIOD_LEVEL_LABELS: Record<string, string> = {
-  weekly: '周线',
-  daily: '日线',
-  hour60: '60分钟',
-  hour30: '30分钟',
-  hour15: '15分钟',
-};
-
-function formatList(items?: Array<string | null | undefined> | null, fallback = '未提供') {
-  const value = items?.filter(Boolean).join('、');
-  return value || fallback;
-}
-
 function resolveSummary(section: AnalysisPeriodSection) {
   if (!section.period) {
     return '当前级别暂无周期数据。';
   }
 
-  const candidateStructure = section.period?.trinity_decision?.candidate_structure;
+  const candidateStructure = section.period.trinity_decision?.candidate_structure;
   const candidateSummary = [candidateStructure?.candidate_label, candidateStructure?.current_leg]
     .filter(Boolean)
     .join('｜');
@@ -74,9 +52,9 @@ function resolveSummary(section: AnalysisPeriodSection) {
   return (
     candidateSummary ||
     section.summary ||
-    section.period?.structure?.description ||
-    section.period?.structure?.execution?.wait_reason ||
-    section.period?.trinity_decision?.conclusion.wait_reason ||
+    section.period.structure?.description ||
+    section.period.structure?.execution?.wait_reason ||
+    section.period.trinity_decision?.conclusion.wait_reason ||
     '当前周期暂无补充摘要。'
   );
 }
@@ -119,46 +97,6 @@ function resolveStructureEvidence(section: AnalysisPeriodSection) {
   return normalizeStructureDisplayText(evidence) || '当前周期暂无结构证据。';
 }
 
-function resolveSpacetimeStatus(section: AnalysisPeriodSection) {
-  const decision = section.period?.trinity_decision;
-  const interpretation = section.period?.structure?.interpretation;
-  const macd = section.period?.macd;
-
-  return (
-    [
-      decision?.zero_axis_signal?.signal_label,
-      decision?.zero_axis_signal?.reason,
-      decision?.divergence_weight?.label,
-      decision?.divergence_weight?.reason,
-      interpretation?.spacetime_gate?.parent_status,
-      macd?.status,
-      interpretation?.spacetime_gate?.wait_reason,
-      interpretation?.spacetime_gate?.required_confirmation,
-      macd?.divergence_note,
-    ]
-      .filter(Boolean)
-      .join('｜') || '当前周期暂无时空状态。'
-  );
-}
-
-function resolveMovingAverageStatus(section: AnalysisPeriodSection) {
-  const ma = section.period?.moving_averages;
-  const physics = section.period?.ma_physics;
-  const breakthrough = section.period?.breakthrough;
-
-  return (
-    [
-      ma?.ma_status,
-      physics?.support_pressure?.status,
-      physics?.traction?.traction_force,
-      breakthrough?.pattern_type,
-      formatList(physics?.key_signals, ''),
-    ]
-      .filter(Boolean)
-      .join('｜') || '当前周期暂无均线关系。'
-  );
-}
-
 function resolvePeriodDecisionSource(section: AnalysisPeriodSection) {
   return section.period?.trinity_decision
     ? `来源：${section.label}三位一体判定`
@@ -197,95 +135,8 @@ function enrichStructureSignalTag(
   };
 }
 
-function resolveLevelLabel(level?: string | null) {
-  return level ? PERIOD_LEVEL_LABELS[level] ?? level : '未知级别';
-}
-
 function resolvePeriodDirection(section: AnalysisPeriodSection) {
   return directionFromBias(section.period?.trinity_decision?.conclusion.bias ?? null);
-}
-
-function resolvePeriodTriggers(section: AnalysisPeriodSection) {
-  const decision = section.period?.trinity_decision;
-  const phase2Triggers = [
-    decision?.execution_plan?.probe_entry,
-    decision?.execution_plan?.confirm_entry,
-    decision?.wait_state?.next_confirmation_action,
-  ].filter((item): item is string => Boolean(item));
-  if (phase2Triggers.length) {
-    return phase2Triggers;
-  }
-
-  if (decision?.execution.triggers?.length) {
-    return decision.execution.triggers;
-  }
-
-  const executionTriggers = section.period?.structure?.execution?.trigger;
-  if (executionTriggers?.length) {
-    return executionTriggers;
-  }
-
-  return [
-    section.period?.structure?.interpretation?.spacetime_gate?.required_confirmation ?? null,
-  ].filter((item): item is string => Boolean(item));
-}
-
-function resolvePeriodRisks(section: AnalysisPeriodSection) {
-  const decision = section.period?.trinity_decision;
-  if (decision?.execution_plan?.invalidation) {
-    return [decision.execution_plan.invalidation];
-  }
-
-  if (decision?.execution.risk_flags?.length) {
-    return decision.execution.risk_flags;
-  }
-
-  const invalidation = section.period?.structure?.execution?.invalidation;
-  if (invalidation?.length) {
-    return invalidation;
-  }
-
-  return section.period?.structure?.execution?.risk_flags ?? [];
-}
-
-function resolvePeriodGuardrail(section: AnalysisPeriodSection) {
-  const decision = section.period?.trinity_decision;
-
-  return (
-    decision?.judgment?.critical_reason ??
-    decision?.wait_state?.reason ??
-    decision?.execution.position_sizing.reason ??
-    section.period?.structure?.execution?.wait_reason ??
-    '暂无明确风控约束'
-  );
-}
-
-function resolveResonanceEvidence(section: AnalysisPeriodSection) {
-  const nesting = section.period?.trinity_decision?.level_nesting;
-  const decision = section.period?.trinity_decision;
-  if (!nesting?.parent_level || !nesting.child_level) {
-    return '级别共振：暂无父子级别共振数据。';
-  }
-
-  return [
-    `共振对象：${resolveLevelLabel(nesting.parent_level)} → ${resolveLevelLabel(nesting.child_level)}`,
-    `成立依据：${nesting.permission.reason}`,
-    `仍需确认：${decision?.wait_state?.current_block ?? decision?.conclusion.wait_reason ?? '等待触发级别确认'}`,
-  ].join('｜');
-}
-
-function resolveBackgroundEvidence(section: AnalysisPeriodSection) {
-  const nesting = section.period?.trinity_decision?.level_nesting;
-  const gate = section.period?.structure?.interpretation?.spacetime_gate;
-  const parentLabel = resolveLevelLabel(nesting?.parent_level);
-  const currentLabel = resolveLevelLabel(nesting?.child_level ?? section.key);
-
-  return [
-    `上一级：${parentLabel}`,
-    `当前级别：${currentLabel}`,
-    `背景来源：${gate?.parent_status ?? '上一级时空状态 + 结构方向'}`,
-    `交易含义：${gate?.wait_reason ?? nesting?.permission.reason ?? '等待当前级别确认'}`,
-  ].join('｜');
 }
 
 function buildExplainabilityStructure(period?: PeriodAnalysisData | null) {
@@ -304,145 +155,43 @@ function buildExplainabilityStructure(period?: PeriodAnalysisData | null) {
   };
 }
 
-function LabelList({
-  fallback,
-  items,
-}: {
-  fallback: string;
-  items: Array<string | null | undefined>;
-}) {
-  const visibleItems = items.filter((item): item is string => Boolean(item));
-  if (!visibleItems.length) {
-    return <p className="text-sm text-muted-foreground">{fallback}</p>;
-  }
-
-  return (
-    <div className="flex flex-wrap gap-2">
-      {visibleItems.map((item) => (
-        <Badge key={item} variant="secondary" className="whitespace-normal text-left">
-          {item}
-        </Badge>
-      ))}
-    </div>
-  );
-}
-
 function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
   const direction = resolvePeriodDirection(section);
   const directionMeta = getDirectionMeta(direction);
   const decision = section.period?.trinity_decision ?? undefined;
   const judgmentLabel = resolveJudgmentLabel(decision);
-  const relationLabel = resolveRelationLabel(section.period?.trinity_decision?.level_nesting);
-  const signalTags = buildPeriodSummarySignalTags(section.period).map((tag) =>
-    enrichStructureSignalTag(section, tag)
-  );
-  const executionPreview = buildExecutionPreview(decision);
-  const hasSignalTags = signalTags.length > 0;
+  const relationLabel = resolveRelationLabel(decision?.level_nesting);
+  const structureTags = buildPeriodSummarySignalTags(section.period)
+    .filter((tag) => tag.key === 'structure')
+    .map((tag) => enrichStructureSignalTag(section, tag));
 
   return (
     <section className={cn('rounded-xl border p-4 shadow-none', directionMeta.cardClassName)}>
-      <div className="flex flex-wrap items-start justify-between gap-3">
-        <div className="space-y-1">
-          <h3 className="text-sm font-semibold text-foreground">该级别综合判断</h3>
-          <p className="text-xs text-muted-foreground">{resolvePeriodDecisionSource(section)}</p>
-          <p className="text-sm leading-6 text-muted-foreground">{resolveSummary(section)}</p>
+      <div className="space-y-1">
+        <h3 className="text-sm font-semibold text-foreground">该级别概览</h3>
+        <p className="text-xs text-muted-foreground">{resolvePeriodDecisionSource(section)}</p>
+        <p className="text-sm leading-6 text-muted-foreground">{resolveSummary(section)}</p>
+      </div>
+
+      <div className="mt-4 grid gap-3 sm:grid-cols-2">
+        <div className="rounded-lg border bg-background/80 p-3">
+          <div className="text-xs font-medium text-muted-foreground">当前判断</div>
+          <Badge variant="outline" className="mt-2">
+            {judgmentLabel}
+          </Badge>
+        </div>
+        <div className="rounded-lg border bg-background/80 p-3">
+          <div className="text-xs font-medium text-muted-foreground">父子约束</div>
+          <p className="mt-2 text-sm leading-6 text-foreground">{relationLabel}</p>
         </div>
       </div>
 
-      <div className="mt-4 space-y-3 rounded-lg border bg-background/70 p-3">
-        <div className="grid gap-3 lg:grid-cols-2">
-          <div className="rounded-lg border bg-background p-3">
-            <div className="text-xs font-medium text-muted-foreground">当前综合判断</div>
-            <Badge variant="outline" className="mt-2">
-              {judgmentLabel}
-            </Badge>
-          </div>
-          <div className="rounded-lg border bg-background p-3">
-            <div className="text-xs font-medium text-muted-foreground">父子关系</div>
-            <p className="mt-2 text-sm leading-6 text-foreground">{relationLabel}</p>
-          </div>
+      {structureTags.length > 0 ? (
+        <div className="mt-4 space-y-2">
+          <div className="text-xs font-medium text-muted-foreground">当前结构</div>
+          <SignalTagList tags={structureTags} />
         </div>
-        <div className="space-y-2">
-          <div className="text-xs font-medium text-muted-foreground">全部混排标签</div>
-          {hasSignalTags ? (
-            <SignalTagList tags={signalTags} />
-          ) : (
-            <p className="text-sm text-muted-foreground">暂无可用标签。</p>
-          )}
-        </div>
-        <div className="grid gap-3 lg:grid-cols-3">
-          <div className="space-y-2 rounded-lg border bg-background p-3">
-            <div className="text-xs font-medium text-muted-foreground">时空摘要</div>
-            <p className="text-sm leading-6 text-foreground">{resolveSpacetimeStatus(section)}</p>
-          </div>
-          <div className="space-y-2 rounded-lg border bg-background p-3">
-            <div className="text-xs font-medium text-muted-foreground">结构摘要</div>
-            <p className="text-sm leading-6 text-foreground">{resolveStructureEvidence(section)}</p>
-          </div>
-          <div className="space-y-2 rounded-lg border bg-background p-3">
-            <div className="text-xs font-medium text-muted-foreground">执行摘要</div>
-            <div className="space-y-1 text-sm leading-6 text-foreground">
-              <p>
-                <span className="font-medium">先手点：</span>
-                {executionPreview.probeEntry}
-              </p>
-              <p>
-                <span className="font-medium">确认点：</span>
-                {executionPreview.confirmEntry}
-              </p>
-              <p>
-                <span className="font-medium">失效点：</span>
-                {executionPreview.invalidation}
-              </p>
-            </div>
-          </div>
-        </div>
-      </div>
-
-      <div className="mt-4 grid gap-3 lg:grid-cols-3">
-        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
-          <div className="text-xs font-medium text-muted-foreground">触发条件</div>
-          <LabelList fallback="暂无明确触发条件" items={resolvePeriodTriggers(section)} />
-        </div>
-        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
-          <div className="text-xs font-medium text-muted-foreground">风险条件</div>
-          <LabelList fallback="暂无明确风险条件" items={resolvePeriodRisks(section)} />
-        </div>
-        <div className="space-y-2 rounded-lg border bg-background/70 p-3">
-          <div className="text-xs font-medium text-muted-foreground">风控约束</div>
-          <p className="text-sm leading-6 text-foreground">{resolvePeriodGuardrail(section)}</p>
-        </div>
-      </div>
-    </section>
-  );
-}
-
-function PeriodRuleSummary({ section }: { section: AnalysisPeriodSection }) {
-  return (
-    <section className="space-y-3 rounded-xl border bg-background/70 p-4 shadow-none">
-      <h3 className="text-sm font-semibold text-foreground">规则摘要</h3>
-      <div className="grid gap-3 lg:grid-cols-2">
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs text-muted-foreground">结构</div>
-          <p className="mt-1 text-sm leading-6 text-foreground">{resolveStructureEvidence(section)}</p>
-        </div>
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs text-muted-foreground">时空</div>
-          <p className="mt-1 text-sm leading-6 text-foreground">{resolveSpacetimeStatus(section)}</p>
-        </div>
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs text-muted-foreground">均线 / 量能</div>
-          <p className="mt-1 text-sm leading-6 text-foreground">{resolveMovingAverageStatus(section)}</p>
-        </div>
-        <div className="rounded-lg border bg-background p-3">
-          <div className="text-xs text-muted-foreground">级别共振</div>
-          <p className="mt-1 text-sm leading-6 text-foreground">{resolveResonanceEvidence(section)}</p>
-        </div>
-        <div className="rounded-lg border bg-background p-3 lg:col-span-2">
-          <div className="text-xs text-muted-foreground">大背景</div>
-          <p className="mt-1 text-sm leading-6 text-foreground">{resolveBackgroundEvidence(section)}</p>
-        </div>
-      </div>
+      ) : null}
     </section>
   );
 }
@@ -466,7 +215,7 @@ export function AnalysisPeriodDetails({
       <div className="space-y-1">
         <h2 className="text-base font-semibold text-foreground">周期详情</h2>
         <p className="text-sm text-muted-foreground">
-          按级别切换查看该级别自己的简明决策、规则摘要和证据。
+          按级别切换查看该级别概览、结构拓扑和证据。
         </p>
       </div>
 
@@ -485,7 +234,6 @@ export function AnalysisPeriodDetails({
           return (
             <TabsContent key={section.key} value={section.key} className="space-y-4">
               <PeriodDecisionCard section={section} />
-              <PeriodRuleSummary section={section} />
 
               <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
                 <div className="space-y-1">

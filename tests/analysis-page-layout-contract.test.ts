@@ -8,11 +8,11 @@ test('analysis page composes the confirmed IA sections', () => {
   assert.match(pageSource, /AnalysisSummaryPanel/);
   assert.match(pageSource, /AiFollowupPanel/);
   assert.match(pageSource, /TradingCycleBus/);
-  assert.match(pageSource, /TrinityRuleChain/);
   assert.match(pageSource, /AnalysisPeriodDetails/);
   assert.match(pageSource, /parseAiReportContract/);
   assert.match(pageSource, /pageViewModel\.tradingCombinations/);
   assert.doesNotMatch(pageSource, /LevelDecisionBus/);
+  assert.doesNotMatch(pageSource, /TrinityRuleChain/);
   assert.doesNotMatch(pageSource, /StructureExplainabilityPanel/);
   assert.doesNotMatch(pageSource, /<AnalysisStatusBar/);
 });

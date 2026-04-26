@@ -13,7 +13,6 @@ import { AnalysisSummaryPanel } from '@/components/stock/AnalysisSummaryPanel';
 import { DataIntegrityAlert } from '@/components/stock/DataIntegrityAlert';
 import { DataSyncTime } from '@/components/stock/DataSyncTime';
 import { TradingCycleBus } from '@/components/stock/TradingCycleBus';
-import { TrinityRuleChain } from '@/components/stock/TrinityRuleChain';
 import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { Markdown } from '@/components/ui/markdown';
@@ -743,11 +742,6 @@ export default function StockAnalysisPage() {
               </CardContent>
             </Card>
           ) : null}
-
-          <TrinityRuleChain
-            sourceLabel={pageViewModel.ruleChain.sourceLabel}
-            items={pageViewModel.ruleChain.items}
-          />
 
           <AnalysisPeriodDetails
             sections={periodSections}

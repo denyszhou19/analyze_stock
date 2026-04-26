@@ -1598,7 +1598,7 @@ test('AnalysisSummaryPanel keeps signal tags and hard gates visible when phase3 
   assert.match(html, /仓位权限/);
 });
 
-test('AnalysisPeriodDetails renders level tabs with decision card, rule summary and evidence', async () => {
+test('AnalysisPeriodDetails renders level tabs with a slim overview and structure evidence', async () => {
   const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
     'src/components/stock/AnalysisPeriodDetails.tsx'
   );
@@ -1754,45 +1754,27 @@ test('AnalysisPeriodDetails renders level tabs with decision card, rule summary 
 
   assert.match(html, /周期详情/);
   assert.match(html, /日线/);
-  assert.match(html, /当前综合判断/);
-  assert.match(html, /父子关系/);
-  assert.match(html, /时空摘要/);
-  assert.match(html, /结构摘要/);
-  assert.match(html, /执行摘要/);
-  assert.match(html, /先手点/);
-  assert.match(html, /确认点/);
-  assert.match(html, /失效点/);
+  assert.match(html, /该级别概览/);
+  assert.match(html, /当前判断/);
+  assert.match(html, /父子约束/);
   assert.match(html, /日线等待确认/);
-  assert.match(html, /时空｜中偏弱/);
-  assert.match(html, /背离｜顶背离/);
-  assert.match(html, /结构｜C单平台式/);
-  assert.match(html, /突破\/跌破｜突破候选/);
-  assert.doesNotMatch(html, /突破\/跌破｜普通突破/);
-  assert.match(html, /量能｜突破量弱/);
-  assert.match(html, /均线｜MA55支撑/);
-  assert.match(html, /级别｜父子级支持/);
-  assert.match(html, /执行｜回踩执行/);
-  assert.match(html, /信号含义/);
-  assert.match(html, /交易含义/);
-  assert.match(html, /规则摘要/);
-  assert.match(html, /证据区/);
   assert.match(html, /来源：日线三位一体判定/);
-  assert.match(html, /触发条件/);
-  assert.match(html, /风险条件/);
-  assert.match(html, /注意顶背离/);
-  assert.match(html, /普通突破/);
-  assert.match(html, /站上MA55/);
-  assert.match(html, /风控约束/);
+  assert.match(html, /证据区/);
   assert.match(html, /结构类型/);
   assert.match(html, /标准C类结构/);
-  assert.match(html, /共振对象：周线 → 日线/);
-  assert.match(html, /上一级：周线/);
-  assert.match(html, /当前级别：日线/);
+  assert.doesNotMatch(html, /全部混排标签/);
+  assert.doesNotMatch(html, /时空摘要/);
+  assert.doesNotMatch(html, /结构摘要/);
+  assert.doesNotMatch(html, /执行摘要/);
+  assert.doesNotMatch(html, /规则摘要/);
+  assert.doesNotMatch(html, /触发条件/);
+  assert.doesNotMatch(html, /风险条件/);
+  assert.doesNotMatch(html, /风控约束/);
   assert.doesNotMatch(html, /当前级别简明决策/);
   assert.doesNotMatch(html, /周期摘要/);
 });
 
-test('AnalysisPeriodDetails prefers period breakthrough risk over broader decision candidate tags', async () => {
+test('AnalysisPeriodDetails no longer renders non-structure mixed tags in the overview', async () => {
   const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
     'src/components/stock/AnalysisPeriodDetails.tsx'
   );
@@ -1909,11 +1891,15 @@ test('AnalysisPeriodDetails prefers period breakthrough risk over broader decisi
     })
   );
 
-  assert.match(html, /突破\/跌破｜假突破风险/);
+  assert.match(html, /结构｜C单平台式/);
+  assert.doesNotMatch(html, /突破\/跌破｜假突破风险/);
   assert.doesNotMatch(html, /突破\/跌破｜突破候选/);
+  assert.doesNotMatch(html, /量能｜/);
+  assert.doesNotMatch(html, /均线｜/);
+  assert.doesNotMatch(html, /执行｜/);
 });
 
-test('AnalysisPeriodDetails prefers phase2 wait and execution fields with legacy fallback preserved', async () => {
+test('AnalysisPeriodDetails overview keeps candidate structure but omits duplicated execution copy', async () => {
   const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
     'src/components/stock/AnalysisPeriodDetails.tsx'
   );
@@ -2052,11 +2038,11 @@ test('AnalysisPeriodDetails prefers phase2 wait and execution fields with legacy
   assert.match(html, /A延续候选｜a3进行中/);
   assert.match(html, /结构｜A延续候选/);
   assert.doesNotMatch(html, /结构｜A五段式/);
-  assert.match(html, /观察30分钟回抽不破 MA55/);
-  assert.match(html, /父级支持但30分钟仍待确认/);
-  assert.match(html, /15分钟止跌后轻仓试/);
-  assert.match(html, /30分钟回抽确认后加仓/);
-  assert.match(html, /跌破15分钟确认低点/);
+  assert.doesNotMatch(html, /观察30分钟回抽不破 MA55/);
+  assert.doesNotMatch(html, /父级支持但30分钟仍待确认/);
+  assert.doesNotMatch(html, /15分钟止跌后轻仓试/);
+  assert.doesNotMatch(html, /30分钟回抽确认后加仓/);
+  assert.doesNotMatch(html, /跌破15分钟确认低点/);
   assert.doesNotMatch(html, /旧确认点/);
 });
 
@@ -2174,7 +2160,7 @@ test('AnalysisPeriodDetails ignores legacy section summary when candidate struct
   assert.doesNotMatch(html, /旧调用方摘要/);
 });
 
-test('AnalysisPeriodDetails falls back to legacy structure and guardrail when phase2 fields are absent', async () => {
+test('AnalysisPeriodDetails falls back to legacy structure when phase2 fields are absent', async () => {
   const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
     'src/components/stock/AnalysisPeriodDetails.tsx'
   );
@@ -2275,10 +2261,10 @@ test('AnalysisPeriodDetails falls back to legacy structure and guardrail when ph
 
   assert.match(html, /旧结构摘要/);
   assert.match(html, /结构｜A五段式/);
-  assert.match(html, /旧先手点/);
-  assert.match(html, /旧确认点/);
-  assert.match(html, /旧失效点/);
-  assert.match(html, /旧执行摘要/);
+  assert.doesNotMatch(html, /旧先手点/);
+  assert.doesNotMatch(html, /旧确认点/);
+  assert.doesNotMatch(html, /旧失效点/);
+  assert.doesNotMatch(html, /旧执行摘要/);
 });
 
 test('AnalysisPeriodDetails falls back cleanly when period data is missing', async () => {
@@ -2297,17 +2283,12 @@ test('AnalysisPeriodDetails falls back cleanly when period data is missing', asy
     })
   );
 
-  assert.match(html, /当前综合判断/);
+  assert.match(html, /该级别概览/);
   assert.match(html, /严格等待/);
   assert.match(html, /父级未明，子级先看确认/);
   assert.match(html, /当前级别暂无周期数据/);
-  assert.match(html, /当前周期暂无时空状态/);
   assert.match(html, /当前周期暂无结构证据/);
-  assert.match(html, /先手点：/);
-  assert.match(html, /继续等待触发/);
-  assert.match(html, /确认点：/);
-  assert.match(html, /等待进一步确认/);
-  assert.match(html, /失效点：/);
-  assert.match(html, /若条件失效则取消/);
+  assert.doesNotMatch(html, /时空摘要/);
+  assert.doesNotMatch(html, /执行摘要/);
   assert.doesNotMatch(html, /signal-tags/);
 });
