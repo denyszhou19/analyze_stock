@@ -312,7 +312,7 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
                 },
                 'boundary_semantic': {
                     'mode': 'range_box',
-                    'label': '区间箱体边界',
+                    'label': '区间上下沿',
                     'upper': 11.2,
                     'lower': 10.4,
                 },

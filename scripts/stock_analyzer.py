@@ -4558,6 +4558,81 @@ class TrinityStockAnalyzer:
 
         return None
 
+    def _build_boundary_semantic_conditions(
+        self,
+        level_label: str,
+        boundary_semantic: Optional[Dict[str, Any]],
+        qualification: str,
+        direction: str,
+    ) -> Optional[Dict[str, List[str]]]:
+        boundary_semantic = boundary_semantic if isinstance(boundary_semantic, dict) else {}
+        upper = self._format_level_nesting_boundary_price(boundary_semantic.get('upper'))
+        lower = self._format_level_nesting_boundary_price(boundary_semantic.get('lower'))
+        if upper is None or lower is None:
+            return None
+
+        mode = boundary_semantic.get('mode')
+        if mode == 'c_pivot':
+            return {
+                'wait_conditions': [
+                    f'等待{level_label}突破平台上沿{upper}',
+                    f'等待{level_label}回踩平台上沿{upper}不破',
+                ],
+                'confirm_conditions': [
+                    f'{level_label}放量突破平台上沿{upper}',
+                    f'{level_label}突破后回踩{upper}不破',
+                ],
+                'invalidation_conditions': [
+                    f'跌破{level_label}中枢下沿{lower}失效',
+                    f'{level_label}跌回中枢内，按假突破处理',
+                ],
+            }
+
+        if mode == 'range_box':
+            return {
+                'wait_conditions': [
+                    f'等待{level_label}突破区间上沿{upper}或跌破区间下沿{lower}',
+                ],
+                'confirm_conditions': [
+                    f'{level_label}突破{upper}后回踩不破再确认',
+                    f'{level_label}跌破{lower}后反抽不过再确认',
+                ],
+                'invalidation_conditions': [
+                    f'{level_label}重新回到{lower}-{upper}区间内，按假突破/假跌破处理',
+                ],
+            }
+
+        if mode == 'channel_band' and direction == 'down':
+            return {
+                'wait_conditions': [
+                    f'等待{level_label}跌破通道下沿{lower}或反抽通道上沿{upper}不过',
+                ],
+                'confirm_conditions': [
+                    f'{level_label}跌破{lower}后反抽不过再确认',
+                    f'{level_label}反抽通道上沿{upper}失败后继续转弱',
+                ],
+                'invalidation_conditions': [
+                    f'{level_label}重新站回通道上沿{upper}上方，按跌破失败处理',
+                ],
+            }
+
+        if mode == 'channel_band':
+            return {
+                'wait_conditions': [
+                    f'等待{level_label}突破通道上沿{upper}或回踩通道下沿{lower}不破',
+                ],
+                'confirm_conditions': [
+                    f'{level_label}突破{upper}后回踩不破再确认',
+                    f'{level_label}回踩通道下沿{lower}后重新转强',
+                ],
+                'invalidation_conditions': [
+                    f'{level_label}跌破通道下沿{lower}失效',
+                    f'{level_label}突破后重新跌回通道内，按假突破处理',
+                ],
+            }
+
+        return None
+
     def _build_node_semantic_conditions(
         self,
         level_label: str,
@@ -4623,7 +4698,9 @@ class TrinityStockAnalyzer:
         level_label: str,
         family: str,
         qualification: str,
+        direction: str,
         node_semantic: Optional[Dict[str, Any]] = None,
+        boundary_semantic: Optional[Dict[str, Any]] = None,
     ) -> Dict[str, List[str]]:
         child_payload = child_payload if isinstance(child_payload, dict) else {}
         decision = child_payload.get('trinity_decision') or {}
@@ -4631,6 +4708,12 @@ class TrinityStockAnalyzer:
         wait_state = decision.get('wait_state') or {}
         execution = decision.get('execution') or {}
         semantic_conditions = self._build_node_semantic_conditions(level_label, node_semantic)
+        boundary_conditions = self._build_boundary_semantic_conditions(
+            level_label,
+            boundary_semantic,
+            qualification,
+            direction,
+        )
         templates = self._family_condition_templates(level_label, family)
 
         if semantic_conditions:
@@ -4648,6 +4731,22 @@ class TrinityStockAnalyzer:
                 *(semantic_conditions.get('invalidation_conditions') or []),
                 execution_plan.get('invalidation'),
                 *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
+            ]
+        elif boundary_conditions:
+            wait_items = [
+                execution_plan.get('probe_entry'),
+                wait_state.get('next_confirmation_action'),
+                *(boundary_conditions.get('wait_conditions') or []),
+            ]
+            confirm_items = [
+                execution_plan.get('confirm_entry'),
+                *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
+                *(boundary_conditions.get('confirm_conditions') or []),
+            ]
+            invalid_items = [
+                execution_plan.get('invalidation'),
+                *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
+                *(boundary_conditions.get('invalidation_conditions') or []),
             ]
         else:
             wait_items = [
@@ -4728,6 +4827,7 @@ class TrinityStockAnalyzer:
         resonance: str,
         execution_strength: str,
         node_semantic: Optional[Dict[str, Any]] = None,
+        boundary_semantic: Optional[Dict[str, Any]] = None,
     ) -> str:
         status_text = parent_status or '状态未知'
         family_text = f'{family}类' if family in {'A', 'B', 'C', 'D'} else '结构'
@@ -4742,11 +4842,16 @@ class TrinityStockAnalyzer:
             'unknown': '结构未知',
         }.get(qualification, qualification)
         node_label = (node_semantic or {}).get('label')
+        boundary_label = (boundary_semantic or {}).get('label')
         if resonance == 'aligned':
             if isinstance(node_label, str) and node_label:
                 return f'{parent_label}{status_text}支持{child_label}{node_label}，但仍需按节点确认节奏执行'
+            if isinstance(boundary_label, str) and boundary_label:
+                return f'{parent_label}{status_text}支持{child_label}{boundary_label}，但仍需按边界确认节奏执行'
             return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}命中三位一体表，按{child_label}条件执行'
         if resonance == 'boundary_probe':
+            if isinstance(boundary_label, str) and boundary_label and not isinstance(node_label, str):
+                return f'{parent_label}{status_text}支持{child_label}{boundary_label}，但仍需按边界确认节奏执行'
             return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}命中平台边界逻辑，只允许轻仓等待确认'
         if resonance == 'child_countertrend':
             return f'{parent_label}{status_text}，{child_label}{qualification_text}{family_text}逆父级，只允许轻仓试探或做T'
@@ -4869,7 +4974,9 @@ class TrinityStockAnalyzer:
                 level_label=child_label,
                 family='unknown',
                 qualification='unknown',
+                direction='neutral',
                 node_semantic=None,
+                boundary_semantic=None,
             )
             return {
                 'parent_level': parent_level,
@@ -4971,7 +5078,9 @@ class TrinityStockAnalyzer:
             level_label=child_label,
             family=family,
             qualification=qualification,
+            direction=direction,
             node_semantic=node_semantic,
+            boundary_semantic=boundary_semantic,
         )
         allow_position_increase = resonance == 'aligned' and execution_strength == 'normal'
         allow_only_light_probe = execution_strength in {'light_probe', 'wait_confirmation'} and resonance != 'blocked'
@@ -4984,6 +5093,7 @@ class TrinityStockAnalyzer:
             resonance=resonance,
             execution_strength=execution_strength,
             node_semantic=node_semantic,
+            boundary_semantic=boundary_semantic,
         )
         permission = {
             'allow_position_increase': allow_position_increase,
