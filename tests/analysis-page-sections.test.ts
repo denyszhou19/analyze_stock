@@ -768,7 +768,10 @@ test('TradingCycleBus and hover consumers render topology preview summaries from
   assert.match(html, /结构｜30分钟平台整理<\/span><\/button><div side="right"/);
   assert.match(parentConstraintTagBlock, /data-slot="trading-cycle-topology-preview-card"/);
   assert.match(parentConstraintTagBlock, /data-slot="trading-cycle-topology-preview-graph"/);
+  assert.match(parentConstraintTagBlock, /class="h-44 w-full"/);
   assert.doesNotMatch(parentConstraintTagBlock, /bg-slate-950\/95/);
+  assert.doesNotMatch(parentConstraintTagBlock, /先看父级框架/);
+  assert.doesNotMatch(childStructureTagBlock, /先看子级结构/);
   assert.match(childStructureTagBlock, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
   assert.match(childStructureTagBlock, /data-slot="trading-cycle-topology-summary"/);
   assert.doesNotMatch(triggerLevelBlock, /结构参考|structure-topology-svg/);
