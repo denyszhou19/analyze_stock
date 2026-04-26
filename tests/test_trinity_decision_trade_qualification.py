@@ -302,7 +302,7 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
                 'child_level': 'hour30',
                 'parent_bias': 'bullish',
                 'child_signal': 'long',
-                'resonance': 'boundary_probe',
+                'resonance': 'aligned',
                 'execution_strength': 'light_probe',
                 'permission': {
                     'allow_position_increase': False,
@@ -322,6 +322,7 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(decision['trade_mode'], 'conditional_boundary_trade')
         self.assertEqual(decision['position_permission'], 'light_probe')
         self.assertNotEqual(decision['trade_mode'], 'standard_node_trade')
+        self.assertTrue(any('非标准结构只允许边界条件交易' in reason for reason in decision['reason']))
 
     def test_aligned_standard_d4_light_probe_keeps_standard_node_trade(self) -> None:
         decision = self.analyzer._build_trinity_trade_qualification(

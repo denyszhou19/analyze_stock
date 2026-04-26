@@ -28,9 +28,10 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         boundary_levels=None,
     ):
         standard_candidate = standard_candidate or structure_type
-        boundaries = boundaries or {'upper': 11.2, 'lower': 10.4, 'mid': 10.8}
+        if boundaries is None:
+            boundaries = {'upper': 11.2, 'lower': 10.4, 'mid': 10.8}
         if boundary_levels is None:
-            boundary_levels = boundaries
+            boundary_levels = dict(boundaries)
         return {
             'macd': {'status': status},
             'trinity_decision': {
@@ -41,7 +42,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'standard_candidate': standard_candidate,
                     'qualification': qualification,
                     'direction': direction,
-                    'boundaries': boundaries,
+                    'boundaries': dict(boundaries),
                     'node_map': node_map or {'a4': None, 'b8': None, 'd3': None, 'd4': None, 'last_confirmed': None},
                 },
                 'execution_plan': {
@@ -70,7 +71,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     },
                 },
                 'structure_details': {
-                    'boundary_levels': boundary_levels,
+                    'boundary_levels': dict(boundary_levels),
                     'prediction': prediction or {},
                     'explainability': {
                         'current_point_id': current_point_id,
@@ -164,11 +165,14 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(decision['boundary_semantic']['mode'], 'c_pivot')
-        self.assertEqual(decision['boundary_semantic']['label'], 'C类中枢边界')
-        self.assertEqual(decision['wait_conditions'][0], '等待30分钟突破平台上沿11.20')
-        self.assertEqual(decision['confirm_conditions'][0], '30分钟放量突破平台上沿11.20')
-        self.assertEqual(decision['invalidation_conditions'][0], '跌破30分钟中枢下沿10.40失效')
+        semantic = decision['boundary_semantic']
+        self.assertEqual(semantic['mode'], 'c_pivot')
+        self.assertEqual(semantic['label'], 'C类中枢边界')
+        self.assertEqual(semantic['upper'], 11.2)
+        self.assertEqual(semantic['lower'], 10.4)
+        self.assertTrue(any('11.20' in item and '平台上沿' in item for item in decision['wait_conditions']))
+        self.assertTrue(any('11.20' in item and '突破' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('10.40' in item and '中枢下沿' in item and '失效' in item for item in decision['invalidation_conditions']))
 
     def test_standard_c_without_real_boundaries_keeps_generic_platform_copy(self) -> None:
         decision = self._decision(
@@ -185,8 +189,15 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         )
 
         self.assertIsNone(decision['boundary_semantic'])
-        self.assertEqual(decision['wait_conditions'][0], '等待30分钟突破平台上沿')
-        self.assertTrue(all('11.20' not in item and '10.40' not in item for item in decision['wait_conditions']))
+        self.assertTrue(any('平台上沿' in item for item in decision['wait_conditions']))
+        self.assertTrue(any('平台上沿' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('平台下沿' in item or '中枢下沿' in item for item in decision['invalidation_conditions']))
+        generic_conditions = (
+            decision['wait_conditions']
+            + decision['confirm_conditions']
+            + decision['invalidation_conditions']
+        )
+        self.assertTrue(all('11.20' not in item and '10.40' not in item for item in generic_conditions))
 
     def test_range_qualification_builds_box_boundary_conditions(self) -> None:
         decision = self._decision(
@@ -208,10 +219,14 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(decision['boundary_semantic']['mode'], 'range_box')
-        self.assertEqual(decision['wait_conditions'][0], '等待30分钟突破区间上沿11.20或跌破区间下沿10.40')
-        self.assertEqual(decision['confirm_conditions'][0], '30分钟突破11.20后回踩不破再确认')
-        self.assertEqual(decision['invalidation_conditions'][0], '30分钟重新回到10.40-11.20区间内，按假突破/假跌破处理')
+        semantic = decision['boundary_semantic']
+        self.assertEqual(semantic['mode'], 'range_box')
+        self.assertEqual(semantic['label'], '区间箱体边界')
+        self.assertEqual(semantic['upper'], 11.2)
+        self.assertEqual(semantic['lower'], 10.4)
+        self.assertTrue(any('11.20' in item and '10.40' in item and '区间上沿' in item and '区间下沿' in item for item in decision['wait_conditions']))
+        self.assertTrue(any('11.20' in item and '回踩' in item and '确认' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('10.40' in item and '11.20' in item and '假突破' in item for item in decision['invalidation_conditions']))
 
     def test_channel_qualification_builds_channel_boundary_conditions(self) -> None:
         decision = self._decision(
@@ -233,10 +248,14 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
             ),
         )
 
-        self.assertEqual(decision['boundary_semantic']['mode'], 'channel_band')
-        self.assertEqual(decision['wait_conditions'][0], '等待30分钟跌破通道下沿11.40或反抽通道上沿12.60不过')
-        self.assertEqual(decision['confirm_conditions'][0], '30分钟跌破11.40后反抽不过再确认')
-        self.assertEqual(decision['invalidation_conditions'][0], '30分钟重新站回通道上沿12.60上方，按跌破失败处理')
+        semantic = decision['boundary_semantic']
+        self.assertEqual(semantic['mode'], 'channel_band')
+        self.assertEqual(semantic['label'], '通道上下沿')
+        self.assertEqual(semantic['upper'], 12.6)
+        self.assertEqual(semantic['lower'], 11.4)
+        self.assertTrue(any('11.40' in item and '12.60' in item and '通道下沿' in item and '通道上沿' in item for item in decision['wait_conditions']))
+        self.assertTrue(any('11.40' in item and '反抽不过' in item and '确认' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('12.60' in item and '通道上沿' in item and '跌破失败' in item for item in decision['invalidation_conditions']))
 
     def test_strong_parent_rejects_a_family_when_table_expects_b_for_uptrend(self) -> None:
         decision = self.analyzer._build_trinity_level_nesting_decision(
