@@ -1832,6 +1832,8 @@ test('trading combination exposes parent daily and child 30-minute topology prev
   assert.equal(shortline.parentTopologyPreview?.level, 'daily');
   assert.equal(shortline.parentTopologyPreview?.levelLabel, '日线');
   assert.equal(shortline.parentTopologyPreview?.mode, 'annotated');
+  assert.deepEqual(shortline.parentTopologyPreview?.renderPayload, createTopologyRenderPayload());
+  assert.deepEqual(shortline.parentTopologyPreview?.explainability, result.periods.daily.structure?.structure_details?.explainability);
   assert.deepEqual(shortline.parentTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '日线主升结构' },
     { label: '当前阶段', value: '日线主升阶段' },
@@ -1842,6 +1844,8 @@ test('trading combination exposes parent daily and child 30-minute topology prev
   assert.equal(shortline.childTopologyPreview?.level, 'hour30');
   assert.equal(shortline.childTopologyPreview?.levelLabel, '30分钟');
   assert.equal(shortline.childTopologyPreview?.mode, 'annotated');
+  assert.deepEqual(shortline.childTopologyPreview?.renderPayload, createTopologyRenderPayload());
+  assert.deepEqual(shortline.childTopologyPreview?.explainability, result.periods.hour30?.structure?.structure_details?.explainability);
   assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '30分钟平台整理' },
     { label: '当前阶段', value: '30分钟平台整理阶段' },
@@ -1869,6 +1873,8 @@ test('child-source trading bus entries stay child-scoped when minor level is mis
   assert.equal(shortline.childTopologyPreview?.level, 'hour30');
   assert.equal(shortline.childTopologyPreview?.levelLabel, '30分钟');
   assert.equal(shortline.childTopologyPreview?.mode, 'unavailable');
+  assert.equal(shortline.childTopologyPreview?.renderPayload, null);
+  assert.equal(shortline.childTopologyPreview?.explainability, null);
   assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '未生成结构' },
     { label: '原始描述', value: '暂无原始描述' },
@@ -1942,6 +1948,8 @@ test('trading combination topology preview falls back to raw lines when explaina
 
   assert.ok(shortline);
   assert.equal(shortline.childTopologyPreview?.mode, 'raw_lines');
+  assert.deepEqual(shortline.childTopologyPreview?.renderPayload, createTopologyRenderPayload());
+  assert.equal(shortline.childTopologyPreview?.explainability, null);
   assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '30分钟箱体震荡' },
     { label: '原始描述', value: '原始描述：箱体仍在震荡，先等边界' },
@@ -1971,6 +1979,8 @@ test('trading combination topology preview falls back to unavailable when render
 
   assert.ok(shortline);
   assert.equal(shortline.parentTopologyPreview?.mode, 'unavailable');
+  assert.equal(shortline.parentTopologyPreview?.renderPayload, null);
+  assert.equal(shortline.parentTopologyPreview?.explainability, null);
   assert.deepEqual(shortline.parentTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '日线观察结构' },
     { label: '原始描述', value: '日线结构识别完成，但没有拓扑渲染数据' },

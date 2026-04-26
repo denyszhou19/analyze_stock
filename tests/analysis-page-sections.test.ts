@@ -375,6 +375,10 @@ function createTopologyExplainability() {
   };
 }
 
+function escapeRegExp(value: string) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
+}
+
 function createRuleItem(
   overrides: Partial<{
     title: string;
@@ -813,6 +817,80 @@ test('TradingCycleBus renders raw-lines child topology preview through real hove
   assert.match(html, /适合动作说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
   assert.match(html, /主要风险说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
   assert.match(html, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"/);
+});
+
+test('TradingCycleBus renders topology previews from real analysis view model contracts', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
+  );
+
+  const result = createResult();
+  result.periods.daily.structure = {
+    ...result.periods.daily.structure,
+    structure_type: '日线主升结构',
+    description: '日线原始描述',
+    structure_details: {
+      ...result.periods.daily.structure?.structure_details,
+      render_payload: createTopologyRenderPayload(),
+      explainability: {
+        ...createTopologyExplainability(),
+        current_segment: {
+          from_point_id: 'a1',
+          to_point_id: 'a2',
+          label: '日线主升阶段',
+        },
+        next_segment_preview: {
+          from_point_id: 'a2',
+          to_point_id: 'a3',
+          label: '日线放量突破确认',
+          status: 'projected',
+        },
+      },
+    },
+  };
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({ level: 'hour30' }),
+    structure: {
+      structure_type: '30分钟箱体震荡',
+      description: '原始描述：箱体仍在震荡，先等边界',
+      structure_details: {
+        render_payload: createTopologyRenderPayload(),
+        explainability: null,
+      },
+    },
+  };
+
+  const vm = buildViewModel(result);
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline?.parentTopologyPreview?.renderPayload);
+  assert.ok(shortline?.parentTopologyPreview?.explainability);
+  assert.ok(shortline?.childTopologyPreview?.renderPayload);
+  assert.equal(shortline?.childTopologyPreview?.explainability, null);
+  assert.ok(shortline?.parentConstraintTags.length);
+
+  const parentConstraintTagTitle = shortline
+    ? `${shortline.parentConstraintTags[0].label}${shortline.parentConstraintTags[0].hover.title.includes('说明') ? '' : '说明'}`
+    : '';
+  const parentConstraintTagHeading = shortline?.parentConstraintTags[0].hover.title ?? '';
+
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: shortline ? [shortline] : [],
+    })
+  );
+
+  assert.match(html, /父级约束说明[\s\S]*父级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
+  assert.match(
+    html,
+    new RegExp(
+      `${escapeRegExp(parentConstraintTagHeading || parentConstraintTagTitle)}[\\s\\S]*父级拓扑摘要[\\s\\S]*当前结构：日线主升结构[\\s\\S]*当前阶段：日线主升阶段[\\s\\S]*下一确认：日线放量突破确认`
+    )
+  );
+  assert.match(html, /触发级别说明[\s\S]*子级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界/);
+  assert.match(html, /适合动作说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(html, /主要风险说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
 });
 
 test('TradingCycleBus renders Chinese node semantic contract copy without internal field names', async () => {

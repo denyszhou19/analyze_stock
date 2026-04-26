@@ -3,6 +3,8 @@ import type {
   AiSummaryCard,
   AnalysisResultData,
   PeriodAnalysisData,
+  StructureExplainabilityData,
+  StructureRenderPayload,
   TrinityJudgmentCriterion,
   TrinityDecision,
 } from '@/lib/stock-structure-types';
@@ -145,6 +147,8 @@ export interface AnalysisPageTopologyPreviewViewModel {
   levelLabel: string;
   mode: 'annotated' | 'raw_lines' | 'unavailable';
   summaryRows: AnalysisPageHoverItem[];
+  renderPayload?: StructureRenderPayload | null;
+  explainability?: StructureExplainabilityData | null;
 }
 
 export interface AnalysisPageGlobalStrategyViewModel {
@@ -1411,6 +1415,8 @@ function buildTopologyPreview(
       level,
       levelLabel: LEVEL_LABELS[level],
       mode: 'unavailable',
+      renderPayload: null,
+      explainability: null,
       summaryRows: [
         createHoverItem('当前结构', '未生成结构', '未生成结构'),
         createHoverItem('原始描述', '暂无原始描述', '暂无原始描述'),
@@ -1430,6 +1436,8 @@ function buildTopologyPreview(
       level,
       levelLabel: LEVEL_LABELS[level],
       mode: 'annotated',
+      renderPayload,
+      explainability,
       summaryRows: [
         createHoverItem('当前结构', structureType, structureType),
         createHoverItem(
@@ -1451,6 +1459,8 @@ function buildTopologyPreview(
       level,
       levelLabel: LEVEL_LABELS[level],
       mode: 'raw_lines',
+      renderPayload,
+      explainability: null,
       summaryRows: [
         createHoverItem('当前结构', structureType, structureType),
         createHoverItem('原始描述', description, description),
@@ -1463,6 +1473,8 @@ function buildTopologyPreview(
     level,
     levelLabel: LEVEL_LABELS[level],
     mode: 'unavailable',
+    renderPayload: null,
+    explainability: null,
     summaryRows: [
       createHoverItem('当前结构', structureType, structureType),
       createHoverItem('原始描述', description, description),
