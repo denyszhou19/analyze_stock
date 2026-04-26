@@ -1,6 +1,6 @@
 import { Info } from 'lucide-react';
 import {
-  getTradingCycleTooltipContentClassName,
+  getTradingCycleTooltipContentOptions,
   TradingCycleTopologyPreviewCard,
 } from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -21,6 +21,7 @@ export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFac
   const topologyPreview = fact.topologyPreviewSource
     ? resolveTopologyPreview?.(fact.topologyPreviewSource) ?? null
     : null;
+  const tooltipContentOptions = getTradingCycleTooltipContentOptions(topologyPreview);
 
   return (
     <div className="rounded-lg border bg-background/70 p-2">
@@ -41,7 +42,8 @@ export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFac
           </TooltipTrigger>
           <TooltipContent
             side="top"
-            className={getTradingCycleTooltipContentClassName(topologyPreview)}
+            className={tooltipContentOptions.className}
+            disableTextBalance={tooltipContentOptions.disableTextBalance}
           >
             <div className="space-y-1">
               <div className="font-medium">{fact.hoverTitle}</div>

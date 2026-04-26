@@ -3,7 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExplainableFact } from '@/components/stock/ExplainableFact';
 import { SignalTagList } from '@/components/stock/SignalTagList';
 import {
-  getTradingCycleTooltipContentClassName,
+  getTradingCycleTooltipContentOptions,
   TradingCycleTopologyPreviewCard,
 } from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -78,6 +78,8 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
           const parentConstraintPreview = resolveTopologyPreview(
             combination.parentConstraint.topologyPreviewSource ?? null
           );
+          const parentConstraintTooltipContentOptions =
+            getTradingCycleTooltipContentOptions(parentConstraintPreview);
 
           return (
             <Card
@@ -181,7 +183,10 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                         </TooltipTrigger>
                         <TooltipContent
                           side="top"
-                          className={getTradingCycleTooltipContentClassName(parentConstraintPreview)}
+                          className={parentConstraintTooltipContentOptions.className}
+                          disableTextBalance={
+                            parentConstraintTooltipContentOptions.disableTextBalance
+                          }
                         >
                           <div className="space-y-1">
                             <div className="font-medium">{combination.parentConstraint.hoverTitle}</div>

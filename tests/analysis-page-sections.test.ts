@@ -768,13 +768,14 @@ test('TradingCycleBus and hover consumers render topology preview summaries from
     parentConstraintBlock,
     /class="[^"]*max-w-\[min\(86vw,52rem\)\][^"]*p-0[^"]*text-left[^"]*\[text-wrap:wrap\][^"]*"/
   );
+  assert.match(parentConstraintBlock, /data-disable-text-balance="true"/);
   assert.doesNotMatch(parentConstraintBlock, /class="[^"]*max-w-sm[^"]*"/);
   assert.match(
     triggerLevelBlock,
     /class="[^"]*max-w-\[min\(86vw,52rem\)\][^"]*p-0[^"]*text-left[^"]*\[text-wrap:wrap\][^"]*"/
   );
+  assert.match(triggerLevelBlock, /data-disable-text-balance="true"/);
   assert.doesNotMatch(triggerLevelBlock, /class="[^"]*max-w-sm[^"]*"/);
-  assert.doesNotMatch(triggerLevelBlock, /class="[^"]*text-balance[^"]*"/);
   assert.match(
     triggerLevelBlock,
     /data-slot="trading-cycle-topology-summary"[\s\S]*class="[^"]*grid[^"]*grid-cols-\[[^"]*minmax\(0,1fr\)[^"]*\][^"]*"/
@@ -783,6 +784,17 @@ test('TradingCycleBus and hover consumers render topology preview summaries from
     triggerLevelBlock,
     /data-slot="trading-cycle-topology-summary-row"[\s\S]*data-slot="trading-cycle-topology-summary-label"[\s\S]*当前结构[\s\S]*data-slot="trading-cycle-topology-summary-value"[\s\S]*30分钟平台整理/
   );
+  const judgmentBasisInfoBlock = getTooltipBlock(html, '子级综合判断依据说明', ['结构｜30分钟平台整理说明']);
+  assert.match(judgmentBasisInfoBlock, /data-disable-text-balance="false"/);
+});
+
+test('TooltipContent exposes an explicit disableTextBalance API instead of inferring from class names', async () => {
+  const tooltipSource = await fs.readFile('src/components/ui/tooltip.tsx', 'utf8');
+
+  assert.match(tooltipSource, /disableTextBalance\s*=\s*false/);
+  assert.match(tooltipSource, /!disableTextBalance && "text-balance"/);
+  assert.doesNotMatch(tooltipSource, /className\.includes\("\\[text-wrap:wrap\\]"\)/);
+  assert.doesNotMatch(tooltipSource, /className\.includes\('\[text-wrap:wrap\]'\)/);
 });
 
 test('TradingCycleBus renders raw-lines child topology preview through real hover entrypoints', async () => {

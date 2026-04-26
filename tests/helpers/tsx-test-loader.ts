@@ -64,7 +64,17 @@ const uiStubUrl = asDataModule(`
   export const Tooltip = ({ children, ...props }) =>
     React.createElement('div', { ...props, 'data-slot': 'tooltip' }, children);
   export const TooltipTrigger = slot('button', 'tooltip-trigger');
-  export const TooltipContent = slot('div', 'tooltip-content');
+  export const TooltipContent = ({ children, className, disableTextBalance, ...props }) =>
+    React.createElement(
+      'div',
+      {
+        ...props,
+        className,
+        'data-slot': 'tooltip-content',
+        'data-disable-text-balance': String(Boolean(disableTextBalance)),
+      },
+      children
+    );
 `);
 
 const lucideStubUrl = asDataModule(`

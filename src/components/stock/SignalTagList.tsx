@@ -1,6 +1,6 @@
 import { Badge } from '@/components/ui/badge';
 import {
-  getTradingCycleTooltipContentClassName,
+  getTradingCycleTooltipContentOptions,
   TradingCycleTopologyPreviewCard,
 } from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
@@ -31,6 +31,7 @@ export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListPro
         const topologyPreview = tag.topologyPreviewSource
           ? resolveTopologyPreview?.(tag.topologyPreviewSource) ?? null
           : null;
+        const tooltipContentOptions = getTradingCycleTooltipContentOptions(topologyPreview);
 
         return (
           <Tooltip key={`${tag.key}-${tag.label}`}>
@@ -47,7 +48,8 @@ export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListPro
             </TooltipTrigger>
             <TooltipContent
               side="top"
-              className={getTradingCycleTooltipContentClassName(topologyPreview)}
+              className={tooltipContentOptions.className}
+              disableTextBalance={tooltipContentOptions.disableTextBalance}
             >
               <div className="space-y-1">
                 <div className="font-medium">{tag.hover.title}</div>

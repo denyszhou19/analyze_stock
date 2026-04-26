@@ -12,6 +12,11 @@ interface TradingCycleTopologyPreviewCardProps {
   source: AnalysisPageTopologyPreviewSource;
 }
 
+export interface TradingCycleTooltipContentOptions {
+  className: string;
+  disableTextBalance: boolean;
+}
+
 export const DEFAULT_TOOLTIP_CONTENT_CLASSNAME = 'max-w-sm text-sm leading-6';
 export const TOPOLOGY_PREVIEW_TOOLTIP_CONTENT_CLASSNAME =
   'max-w-[min(86vw,52rem)] p-0 text-left text-sm leading-6 [text-wrap:wrap]';
@@ -20,6 +25,15 @@ export function getTradingCycleTooltipContentClassName(
   preview: AnalysisPageTopologyPreviewViewModel | null | undefined
 ) {
   return preview ? TOPOLOGY_PREVIEW_TOOLTIP_CONTENT_CLASSNAME : DEFAULT_TOOLTIP_CONTENT_CLASSNAME;
+}
+
+export function getTradingCycleTooltipContentOptions(
+  preview: AnalysisPageTopologyPreviewViewModel | null | undefined
+): TradingCycleTooltipContentOptions {
+  return {
+    className: getTradingCycleTooltipContentClassName(preview),
+    disableTextBalance: Boolean(preview),
+  };
 }
 
 function getPreviewTitle(source: AnalysisPageTopologyPreviewSource) {
