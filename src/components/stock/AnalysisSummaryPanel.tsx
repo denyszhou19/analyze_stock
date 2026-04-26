@@ -11,7 +11,6 @@ import {
   CardTitle,
 } from '@/components/ui/card';
 import { Separator } from '@/components/ui/separator';
-import { SignalTagList } from '@/components/stock/SignalTagList';
 import {
   Tooltip,
   TooltipContent,
@@ -34,25 +33,6 @@ export interface AnalysisSummaryPanelProps {
 
 function joinSummaryParts(parts: Array<string | null | undefined>) {
   return parts.filter((part): part is string => Boolean(part?.trim())).join('｜');
-}
-
-function renderLabels(title: string, labels: string[]) {
-  return (
-    <section className="space-y-2">
-      <h3 className="text-sm font-medium text-muted-foreground">{title}</h3>
-      {labels.length > 0 ? (
-        <div className="flex flex-wrap gap-2">
-          {labels.map((label) => (
-            <Badge key={label} variant="secondary" className="whitespace-normal">
-              {label}
-            </Badge>
-          ))}
-        </div>
-      ) : (
-        <p className="text-sm text-muted-foreground">暂无明确条件</p>
-      )}
-    </section>
-  );
 }
 
 function HardGates({
@@ -109,24 +89,23 @@ function ScopeBlock({
   const directionMeta = getDirectionMeta(globalStrategy.direction);
 
   return (
-    <section className={`rounded-xl border p-4 ${directionMeta.cardClassName}`}>
-      <div className="text-xs font-medium text-muted-foreground">页面级综合结论</div>
+    <section className={`rounded-lg border p-3 ${directionMeta.cardClassName}`}>
+      <div className="text-xs font-medium text-muted-foreground">页面范围</div>
       <div className="mt-2 flex flex-wrap gap-2">
         <Badge variant="outline" className={directionMeta.badgeClassName}>
           方向：{globalStrategy.directionLabel}
         </Badge>
         <Badge variant="outline">状态：{globalStrategy.actionLabel}</Badge>
-        <Badge variant="outline">
-          当前优先组合：{globalStrategy.primaryCombinationLabel}
-        </Badge>
-        <Badge variant="outline">
-          主约束级别：{globalStrategy.primaryConstraintLevelLabel}
-        </Badge>
-        <Badge variant="outline">触发级别：{globalStrategy.triggerLevelLabel}</Badge>
       </div>
-      <p className="mt-3 text-sm leading-6 text-muted-foreground">
-        {globalStrategy.scopeLabel}
-      </p>
+      <div className="mt-3 space-y-1 text-sm leading-6 text-muted-foreground">
+        <p>{globalStrategy.scopeLabel}</p>
+        <p>当前优先组合：{globalStrategy.primaryCombinationLabel}</p>
+        <p>
+          主约束级别：{globalStrategy.primaryConstraintLevelLabel}
+          {' ｜ '}
+          触发级别：{globalStrategy.triggerLevelLabel}
+        </p>
+      </div>
     </section>
   );
 }
@@ -151,7 +130,7 @@ export function AnalysisSummaryPanel({
           <div className="space-y-1">
             <CardTitle className="text-lg">{title}</CardTitle>
             <CardDescription>
-              先看页面级综合结论，再核对触发条件、风险条件与主策略硬门控。
+              先看页级综合结论，再去交易周期总线核对组合动作，最后再看主策略硬门控。
             </CardDescription>
           </div>
           <CardAction>
@@ -191,12 +170,9 @@ export function AnalysisSummaryPanel({
           </h2>
           <div className="mt-3 flex flex-wrap items-center gap-2">
             <Badge variant="secondary">{viewModel.judgmentLabel}</Badge>
-            <Badge variant="outline">{viewModel.relationLabel}</Badge>
             <Badge variant="outline">后端最终动作：{viewModel.primaryActionLabel}</Badge>
-            <span className="text-sm text-muted-foreground">
-              {viewModel.primaryReason}
-            </span>
           </div>
+          <p className="mt-3 text-sm leading-6 text-muted-foreground">{viewModel.primaryReason}</p>
           <div className="mt-4 grid gap-3 text-sm leading-6">
             <div className="space-y-1">
               <div className="text-xs text-muted-foreground">时空怎么看</div>
@@ -260,26 +236,25 @@ export function AnalysisSummaryPanel({
               ) : null}
             </div>
           ) : null}
-          {viewModel.signalTags.length ? (
-            <div className="mt-4 space-y-2">
-              <div className="text-xs text-muted-foreground">关键信号标签</div>
-              <SignalTagList tags={viewModel.signalTags} />
+          <div className="mt-4">
+            <ScopeBlock globalStrategy={globalStrategy} />
+          </div>
+          {viewModel.relationLabel ? (
+            <div className="mt-4 rounded-lg border bg-background/60 p-3 text-sm leading-6 text-muted-foreground">
+              <div className="text-xs font-medium text-muted-foreground">当前关系</div>
+              <p className="mt-1">{viewModel.relationLabel}</p>
             </div>
           ) : null}
-        </section>
-
-        <ScopeBlock globalStrategy={globalStrategy} />
-
-        <div className="grid gap-4 lg:grid-cols-2">
-          {renderLabels('触发条件', viewModel.triggerLabels)}
-          {renderLabels('风险条件', viewModel.riskLabels)}
-        </div>
-
-        <section className="space-y-2">
-          <h3 className="text-sm font-medium text-muted-foreground">风控约束</h3>
-          <p className="rounded-lg border bg-background/70 p-3 text-sm">
-            {viewModel.guardrail}
-          </p>
+          {(viewModel.triggerLabels.length || viewModel.riskLabels.length || viewModel.guardrail) ? (
+            <div className="mt-4 rounded-lg border bg-background/60 p-3 text-sm leading-6 text-muted-foreground">
+              <div className="text-xs font-medium text-muted-foreground">页级提醒</div>
+              <div className="mt-1 space-y-1">
+                {viewModel.triggerLabels[0] ? <p>触发关注：{viewModel.triggerLabels[0]}</p> : null}
+                {viewModel.riskLabels[0] ? <p>风险关注：{viewModel.riskLabels[0]}</p> : null}
+                {viewModel.guardrail ? <p>硬性约束：{viewModel.guardrail}</p> : null}
+              </div>
+            </div>
+          ) : null}
         </section>
 
         <Separator />

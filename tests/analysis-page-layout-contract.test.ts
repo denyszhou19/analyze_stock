@@ -19,16 +19,20 @@ test('analysis page composes the confirmed IA sections', () => {
 
 test('analysis page keeps AI summary panel before follow-up panel', () => {
   const summaryIndex = pageSource.indexOf('<AnalysisSummaryPanel');
-  const followupIndex = pageSource.indexOf('<AiFollowupPanel');
   const busIndex = pageSource.indexOf('<TradingCycleBus');
+  const periodIndex = pageSource.indexOf('<AnalysisPeriodDetails');
+  const followupIndex = pageSource.indexOf('<AiFollowupPanel');
   const markdownIndex = pageSource.indexOf('AI 正文');
 
   assert.notEqual(summaryIndex, -1);
-  assert.notEqual(followupIndex, -1);
   assert.notEqual(busIndex, -1);
-  assert.ok(summaryIndex < followupIndex);
-  assert.ok(followupIndex < busIndex);
-  assert.ok(markdownIndex === -1 || followupIndex < markdownIndex);
+  assert.notEqual(periodIndex, -1);
+  assert.ok(summaryIndex < busIndex);
+  assert.ok(busIndex < periodIndex);
+  if (followupIndex !== -1) {
+    assert.ok(periodIndex < followupIndex);
+  }
+  assert.ok(markdownIndex === -1 || busIndex < markdownIndex);
 });
 
 test('analysis page stores ai follow-up session and turn state', () => {

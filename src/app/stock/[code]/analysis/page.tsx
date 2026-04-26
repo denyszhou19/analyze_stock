@@ -716,6 +716,24 @@ export default function StockAnalysisPage() {
             canGenerate={Boolean(result) && !isLoading}
           />
 
+          <TradingCycleBus combinations={pageViewModel.tradingCombinations} />
+
+          <AnalysisPeriodDetails
+            sections={periodSections}
+            defaultLevelKey={pageViewModel.globalStrategy.primaryConstraintLevel}
+          />
+
+          {aiMarkdown && aiState.status === 'ready' ? (
+            <Card className="border-border/70 bg-card/95 shadow-sm">
+              <CardHeader>
+                <CardTitle className="text-base">AI 正文</CardTitle>
+              </CardHeader>
+              <CardContent>
+                <Markdown content={aiMarkdown} className="rounded-lg border bg-background/70 p-4" />
+              </CardContent>
+            </Card>
+          ) : null}
+
           {aiState.status === 'ready' && aiSession ? (
             <AiFollowupPanel
               draft={aiFollowupDraft}
@@ -729,24 +747,6 @@ export default function StockAnalysisPage() {
               )}
             />
           ) : null}
-
-          <TradingCycleBus combinations={pageViewModel.tradingCombinations} />
-
-          {aiMarkdown && aiState.status === 'ready' ? (
-            <Card className="border-border/70 bg-card/95 shadow-sm">
-              <CardHeader>
-                <CardTitle className="text-base">AI 正文</CardTitle>
-              </CardHeader>
-              <CardContent>
-                <Markdown content={aiMarkdown} className="rounded-lg border bg-background/70 p-4" />
-              </CardContent>
-            </Card>
-          ) : null}
-
-          <AnalysisPeriodDetails
-            sections={periodSections}
-            defaultLevelKey={pageViewModel.globalStrategy.primaryConstraintLevel}
-          />
         </div>
       ) : null}
     </div>

@@ -1494,26 +1494,26 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
     })
   );
 
-  assert.match(html, /页面级综合结论/);
+  assert.match(html, /页面范围/);
   assert.match(html, /综合范围：中线主策略组合、短线执行组合、超短线 \/ T 组合/);
-  assert.match(html, /当前优先组合/);
-  assert.match(html, /短线执行组合｜日线 → 30分钟/);
-  assert.match(html, /主约束级别/);
-  assert.match(html, /触发级别/);
+  assert.match(html, /当前优先组合：短线执行组合｜日线 → 30分钟/);
+  assert.match(html, /主约束级别：日线/);
+  assert.match(html, /触发级别：30分钟/);
   assert.match(html, /候选可试/);
-  assert.match(html, /父级强冲突，子级逆父级/);
   assert.match(html, /时空：中偏强，等待时空确认/);
   assert.match(html, /结构：A五段式，A原型成立/);
   assert.match(html, /现在怎么做：先看30分钟放量突破平台上沿，确认看回踩不破平台上沿，失效看跌回日线平台下沿/);
-  assert.match(html, /级别｜子级逆势/);
-  assert.match(html, /执行｜回踩执行/);
   assert.match(html, /主策略硬门控/);
   assert.match(html, /仓位权限/);
   assert.match(html, /后端允许的最大仓位动作范围/);
   assert.doesNotMatch(html, /后端硬门控/);
+  assert.doesNotMatch(html, /关键信号标签/);
+  assert.doesNotMatch(html, /触发条件/);
+  assert.doesNotMatch(html, /风险条件/);
+  assert.doesNotMatch(html, /风控约束/);
 });
 
-test('AnalysisSummaryPanel keeps signal tags and hard gates visible when phase3 summary blocks render', async () => {
+test('AnalysisSummaryPanel keeps candidate blocks and hard gates visible when phase3 summary blocks render', async () => {
   const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
     'src/components/stock/AnalysisSummaryPanel.tsx'
   );
@@ -1591,11 +1591,10 @@ test('AnalysisSummaryPanel keeps signal tags and hard gates visible when phase3 
   assert.match(html, /D候选｜30分钟回抽段/);
   assert.match(html, /等待状态/);
   assert.match(html, /等待回抽确认｜30分钟回抽段尚未完成止跌确认/);
-  assert.match(html, /级别｜子级逆势/);
-  assert.match(html, /执行｜回踩执行/);
-  assert.match(html, /页面级综合结论/);
+  assert.match(html, /页面范围/);
   assert.match(html, /主策略硬门控/);
   assert.match(html, /仓位权限/);
+  assert.doesNotMatch(html, /关键信号标签/);
 });
 
 test('AnalysisPeriodDetails renders level tabs with a slim overview and structure evidence', async () => {
