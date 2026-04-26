@@ -26,12 +26,19 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         next_confirmation_action=None,
         boundaries=None,
         boundary_levels=None,
+        moving_average=None,
+        volume_confirmation=None,
+        divergence_weight=None,
+        execution_confirmation=None,
+        execution_invalidation=None,
     ):
         standard_candidate = standard_candidate or structure_type
         if boundaries is None:
             boundaries = {'upper': 11.2, 'lower': 10.4, 'mid': 10.8}
         if boundary_levels is None:
             boundary_levels = dict(boundaries)
+        execution_confirmation = execution_confirmation or []
+        execution_invalidation = execution_invalidation or []
         return {
             'macd': {'status': status},
             'trinity_decision': {
@@ -49,6 +56,13 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'probe_entry': probe_entry,
                     'confirm_entry': confirm_entry,
                     'invalidation': invalidation,
+                },
+                'moving_average': moving_average or {},
+                'volume_confirmation': volume_confirmation or {},
+                'divergence_weight': divergence_weight or {},
+                'execution': {
+                    'confirmation': list(execution_confirmation),
+                    'invalidation': list(execution_invalidation),
                 },
                 'wait_state': {
                     'next_confirmation_action': next_confirmation_action,
@@ -173,6 +187,110 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertTrue(any('11.20' in item and '平台上沿' in item for item in decision['wait_conditions']))
         self.assertTrue(any('11.20' in item and '突破' in item for item in decision['confirm_conditions']))
         self.assertTrue(any('10.40' in item and '中枢下沿' in item and '失效' in item for item in decision['invalidation_conditions']))
+
+    def test_boundary_conditions_keep_price_and_append_volume_weak_confirmation(self) -> None:
+        decision = self._decision(
+            parent_status='中偏强',
+            child_payload=self._payload(
+                status='中偏强',
+                structure_type='C单平台式',
+                qualification='standard',
+                direction='up',
+                standard_candidate='C单平台式',
+                boundaries={
+                    'upper': 11.2,
+                    'lower': 10.4,
+                    'mid': 10.8,
+                    'breakout_trigger': 11.2,
+                    'breakdown_trigger': 10.4,
+                    'stop_loss': 10.4,
+                },
+                volume_confirmation={
+                    'breakout_volume': 'weak',
+                    'volume_gate': {
+                        'supports_breakout': False,
+                        'supports_breakdown': False,
+                        'supports_pullback_confirmation': False,
+                        'confidence_adjustment': 'downgrade',
+                        'reason': '突破量弱',
+                    },
+                },
+            ),
+        )
+
+        self.assertIn('30分钟放量突破平台上沿11.20', decision['confirm_conditions'])
+        self.assertIn('突破量弱，等待二次放量确认', decision['confirm_conditions'])
+
+    def test_supportive_ma55_pullback_modifier_enters_confirm_and_invalid_lists(self) -> None:
+        decision = self._decision(
+            parent_status='中偏强',
+            child_payload=self._payload(
+                status='中偏强',
+                structure_type='C单平台式',
+                qualification='standard',
+                direction='up',
+                standard_candidate='C单平台式',
+                boundaries={
+                    'upper': 11.2,
+                    'lower': 10.4,
+                    'mid': 10.8,
+                    'breakout_trigger': 11.2,
+                    'breakdown_trigger': 10.4,
+                    'stop_loss': 10.4,
+                },
+                moving_average={
+                    'ma55_role': 'support',
+                    'ma233_role': 'resistance',
+                    'price_position': {
+                        'above_ma55': True,
+                        'above_ma233': False,
+                    },
+                    'ma_gate': {
+                        'allow_long': True,
+                        'allow_short': False,
+                        'reason': 'MA55支撑有效',
+                    },
+                },
+            ),
+        )
+
+        self.assertIn('MA55回踩不破', decision['confirm_conditions'])
+        self.assertIn('MA55反抽不过', decision['invalidation_conditions'])
+
+    def test_suppressive_divergence_adds_wait_and_risk_copy_without_leaking_enum(self) -> None:
+        decision = self._decision(
+            parent_status='中偏强',
+            child_payload=self._payload(
+                status='中偏强',
+                structure_type='C单平台式',
+                qualification='standard',
+                direction='up',
+                standard_candidate='C单平台式',
+                boundaries={
+                    'upper': 11.2,
+                    'lower': 10.4,
+                    'mid': 10.8,
+                    'breakout_trigger': 11.2,
+                    'breakdown_trigger': 10.4,
+                    'stop_loss': 10.4,
+                },
+                divergence_weight={
+                    'status': 'suppressive',
+                    'label': '顶背离压制',
+                    'reason': '顶背离风险未解除，冲高后易回落',
+                    'impact_on_judgment': 'suppress',
+                },
+            ),
+        )
+
+        all_conditions = (
+            decision['wait_conditions']
+            + decision['confirm_conditions']
+            + decision['invalidation_conditions']
+        )
+        self.assertIn('顶背离压制', decision['wait_conditions'])
+        self.assertIn('顶背离风险未解除，冲高后易回落', decision['invalidation_conditions'])
+        self.assertTrue(all('suppressive' not in item for item in all_conditions))
 
     def test_standard_c_downtrend_uses_bearish_pivot_boundaries_in_conditions(self) -> None:
         decision = self._decision(

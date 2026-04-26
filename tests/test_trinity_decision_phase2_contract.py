@@ -255,3 +255,93 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
         self.assertEqual(decision['judgment']['label'], '严格等待')
         self.assertEqual(decision['conclusion']['action'], 'wait')
         self.assertFalse(decision['conclusion']['can_trade'])
+
+    def test_modifier_layers_flow_into_wait_state_and_judgment_copy(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'C单平台式',
+                'structure_stage': '平台边界试探',
+                'trend_direction': '上涨',
+                'description': '边界试探阶段，仍受顶背离、MA233压制与量能未确认约束',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'C',
+                        'standard_qualification': 'standard',
+                        'summary': 'C 类平台上沿待确认',
+                        'qualification_reason': '边界结构存在，但修饰层仍未放行',
+                    },
+                    'spacetime_gate': {
+                        'parent_status': '中偏强',
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'structure_readiness': 'matched',
+                    },
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'C单平台式',
+                        'archetype_family': 'C',
+                        'standard_qualification': 'standard',
+                        'qualification_reason': '边界结构存在，但修饰层仍未放行',
+                    },
+                    'boundary_levels': {
+                        'upper': 11.2,
+                        'lower': 10.4,
+                        'mid': 10.8,
+                    },
+                    'explainability': {
+                        'current_point_id': 'c3',
+                        'display_reason': '30分钟平台上沿附近试探',
+                    },
+                },
+            },
+            macd_payload={
+                'status': '中偏强',
+                'top_divergence': True,
+                'bottom_divergence': False,
+                'divergence_note': '顶背离仍在压制，等待回落风险释放',
+            },
+            moving_averages={
+                'MA55': 11.0,
+                'MA233': 11.6,
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'below',
+                'ma_status': 'MA233压制下的弱修复',
+            },
+            breakthrough_payload={
+                'pattern_type': '突破确认',
+                'direction': 'up',
+                'is_valid': True,
+                'confidence': '中',
+            },
+            execution_payload={
+                'can_trade': False,
+                'action': 'wait',
+                'direction': 'long',
+                'entry_style': 'boundary_probe',
+                'trigger': ['30分钟突破平台上沿后再看'],
+                'invalidation': ['跌回平台下沿'],
+                'confirmation': ['二次放量后再确认'],
+                'position_sizing': {'initial': '10%-15%'},
+                'risk_flags': ['顶背离压制', 'MA233压制', '量能未确认'],
+                'rationale': '边界试探信号存在，但修饰层未完成放行',
+            },
+            level_nesting_payload={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'boundary_probe',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '日线中偏强支持30分钟C类中枢边界，但仍需按边界确认节奏执行',
+                },
+            },
+            period_payload={'volume_ratio_5': 1.02, 'volume_ratio_20': 0.98, 'amount_ratio_20': 1.01},
+        )
+
+        self.assertEqual(decision['judgment']['label'], '严格等待')
+        self.assertIn('顶背离', decision['judgment']['critical_reason'])
