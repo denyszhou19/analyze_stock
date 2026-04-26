@@ -4962,7 +4962,9 @@ class TrinityStockAnalyzer:
             level_label=child_label,
             direction=direction,
         )
-        if resonance not in {'aligned', 'boundary_probe'}:
+        if resonance in {'blocked', 'parent_unclear', 'child_countertrend'}:
+            boundary_semantic = None
+        elif qualification not in {'range', 'channel'} and resonance not in {'aligned', 'boundary_probe'}:
             boundary_semantic = None
         conditions = self._build_level_nesting_conditions(
             child_payload=child_payload,
