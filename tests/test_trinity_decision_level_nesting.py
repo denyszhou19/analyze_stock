@@ -29,6 +29,8 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
     ):
         standard_candidate = standard_candidate or structure_type
         boundaries = boundaries or {'upper': 11.2, 'lower': 10.4, 'mid': 10.8}
+        if boundary_levels is None:
+            boundary_levels = boundaries
         return {
             'macd': {'status': status},
             'trinity_decision': {
@@ -68,7 +70,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     },
                 },
                 'structure_details': {
-                    'boundary_levels': boundary_levels or boundaries,
+                    'boundary_levels': boundary_levels,
                     'prediction': prediction or {},
                     'explainability': {
                         'current_point_id': current_point_id,
