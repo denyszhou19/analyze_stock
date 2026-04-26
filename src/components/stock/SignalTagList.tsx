@@ -28,10 +28,17 @@ export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListPro
     <div className="flex flex-wrap gap-1.5">
       {tags.map((tag) => {
         const toneMeta = getSignalTagToneMeta(tag.tone);
-        const topologyPreview = tag.topologyPreviewSource
+        const shouldRenderTopologyPreview =
+          tag.category === '结构' && Boolean(tag.topologyPreviewSource);
+        const topologyPreview = shouldRenderTopologyPreview && tag.topologyPreviewSource
           ? resolveTopologyPreview?.(tag.topologyPreviewSource) ?? null
           : null;
         const tooltipContentOptions = getTradingCycleTooltipContentOptions(topologyPreview);
+        const tooltipSide = shouldRenderTopologyPreview
+          ? tag.topologyPreviewSource === 'parent'
+            ? 'left'
+            : 'right'
+          : 'top';
 
         return (
           <Tooltip key={`${tag.key}-${tag.label}`}>
@@ -47,7 +54,7 @@ export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListPro
               </Badge>
             </TooltipTrigger>
             <TooltipContent
-              side="top"
+              side={tooltipSide}
               className={tooltipContentOptions.className}
               disableTextBalance={tooltipContentOptions.disableTextBalance}
               arrowClassName={tooltipContentOptions.arrowClassName}
@@ -59,10 +66,12 @@ export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListPro
                     {item.label}：{item.value}
                   </p>
                 ))}
-                <TradingCycleTopologyPreviewCard
-                  preview={topologyPreview}
-                  source={tag.topologyPreviewSource ?? null}
-                />
+                {shouldRenderTopologyPreview ? (
+                  <TradingCycleTopologyPreviewCard
+                    preview={topologyPreview}
+                    source={tag.topologyPreviewSource ?? null}
+                  />
+                ) : null}
               </div>
             </TooltipContent>
           </Tooltip>

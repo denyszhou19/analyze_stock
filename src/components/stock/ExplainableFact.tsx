@@ -1,7 +1,6 @@
 import { Info } from 'lucide-react';
 import {
   getTradingCycleTooltipContentOptions,
-  TradingCycleTopologyPreviewCard,
 } from '@/components/stock/TradingCycleTopologyPreviewCard';
 import { Tooltip, TooltipContent, TooltipTrigger } from '@/components/ui/tooltip';
 import type {
@@ -18,10 +17,8 @@ interface ExplainableFactProps {
 }
 
 export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFactProps) {
-  const topologyPreview = fact.topologyPreviewSource
-    ? resolveTopologyPreview?.(fact.topologyPreviewSource) ?? null
-    : null;
-  const tooltipContentOptions = getTradingCycleTooltipContentOptions(topologyPreview);
+  const tooltipContentOptions = getTradingCycleTooltipContentOptions(null);
+  void resolveTopologyPreview;
 
   return (
     <div className="rounded-xl border border-slate-200/80 bg-white/85 p-3">
@@ -53,10 +50,6 @@ export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFac
                   {item.label}：{item.value}
                 </p>
               ))}
-              <TradingCycleTopologyPreviewCard
-                preview={topologyPreview}
-                source={fact.topologyPreviewSource ?? null}
-              />
             </div>
           </TooltipContent>
         </Tooltip>

@@ -76,11 +76,8 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
           const parentConstraintTags = combination.parentConstraintTags?.length
             ? combination.parentConstraintTags
             : combination.parentSignalTags ?? [];
-          const parentConstraintPreview = resolveTopologyPreview(
-            combination.parentConstraint.topologyPreviewSource ?? null
-          );
           const parentConstraintTooltipContentOptions =
-            getTradingCycleTooltipContentOptions(parentConstraintPreview);
+            getTradingCycleTooltipContentOptions(null);
 
           return (
             <Card
@@ -215,10 +212,6 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                                 {item.label}：{item.value}
                               </p>
                             ))}
-                            <TradingCycleTopologyPreviewCard
-                              preview={parentConstraintPreview}
-                              source={combination.parentConstraint.topologyPreviewSource ?? null}
-                            />
                           </div>
                         </TooltipContent>
                       </Tooltip>
