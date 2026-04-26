@@ -4482,8 +4482,11 @@ class TrinityStockAnalyzer:
         direction: str,
     ) -> Optional[Dict[str, Any]]:
         child_payload = child_payload if isinstance(child_payload, dict) else {}
-        structure_decision = ((child_payload.get('trinity_decision') or {}).get('structure') or {})
-        boundaries = structure_decision.get('boundaries') or {}
+        structure_payload = child_payload.get('structure') or {}
+        structure_details = structure_payload.get('structure_details') or {}
+        boundaries = structure_details.get('boundary_levels')
+        if not isinstance(boundaries, dict) or not boundaries:
+            return None
 
         upper = self._normalize_trinity_price(boundaries.get('upper'))
         lower = self._normalize_trinity_price(boundaries.get('lower'))
@@ -4959,6 +4962,8 @@ class TrinityStockAnalyzer:
             level_label=child_label,
             direction=direction,
         )
+        if resonance not in {'aligned', 'boundary_probe'}:
+            boundary_semantic = None
         conditions = self._build_level_nesting_conditions(
             child_payload=child_payload,
             level_label=child_label,
