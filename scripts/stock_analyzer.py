@@ -4858,22 +4858,22 @@ class TrinityStockAnalyzer:
             ]
         else:
             wait_items = [
+                *templates['wait'],
                 *(modifier_conditions.get('wait_conditions') or []),
                 execution_plan.get('probe_entry'),
                 wait_state.get('next_confirmation_action'),
-                *templates['wait'],
             ]
             confirm_items = [
+                *templates['confirm'],
                 *(modifier_conditions.get('confirm_conditions') or []),
                 execution_plan.get('confirm_entry'),
                 *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
-                *templates['confirm'],
             ]
             invalid_items = [
+                *templates['invalid'],
                 *(modifier_conditions.get('invalidation_conditions') or []),
                 execution_plan.get('invalidation'),
                 *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
-                *templates['invalid'],
             ]
 
         if qualification == 'extended':
