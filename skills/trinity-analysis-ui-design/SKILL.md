@@ -3,222 +3,222 @@ name: trinity-analysis-ui-design
 description: Use when designing, reviewing, or polishing Trinity analysis UI components such as TradingCycleBus, rule-chain status cards, period-detail evidence blocks, topology preview hovers, badges, and tooltips. Apply when spacing, visual hierarchy, Chinese copy, hover responsibilities, bullish/bearish color semantics, or topology-card presentation need project-specific guidance.
 ---
 
-# Trinity Analysis UI Design
+# 三位一体分析 UI 设计
 
-## Overview
+## 概述
 
-Use this skill to keep Trinity analysis UI work inside one project language: terminal-style information structure, report-style breathing room, natural Chinese copy, and stable bullish/bearish semantics.
+用这套 skill 统一三位一体分析页的 UI 语言：终端式骨架、报告式留白、自然中文，以及稳定的多空语义。
 
-Keep the default priority order fixed:
+默认优先级固定为：
 
-1. Explainability
-2. Scanability
-3. Professional tone
-4. Visual flair
+1. 可解释
+2. 可扫描
+3. 专业感
+4. 视觉张力
 
-## Scope
+## 适用范围
 
-Use this skill only for Trinity analysis components:
+只用于三位一体相关组件：
 
 1. `TradingCycleBus`
-2. Rule-chain status cards
-3. Period-detail evidence blocks
-4. Structure-topology explanation blocks
-5. Topology preview hovers
-6. Badges, tooltips, summary cards, and evidence rows inside those areas
+2. 规则链状态卡
+3. 周期详情证据块
+4. 结构拓扑解释块
+5. 拓扑预览 hover 卡
+6. 这些区域里的 badge、tooltip、摘要卡、证据行
 
-Do not use this skill for:
+以下场景不使用本 skill：
 
-1. Marketing pages
-2. Login or operations pages
-3. Global brand redesign
-4. Backend field design or strategy logic
+1. 营销页
+2. 登录页或运营页
+3. 全站品牌重设计
+4. 后端字段设计或策略逻辑
 
-## Default Direction
+## 默认方向
 
-Apply this visual direction by default:
+默认采用以下视觉方向：
 
-1. Keep a terminal skeleton:
-   - clear module boundaries
-   - clear status / direction / constraint separation
-   - information reads like a research tool, not a promo page
-2. Add report whitespace:
-   - cards breathe
-   - text does not stick to edges
-   - summary blocks and evidence blocks have reading rhythm
-3. Preserve trading color semantics:
-   - bullish stays red
-   - bearish stays green
-   - neutral / waiting / observation stays slate or gray-blue
-4. Keep user-facing copy in natural Chinese
+1. 终端骨架：
+   - 模块边界清楚
+   - 状态、方向、约束彼此分离
+   - 阅读体验像研究工具，而不是宣传页
+2. 报告留白：
+   - 卡片之间有呼吸感
+   - 文字不贴边
+   - 摘要区和证据区有稳定阅读节奏
+3. 保留交易配色语义：
+   - 偏多保持红色
+   - 偏空保持绿色
+   - 中性、等待、观察优先用 slate / 灰蓝
+4. 用户可见文案默认自然中文
 
-## Hard Rules
+## 硬规则
 
-### Information Layering
+### 信息分层
 
-1. Show conclusion first, summary second, evidence third.
-2. Keep badges short; do not turn badges into sentences.
-3. Use hover only to explain, never to hide the first thing the user must see.
-4. Do not repeat the same meaning across badge, summary, and hover.
+1. 先给结论，再给摘要，最后给证据。
+2. badge 只放短结论，不写成长句。
+3. hover 只做解释补充，不能藏住用户第一次就必须看到的信息。
+4. 同一语义不要在 badge、摘要、hover 里重复堆三遍。
 
-### Color Responsibilities
+### 颜色职责
 
-1. Never flip bullish red / bearish green.
-2. Do not use bright accent colors unless they carry business meaning.
-3. Do not rely on color alone; key status must still read clearly in Chinese.
-4. Let neutral states stay calm so they do not compete with bullish/bearish calls.
+1. 不允许反转偏多红 / 偏空绿。
+2. 除非颜色本身承担业务语义，否则不要引入高饱和强调色。
+3. 不能只靠颜色传达关键信息，必须仍然有清楚的中文表达。
+4. 中性信息必须克制，不能和多空结论抢视觉中心。
 
-### Spacing and Density
+### 留白与密度
 
-1. Prefer terminal structure with report whitespace.
-2. Leave clear breathing room between cards and between card sections.
-3. Build cards as `title -> one-line summary -> structured content`.
-4. Give hover cards, explanation cards, and topology cards enough inner padding.
-5. Avoid “debug panel density” unless the area is explicitly for internal debugging.
+1. 默认走“终端骨架 + 报告留白”。
+2. 卡片之间、卡片分区之间必须留出明确呼吸感。
+3. 卡片结构优先写成 `标题 -> 一句话摘要 -> 结构化内容`。
+4. hover 卡、解释卡、拓扑卡必须给足内边距。
+5. 除非是明确的内部调试面板，否则不要做成“debug dump”密度。
 
-### Badge Rules
+### Badge 规则
 
-1. Let one badge express one judgment.
-2. Keep badge copy specific to level, action, or state when possible.
-3. Do not expose internal enums, field names, or debug vocabulary.
-4. Control badge count; avoid “pill pile” layouts.
+1. 一个 badge 只表达一个判断。
+2. badge 文案尽量具体到级别、动作、状态。
+3. 不允许把内部枚举、字段名、调试词直接暴露给用户。
+4. 控制 badge 数量，避免“药丸堆砌”。
 
-### Hover and Tooltip Rules
+### Hover / Tooltip 规则
 
-1. Let hover titles clearly read as explanations.
-2. Make hover content answer:
-   - what this means
-   - why this is judged this way
-   - what the impact is
-3. Give hovers enough width; never allow premature wrapping with unused right-side space.
-4. Keep graph, level, and summary from the same level; never mix parent copy with child topology.
-5. Keep user-visible hover content in Chinese.
-6. Replace raw technical terms like `render_payload` and `explainability` with user-facing Chinese phrasing.
+1. hover 标题必须让用户一眼知道这是什么说明。
+2. hover 内容默认回答三件事：
+   - 这句话是什么意思
+   - 为什么这么判断
+   - 对交易或阅读有什么影响
+3. hover 必须足够宽，不能出现右侧还有空白但提前换行。
+4. 图、级别、摘要必须来自同一级别，不能把父级文案和子级拓扑混在一起。
+5. 用户可见 hover 内容必须是中文。
+6. `render_payload`、`explainability` 这类技术词必须替换成用户能理解的中文。
 
-### Topology Card Rules
+### 拓扑卡规则
 
-1. Show the objective structure line first whenever structure graph data exists.
-2. Enter annotated mode only when explainability is complete.
-3. Fall back to pure lines plus objective summary when explainability is missing or incomplete.
-4. Use a fixed two-column summary: left label, right value.
-5. Make topology cards feel like compact research cards, not dark technical popups.
+1. 只要存在结构图数据，就优先展示客观结构线。
+2. 只有 explainability 完整时，才进入“图文已对齐”模式。
+3. explainability 缺失或不完整时，退回“纯结构线 + 客观摘要”。
+4. 摘要区固定用两列：左侧标签，右侧内容。
+5. 拓扑卡要像紧凑研究卡，而不是黑色技术弹窗。
 
-### Copy Rules
+### 文案规则
 
-1. Default to natural Chinese.
-2. Make copy concrete: level, condition, action.
-3. Prefer short conclusion sentences before longer explanation sentences.
-4. Allow standard abbreviations such as `MA55 / MA233`, but avoid mixed-language UI otherwise.
+1. 默认自然中文。
+2. 文案要具体到级别、条件、动作。
+3. 先给短结论，再给长解释。
+4. 可以保留 `MA55 / MA233` 这类常见缩写，但不要做中英混杂 UI。
 
-## Component Playbooks
+## 组件样板
 
-### TradingCycleBus
+### 交易周期总线
 
-Structure the card as:
+卡片结构建议为：
 
-1. Combination title + current overall state
-2. One-line summary
-3. Three layers:
-   - current action state
-   - child-level judgment basis
-   - parent constraint
+1. 组合名称 + 当前综合状态
+2. 一句话建议
+3. 三层结构：
+   - 当前动作状态
+   - 子级综合判断依据
+   - 父级约束
 
-Keep these boundaries:
+边界要求：
 
-1. Use `current action state` for “what can be done now”.
-2. Use `child-level judgment basis` only for child evidence supporting the current action.
-3. Keep `parent constraint` separate; never bury it inside child evidence.
-4. Let parent-constraint hovers show parent topology. Let other execution-related hovers show child topology.
+1. `当前动作状态` 只回答“现在能不能做、最多做到什么程度”。
+2. `子级综合判断依据` 只放支撑当前动作判断的子级证据。
+3. `父级约束` 单独成层，不能埋进子级证据里。
+4. `父级约束` 的 hover 看父级拓扑，其他执行相关 hover 看子级拓扑。
 
-### Rule Chain
+### 规则链
 
-Structure each rule item as:
+每条规则建议结构：
 
-1. Rule name
-2. Status label
-3. One-line reason
-4. Hover for rule definition, current status, and trading impact
+1. 规则名
+2. 状态标签
+3. 一句话原因
+4. hover 解释规则含义、当前状态和交易影响
 
-Keep these boundaries:
+边界要求：
 
-1. Separate status from direction.
-2. Let the main label express state, not every piece of evidence.
-3. Keep the rule chain as a judgment framework, not an evidence dump.
+1. 状态和方向必须分开表达。
+2. 主标签只表达状态，不要把全部证据塞进去。
+3. 规则链是判断框架，不是证据仓库。
 
-### Period Detail and Structure Explanation
+### 周期详情与结构拓扑解释
 
-Structure the area as:
+区域结构建议为：
 
-1. Level conclusion
-2. Structure summary
-3. Evidence zone:
-   - structure type
-   - current leg / next confirmation
-   - topology
-   - risk / invalidation
+1. 当前级别主结论
+2. 结构解释摘要
+3. 证据区：
+   - 结构类型
+   - 当前段 / 下一确认
+   - 拓扑图
+   - 风险 / 失效条件
 
-Keep these boundaries:
+边界要求：
 
-1. Keep topology in the evidence zone; do not let it replace the top-line conclusion.
-2. Explain current structure and stage before drilling into anchors.
-3. Make downgrade states explicit when the structure is not fully explainable.
+1. 拓扑图属于证据区，不能抢掉顶层结论位。
+2. 先讲当前结构和阶段，再展开锚点解释。
+3. 结构解释不完整时，必须明确降级，不要硬装成标准结构。
 
-### Topology Hover Card
+### 拓扑 Hover 卡
 
-Structure the hover card as:
+hover 卡建议结构：
 
-1. Title + level label
-2. Structure graph
-3. Two-column summary rows
+1. 标题 + 级别标签
+2. 结构图
+3. 两列摘要
 
-Default row sets:
+默认摘要组：
 
-1. Annotated:
+1. 图文已对齐：
    - 当前结构
    - 当前阶段
    - 下一确认
-2. Raw lines:
+2. 先核对结构线：
    - 当前结构
    - 原始描述
    - 数据状态
 
-Keep these boundaries:
+边界要求：
 
-1. Differentiate annotated vs raw-lines with Chinese semantics, not English engineering labels.
-2. Keep raw-lines fallback looking intentional and finished.
-3. Let the graph stay visually central; let surrounding text explain it.
+1. “图文已对齐”和“先核对结构线”必须用中文语义区分，而不是英文工程词。
+2. 纯结构线 fallback 也要看起来像完成态，不像报错块。
+3. 图要保持视觉中心，周边文案负责解释。
 
-## Working Method
+## 使用顺序
 
-When using this skill on a UI task, follow this order:
+在三位一体 UI 任务里，按这个顺序检查：
 
-1. Identify the top-line conclusion the user must see without hover.
-2. Separate summary content from evidence content.
-3. Check whether each badge really deserves to exist.
-4. Check whether any hover is carrying information that should move into the main surface.
-5. Check spacing and breathing room before adding more decoration.
-6. Rewrite user-facing copy into natural Chinese before finishing.
+1. 先确定用户不用 hover 就必须看见的主结论。
+2. 把摘要内容和证据内容拆开。
+3. 检查每个 badge 是否真的有存在必要。
+4. 检查是否有本该放主表面的信息被塞进 hover。
+5. 先调留白和呼吸感，再考虑装饰。
+6. 收尾前把用户可见文案全部改成自然中文。
 
-## Review Checklist
+## 自检清单
 
-Run this checklist before claiming the UI is ready:
+提交前至少自查：
 
-1. Is the main conclusion visible at first glance?
-2. Is anything repeated across badge, summary, and hover?
-3. Are bullish and bearish colors still red and green?
-4. Does hover only explain, not hide core meaning?
-5. Is all user-facing copy natural Chinese?
-6. Do cards and hover panels have enough padding and breathing room?
-7. Does the topology card feel like a research aid instead of a debug popup?
+1. 主结论是否一眼可见？
+2. badge、摘要、hover 之间有没有重复表达？
+3. 偏多和偏空颜色是否仍然是红和绿？
+4. hover 是否只做解释，没有藏核心信息？
+5. 用户可见文案是否都是自然中文？
+6. 卡片和 hover 是否有足够边距和留白？
+7. 拓扑卡看起来是否像研究辅助卡，而不是 debug 弹窗？
 
-## Common Failure Modes
+## 常见失误
 
-Avoid these mistakes:
+避免这些问题：
 
-1. Turning every fact into a badge
-2. Using hover as a dumping ground
-3. Making dark popups with cramped padding
-4. Letting neutral content use aggressive color
-5. Mixing parent copy with child topology
-6. Exposing internal field names to users
-7. Optimizing for “more information” while losing explainability
+1. 把所有事实都做成 badge
+2. 把 hover 变成信息垃圾桶
+3. 做出黑底、拥挤、像调试台的弹窗
+4. 让中性内容抢过多空语义的视觉中心
+5. 把父级文案和子级拓扑混在一起
+6. 把内部字段名直接暴露给用户
+7. 一味追求“信息更多”，结果牺牲可解释性

@@ -1,7 +1,7 @@
 interface:
   display_name: "三位一体分析 UI 设计"
   short_description: "统一三位一体分析组件的视觉规则、层级、留白与 hover 职责"
-  default_prompt: "Use $trinity-analysis-ui-design to review a Trinity analysis UI component and align spacing, hierarchy, Chinese copy, and bullish/bearish color semantics."
+  default_prompt: "使用 $trinity-analysis-ui-design 审查三位一体分析组件，并统一留白、层级、中文文案与多空配色语义。"
 
 policy:
   allow_implicit_invocation: true

@@ -1956,7 +1956,7 @@ test('trading combination topology preview falls back to raw lines when explaina
   assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '30分钟箱体震荡' },
     { label: '原始描述', value: '原始描述：箱体仍在震荡，先等边界' },
-    { label: '数据状态', value: '已生成 render_payload，缺少 explainability' },
+    { label: '数据状态', value: '已生成结构图，缺少结构说明' },
   ]);
 });
 
@@ -1991,7 +1991,7 @@ test('trading combination topology preview falls back to raw lines when explaina
   assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '30分钟平台整理' },
     { label: '原始描述', value: '原始描述：拓扑线已生成，但解释层还不完整' },
-    { label: '数据状态', value: '已生成 render_payload，explainability 不完整' },
+    { label: '数据状态', value: '已生成结构图，结构说明暂不完整' },
   ]);
 });
 
@@ -2022,6 +2022,6 @@ test('trading combination topology preview falls back to unavailable when render
   assert.deepEqual(shortline.parentTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '日线观察结构' },
     { label: '原始描述', value: '日线结构识别完成，但没有拓扑渲染数据' },
-    { label: '数据状态', value: '缺少 render_payload' },
+    { label: '数据状态', value: '缺少结构图数据' },
   ]);
 });

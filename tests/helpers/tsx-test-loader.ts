@@ -64,7 +64,7 @@ const uiStubUrl = asDataModule(`
   export const Tooltip = ({ children, ...props }) =>
     React.createElement('div', { ...props, 'data-slot': 'tooltip' }, children);
   export const TooltipTrigger = slot('button', 'tooltip-trigger');
-  export const TooltipContent = ({ children, className, disableTextBalance, ...props }) =>
+  export const TooltipContent = ({ children, className, disableTextBalance, arrowClassName, ...props }) =>
     React.createElement(
       'div',
       {

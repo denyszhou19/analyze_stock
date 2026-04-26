@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { ExplainableFact } from '@/components/stock/ExplainableFact';
 import { SignalTagList } from '@/components/stock/SignalTagList';
 import {
+  DEFAULT_TOOLTIP_CONTENT_CLASSNAME,
   getTradingCycleTooltipContentOptions,
   TradingCycleTopologyPreviewCard,
 } from '@/components/stock/TradingCycleTopologyPreviewCard';
@@ -84,9 +85,12 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
           return (
             <Card
               key={combination.key}
-              className={cn('gap-4 py-4 shadow-none', directionMeta.cardClassName)}
+              className={cn(
+                'gap-0 rounded-2xl border border-slate-200/80 bg-white/95 py-4 shadow-[0_18px_48px_-36px_rgba(15,23,42,0.45)]',
+                directionMeta.cardClassName
+              )}
             >
-              <CardHeader className="space-y-2 px-4">
+              <CardHeader className="space-y-3 px-4">
                 <div className="flex flex-wrap items-center justify-between gap-2">
                   <CardTitle className="text-sm">{combination.label}</CardTitle>
                   <div className="flex flex-wrap gap-1.5">
@@ -98,21 +102,26 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                 </div>
               </CardHeader>
 
-              <CardContent className="space-y-3 px-4 text-sm">
-                <div className="space-y-2">
-                  <p className="font-medium text-foreground">
-                    父子关系：{combination.relationLabel}
+              <CardContent className="space-y-4 px-4 text-sm">
+                <div className="rounded-2xl border border-slate-200/80 bg-slate-50/80 p-4">
+                  <div className="text-xs font-medium text-slate-500">当前建议</div>
+                  <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
+                    {combination.recommendation}
                   </p>
-                  <p className="leading-6 text-foreground">{combination.summary}</p>
-                  <p className="leading-6 text-muted-foreground">{combination.recommendation}</p>
-                  <p className="text-xs text-muted-foreground">{combination.relationHint}</p>
+                  <p className="mt-2 leading-6 text-slate-700">{combination.summary}</p>
+                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
+                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
+                      父子关系：{combination.relationLabel}
+                    </span>
+                    <span>{combination.relationHint}</span>
+                  </div>
                 </div>
 
                 <div className="space-y-2">
                   {actionStateTags.length > 0 ? (
                     <section
                       data-signal-layer="action-state"
-                      className="space-y-2 rounded-xl border border-slate-200 bg-slate-50/90 px-3 py-2.5"
+                      className="space-y-2 rounded-2xl border border-slate-200/80 bg-slate-50/85 px-3.5 py-3"
                     >
                       <div className="text-xs font-medium text-muted-foreground">当前动作状态</div>
                       <SignalTagList
@@ -125,7 +134,7 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                   {judgmentBasisTags.length > 0 ? (
                     <section
                       data-signal-layer="judgment-basis"
-                      className="space-y-2 rounded-xl border border-sky-200 bg-sky-50/80 px-3 py-2.5"
+                      className="space-y-2 rounded-2xl border border-slate-200/80 bg-white/90 px-3.5 py-3"
                     >
                       <div className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground">
                         <span>子级综合判断依据</span>
@@ -139,13 +148,17 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                               <Info className="h-3.5 w-3.5 cursor-help text-muted-foreground" />
                             </span>
                           </TooltipTrigger>
-                          <TooltipContent side="top" className="max-w-sm text-sm leading-6">
-                            <div className="space-y-1">
-                              <div className="font-medium">子级综合判断依据说明</div>
-                              <p>
+                          <TooltipContent
+                            side="top"
+                            className={DEFAULT_TOOLTIP_CONTENT_CLASSNAME}
+                            arrowClassName="border-l border-t border-slate-200/80 bg-white fill-white"
+                          >
+                            <div className="space-y-3">
+                              <div className="text-sm font-semibold text-slate-900">子级综合判断依据说明</div>
+                              <p className="text-slate-700">
                                 这组标签默认取子级主执行层标签，用来解释为什么当前这张组合卡会给出现在的综合判断。
                               </p>
-                              <p>
+                              <p className="text-slate-700">
                                 当前这张卡默认取 {combination.triggerLevelLabel}
                                 这一层作为主执行层；父级信息会收敛在“父级约束”里。
                               </p>
@@ -162,14 +175,17 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
 
                 </div>
 
-                <div className="grid gap-2 text-xs text-muted-foreground">
-                  <div data-signal-layer="parent-constraint" className="rounded-lg border bg-background/70 p-2">
+                <div className="grid gap-3 text-xs text-muted-foreground">
+                  <div
+                    data-signal-layer="parent-constraint"
+                    className="rounded-xl border border-slate-200/80 bg-white/85 p-3"
+                  >
                     <div className="flex items-start justify-between gap-2">
                       <div className="space-y-1">
                         <div className="font-medium text-foreground">
                           {combination.parentConstraint.label}
                         </div>
-                        <div>{combination.parentConstraint.value}</div>
+                        <div className="leading-6 text-slate-700">{combination.parentConstraint.value}</div>
                       </div>
                       <Tooltip>
                         <TooltipTrigger
@@ -187,11 +203,15 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                           disableTextBalance={
                             parentConstraintTooltipContentOptions.disableTextBalance
                           }
+                          arrowClassName={parentConstraintTooltipContentOptions.arrowClassName}
                         >
-                          <div className="space-y-1">
-                            <div className="font-medium">{combination.parentConstraint.hoverTitle}</div>
+                          <div className="space-y-3">
+                            <div className="text-sm font-semibold text-slate-900">{combination.parentConstraint.hoverTitle}</div>
                             {combination.parentConstraint.hoverItems.map((item) => (
-                              <p key={`${combination.key}-parent-constraint-${item.label}`}>
+                              <p
+                                key={`${combination.key}-parent-constraint-${item.label}`}
+                                className="text-slate-700"
+                              >
                                 {item.label}：{item.value}
                               </p>
                             ))}

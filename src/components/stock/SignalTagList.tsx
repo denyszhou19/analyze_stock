@@ -50,11 +50,12 @@ export function SignalTagList({ tags, resolveTopologyPreview }: SignalTagListPro
               side="top"
               className={tooltipContentOptions.className}
               disableTextBalance={tooltipContentOptions.disableTextBalance}
+              arrowClassName={tooltipContentOptions.arrowClassName}
             >
-              <div className="space-y-1">
-                <div className="font-medium">{tag.hover.title}</div>
+              <div className="space-y-3">
+                <div className="text-sm font-semibold text-slate-900">{tag.hover.title}</div>
                 {tag.hover.items.map((item) => (
-                  <p key={`${tag.key}-${item.label}`}>
+                  <p key={`${tag.key}-${item.label}`} className="text-slate-700">
                     {item.label}：{item.value}
                   </p>
                 ))}

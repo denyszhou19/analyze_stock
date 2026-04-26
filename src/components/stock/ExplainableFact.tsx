@@ -24,11 +24,11 @@ export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFac
   const tooltipContentOptions = getTradingCycleTooltipContentOptions(topologyPreview);
 
   return (
-    <div className="rounded-lg border bg-background/70 p-2">
+    <div className="rounded-xl border border-slate-200/80 bg-white/85 p-3">
       <div className="flex items-start justify-between gap-2">
         <div className="space-y-1">
           <div className="font-medium text-foreground">{fact.label}</div>
-          <div>{fact.value}</div>
+          <div className="leading-6 text-slate-700">{fact.value}</div>
         </div>
         <Tooltip>
           <TooltipTrigger
@@ -44,11 +44,12 @@ export function ExplainableFact({ fact, resolveTopologyPreview }: ExplainableFac
             side="top"
             className={tooltipContentOptions.className}
             disableTextBalance={tooltipContentOptions.disableTextBalance}
+            arrowClassName={tooltipContentOptions.arrowClassName}
           >
-            <div className="space-y-1">
-              <div className="font-medium">{fact.hoverTitle}</div>
+            <div className="space-y-3">
+              <div className="text-sm font-semibold text-slate-900">{fact.hoverTitle}</div>
               {fact.hoverItems.map((item) => (
-                <p key={`${fact.label}-${item.label}`}>
+                <p key={`${fact.label}-${item.label}`} className="text-slate-700">
                   {item.label}：{item.value}
                 </p>
               ))}

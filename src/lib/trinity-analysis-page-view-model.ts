@@ -1470,8 +1470,8 @@ function buildTopologyPreview(
 
   if (renderPayload) {
     const rawLinesStatus = explainability
-      ? '已生成 render_payload，explainability 不完整'
-      : '已生成 render_payload，缺少 explainability';
+      ? '已生成结构图，结构说明暂不完整'
+      : '已生成结构图，缺少结构说明';
 
     return {
       level,
@@ -1493,13 +1493,13 @@ function buildTopologyPreview(
     mode: 'unavailable',
     renderPayload: null,
     explainability: null,
-    summaryRows: [
-      createHoverItem('当前结构', structureType, structureType),
-      createHoverItem('原始描述', description, description),
-      createHoverItem('数据状态', '缺少 render_payload', '缺少 render_payload'),
-    ],
-  };
-}
+      summaryRows: [
+        createHoverItem('当前结构', structureType, structureType),
+        createHoverItem('原始描述', description, description),
+        createHoverItem('数据状态', '缺少结构图数据', '缺少结构图数据'),
+      ],
+    };
+  }
 
 function describePeriod(period?: PeriodAnalysisData): string {
   return period?.structure?.structure_type || period?.trinity_decision?.structure.type || '未生成结构';

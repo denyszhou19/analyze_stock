@@ -758,24 +758,27 @@ test('TradingCycleBus and hover consumers render topology preview summaries from
   const suitableActionBlock = getTooltipBlock(html, '适合动作说明', ['主要风险说明']);
   const majorRiskBlock = getTooltipBlock(html, '主要风险说明', []);
 
-  assert.match(parentConstraintBlock, /父级拓扑摘要[\s\S]*当前结构[\s\S]*日线主升结构[\s\S]*当前阶段[\s\S]*日线主升阶段[\s\S]*下一确认[\s\S]*日线放量突破确认/);
-  assert.match(parentConstraintTagBlock, /父级拓扑摘要[\s\S]*当前结构[\s\S]*日线主升结构[\s\S]*当前阶段[\s\S]*日线主升阶段[\s\S]*下一确认[\s\S]*日线放量突破确认/);
-  assert.match(triggerLevelBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟平台整理[\s\S]*当前阶段[\s\S]*30分钟平台整理阶段[\s\S]*下一确认[\s\S]*30分钟突破平台上沿确认/);
-  assert.match(suitableActionBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟平台整理[\s\S]*当前阶段[\s\S]*30分钟平台整理阶段[\s\S]*下一确认[\s\S]*30分钟突破平台上沿确认/);
-  assert.match(majorRiskBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟平台整理[\s\S]*当前阶段[\s\S]*30分钟平台整理阶段[\s\S]*下一确认[\s\S]*30分钟突破平台上沿确认/);
+  assert.match(parentConstraintBlock, /父级结构参考[\s\S]*当前结构[\s\S]*日线主升结构[\s\S]*当前阶段[\s\S]*日线主升阶段[\s\S]*下一确认[\s\S]*日线放量突破确认/);
+  assert.match(parentConstraintTagBlock, /父级结构参考[\s\S]*当前结构[\s\S]*日线主升结构[\s\S]*当前阶段[\s\S]*日线主升阶段[\s\S]*下一确认[\s\S]*日线放量突破确认/);
+  assert.match(triggerLevelBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟平台整理[\s\S]*当前阶段[\s\S]*30分钟平台整理阶段[\s\S]*下一确认[\s\S]*30分钟突破平台上沿确认/);
+  assert.match(suitableActionBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟平台整理[\s\S]*当前阶段[\s\S]*30分钟平台整理阶段[\s\S]*下一确认[\s\S]*30分钟突破平台上沿确认/);
+  assert.match(majorRiskBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟平台整理[\s\S]*当前阶段[\s\S]*30分钟平台整理阶段[\s\S]*下一确认[\s\S]*30分钟突破平台上沿确认/);
   assert.match(parentConstraintBlock, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
   assert.match(
     parentConstraintBlock,
-    /class="[^"]*max-w-\[min\(86vw,52rem\)\][^"]*p-0[^"]*text-left[^"]*\[text-wrap:wrap\][^"]*"/
+    /class="[^"]*max-w-\[min\(88vw,56rem\)\][^"]*border[^"]*bg-white\/95[^"]*p-4[^"]*text-left[^"]*\[text-wrap:wrap\][^"]*"/
   );
   assert.match(parentConstraintBlock, /data-disable-text-balance="true"/);
   assert.doesNotMatch(parentConstraintBlock, /class="[^"]*max-w-sm[^"]*"/);
   assert.match(
     triggerLevelBlock,
-    /class="[^"]*max-w-\[min\(86vw,52rem\)\][^"]*p-0[^"]*text-left[^"]*\[text-wrap:wrap\][^"]*"/
+    /class="[^"]*max-w-\[min\(88vw,56rem\)\][^"]*border[^"]*bg-white\/95[^"]*p-4[^"]*text-left[^"]*\[text-wrap:wrap\][^"]*"/
   );
   assert.match(triggerLevelBlock, /data-disable-text-balance="true"/);
   assert.doesNotMatch(triggerLevelBlock, /class="[^"]*max-w-sm[^"]*"/);
+  assert.match(parentConstraintBlock, /data-slot="trading-cycle-topology-preview-card"/);
+  assert.match(parentConstraintBlock, /data-slot="trading-cycle-topology-preview-graph"/);
+  assert.doesNotMatch(parentConstraintBlock, /bg-slate-950\/95/);
   assert.match(
     triggerLevelBlock,
     /data-slot="trading-cycle-topology-summary"[\s\S]*class="[^"]*grid[^"]*grid-cols-\[[^"]*minmax\(0,1fr\)[^"]*\][^"]*"/
@@ -822,7 +825,7 @@ test('TradingCycleBus renders raw-lines child topology preview through real hove
             ...createTopologyPreview('30分钟', 'raw_lines', [
               { label: '当前结构', value: '30分钟箱体震荡' },
               { label: '原始描述', value: '原始描述：箱体仍在震荡，先等边界' },
-              { label: '数据状态', value: '已生成 render_payload，缺少 explainability' },
+              { label: '数据状态', value: '已生成结构图，缺少结构说明' },
             ]),
             renderPayload: createTopologyRenderPayload(),
             explainability: null,
@@ -875,10 +878,10 @@ test('TradingCycleBus renders raw-lines child topology preview through real hove
   const suitableActionBlock = getTooltipBlock(html, '适合动作说明', ['主要风险说明']);
   const majorRiskBlock = getTooltipBlock(html, '主要风险说明', []);
 
-  assert.match(actionStateBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成 render_payload，缺少 explainability/);
-  assert.match(triggerLevelBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成 render_payload，缺少 explainability/);
-  assert.match(suitableActionBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成 render_payload，缺少 explainability/);
-  assert.match(majorRiskBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成 render_payload，缺少 explainability/);
+  assert.match(actionStateBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成结构图，缺少结构说明/);
+  assert.match(triggerLevelBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成结构图，缺少结构说明/);
+  assert.match(suitableActionBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成结构图，缺少结构说明/);
+  assert.match(majorRiskBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态[\s\S]*已生成结构图，缺少结构说明/);
   assert.match(actionStateBlock, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"/);
 });
 
@@ -956,16 +959,16 @@ test('TradingCycleBus renders topology previews from real analysis view model co
   const suitableActionBlock = getTooltipBlock(html, '适合动作说明', ['主要风险说明']);
   const majorRiskBlock = getTooltipBlock(html, '主要风险说明', []);
 
-  assert.match(parentConstraintBlock, /父级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
+  assert.match(parentConstraintBlock, /父级结构参考[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
   assert.match(
     parentConstraintTagBlock,
     new RegExp(
-      `父级拓扑摘要[\\s\\S]*当前结构[\\s\\S]*日线主升结构[\\s\\S]*当前阶段[\\s\\S]*日线主升阶段[\\s\\S]*下一确认[\\s\\S]*日线放量突破确认`
+      `父级结构参考[\\s\\S]*当前结构[\\s\\S]*日线主升结构[\\s\\S]*当前阶段[\\s\\S]*日线主升阶段[\\s\\S]*下一确认[\\s\\S]*日线放量突破确认`
     )
   );
-  assert.match(triggerLevelBlock, /子级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界/);
-  assert.match(suitableActionBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*数据状态[\s\S]*已生成 render_payload，缺少 explainability/);
-  assert.match(majorRiskBlock, /子级拓扑摘要[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*数据状态[\s\S]*已生成 render_payload，缺少 explainability/);
+  assert.match(triggerLevelBlock, /子级结构参考[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*原始描述[\s\S]*原始描述：箱体仍在震荡，先等边界/);
+  assert.match(suitableActionBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*数据状态[\s\S]*已生成结构图，缺少结构说明/);
+  assert.match(majorRiskBlock, /子级结构参考[\s\S]*当前结构[\s\S]*30分钟箱体震荡[\s\S]*数据状态[\s\S]*已生成结构图，缺少结构说明/);
 });
 
 test('TradingCycleBus renders Chinese node semantic contract copy without internal field names', async () => {
