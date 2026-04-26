@@ -4200,6 +4200,7 @@ class TrinityStockAnalyzer:
                 execution_payload.get('rationale'),
             ] if item
         ]
+        deduped_supporting_factors = list(dict.fromkeys(supporting_factors))
         limiting_factors = [
             item for item in [
                 (wait_state or {}).get('current_block'),
@@ -4217,7 +4218,7 @@ class TrinityStockAnalyzer:
             'label': label,
             'current_best_action': current_best_action,
             'critical_reason': critical_reason,
-            'supporting_factors': supporting_factors,
+            'supporting_factors': deduped_supporting_factors,
             'limiting_factors': limiting_factors,
         }
 
@@ -4334,8 +4335,9 @@ class TrinityStockAnalyzer:
                 'confidence': trade_qualification['confidence'],
                 'can_trade': can_trade,
                 'wait_reason': (
-                    execution_payload.get('wait_reason')
+                    (wait_state or {}).get('current_block')
                     or judgment.get('critical_reason')
+                    or execution_payload.get('wait_reason')
                     if action == 'wait'
                     else execution_payload.get('wait_reason')
                 ),

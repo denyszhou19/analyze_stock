@@ -431,6 +431,7 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
         self.assertEqual(decision['wait_state']['current_block'], '突破量弱，等待二次确认并观察顶背离是否缓和后再站上MA55')
         self.assertEqual(decision['wait_state']['wait_type'], '等待量能确认')
         self.assertEqual(decision['wait_state']['next_confirmation_action'], '二次放量后再看是否重新站上MA55')
+        self.assertEqual(decision['conclusion']['wait_reason'], '突破量弱，等待二次确认并观察顶背离是否缓和后再站上MA55')
 
     def test_judgment_supporting_factors_surface_ma_and_divergence_copy(self) -> None:
         decision = self.analyzer._build_trinity_decision(
@@ -492,7 +493,7 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
                 'position_sizing': {'initial': '15%-20%'},
                 'risk_flags': ['等待回踩确认'],
                 'wait_reason': '等待回踩确认',
-                'rationale': 'MA55支撑仍在，若底背离继续共振可按原计划跟踪',
+                'rationale': '底背离加分',
             },
             level_nesting_payload={
                 'parent_level': 'daily',
@@ -504,12 +505,10 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
                     'allow_position_increase': True,
                     'allow_t_trade': True,
                     'allow_only_light_probe': False,
-                    'reason': '日线顺势支持30分钟延续，可继续按多头节奏跟踪',
+                    'reason': '底背离加分',
                 },
             },
             period_payload={'volume_ratio_5': 0.82, 'volume_ratio_20': 0.88, 'amount_ratio_20': 0.9},
         )
 
-        self.assertIn('底背离加分', decision['judgment']['supporting_factors'])
-        self.assertIn('日线顺势支持30分钟延续，可继续按多头节奏跟踪', decision['judgment']['supporting_factors'])
-        self.assertIn('MA55支撑仍在，若底背离继续共振可按原计划跟踪', decision['judgment']['supporting_factors'])
+        self.assertEqual(decision['judgment']['supporting_factors'], ['底背离加分'])
