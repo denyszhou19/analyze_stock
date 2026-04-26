@@ -18,6 +18,7 @@ import {
 } from './trinity-judgment-display.ts';
 import {
   buildDecisionSignalTags,
+  formatBoundarySemanticPriceLabel,
   type TrinitySignalTag,
 } from './trinity-signal-tags.ts';
 import {
@@ -633,6 +634,7 @@ function buildCombinationActionStateTags(
 ): AnalysisPageSignalTagViewModel[] {
   const majorBlocked = !major || major.trade_qualification.position_permission === 'no_position';
   const nesting = minor?.level_nesting ?? major?.level_nesting;
+  const boundaryPriceLabel = formatBoundarySemanticPriceLabel(nesting?.boundary_semantic);
   const relationCopy = nesting ? COMBINATION_RESONANCE_LABELS[nesting.resonance] : '';
   const levelResult = majorBlocked
     ? `${majorLabel}未放行`
@@ -666,6 +668,8 @@ function buildCombinationActionStateTags(
         { label: '子级别', value: minorLabel },
         { label: '节点语义', value: nesting?.node_semantic?.label },
         { label: '边界语义', value: nesting?.boundary_semantic?.label },
+        { label: '边界原因', value: nesting?.boundary_semantic?.reason },
+        { label: '边界价位', value: boundaryPriceLabel },
         {
           label: '说明',
           value:

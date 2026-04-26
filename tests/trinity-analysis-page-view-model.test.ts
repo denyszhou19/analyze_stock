@@ -1500,6 +1500,16 @@ test('trading combinations prefer backend boundary conditions and boundary seman
       ?.value,
     '箱体边界等待突破'
   );
+  assert.equal(
+    shortline.actionStateTags.find((tag) => tag.category === '级别')?.hover.items.find((item) => item.label === '边界原因')
+      ?.value,
+    '30分钟当前处于箱体震荡，必须等真实边界价位被触发后再行动'
+  );
+  assert.equal(
+    shortline.actionStateTags.find((tag) => tag.category === '级别')?.hover.items.find((item) => item.label === '边界价位')
+      ?.value,
+    '上沿 11.20 / 下沿 10.40 / 中轴 10.80'
+  );
   assert.doesNotMatch(shortline.recommendation, /30分钟旧边界等待/);
   assert.doesNotMatch(shortline.majorRisk.value, /30分钟旧边界风险/);
 });

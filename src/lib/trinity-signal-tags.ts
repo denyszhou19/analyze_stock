@@ -55,7 +55,7 @@ function formatBoundaryPrice(value?: number | null): string {
   return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '';
 }
 
-function buildBoundaryPriceLabel(
+export function formatBoundarySemanticPriceLabel(
   boundarySemantic?: TrinityLevelNestingDecision['boundary_semantic']
 ): string {
   const parts = [
@@ -475,7 +475,7 @@ function buildLevelNestingHoverItems(
   decision: TrinityDecision
 ): Array<{ label: string; value?: string | null }> {
   const levelNesting = decision.level_nesting;
-  const boundaryPriceLabel = buildBoundaryPriceLabel(levelNesting?.boundary_semantic);
+  const boundaryPriceLabel = formatBoundarySemanticPriceLabel(levelNesting?.boundary_semantic);
   return [
     { label: '父级偏向', value: parentBiasLabel(levelNesting?.parent_bias) },
     { label: '关系状态', value: levelNestingLabel(levelNesting?.resonance) },
