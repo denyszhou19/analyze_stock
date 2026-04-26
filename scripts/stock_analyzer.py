@@ -4648,6 +4648,85 @@ class TrinityStockAnalyzer:
 
         return None
 
+    def _build_level_nesting_modifier_context(
+        self,
+        child_payload: Optional[Dict[str, Any]],
+    ) -> Dict[str, Dict[str, Any]]:
+        child_payload = child_payload if isinstance(child_payload, dict) else {}
+        decision = child_payload.get('trinity_decision') or {}
+        return {
+            'moving_average': (
+                decision.get('moving_average')
+                if isinstance(decision.get('moving_average'), dict)
+                else {}
+            ),
+            'volume_confirmation': (
+                decision.get('volume_confirmation')
+                if isinstance(decision.get('volume_confirmation'), dict)
+                else {}
+            ),
+            'divergence_weight': (
+                decision.get('divergence_weight')
+                if isinstance(decision.get('divergence_weight'), dict)
+                else {}
+            ),
+        }
+
+    def _build_level_nesting_modifier_conditions(
+        self,
+        *,
+        level_label: str,
+        direction: str,
+        moving_average_decision: Optional[Dict[str, Any]],
+        volume_decision: Optional[Dict[str, Any]],
+        divergence_weight: Optional[Dict[str, Any]],
+    ) -> Dict[str, List[str]]:
+        moving_average_decision = (
+            moving_average_decision if isinstance(moving_average_decision, dict) else {}
+        )
+        volume_decision = volume_decision if isinstance(volume_decision, dict) else {}
+        divergence_weight = divergence_weight if isinstance(divergence_weight, dict) else {}
+
+        wait_conditions: List[str] = []
+        confirm_conditions: List[str] = []
+        invalidation_conditions: List[str] = []
+
+        volume_gate = volume_decision.get('volume_gate') or {}
+        volume_reason = str(volume_gate.get('reason') or '').strip()
+        breakout_volume = volume_decision.get('breakout_volume')
+        if direction == 'up' and (
+            '突破量弱' in volume_reason
+            or (
+                breakout_volume == 'weak'
+                and volume_gate.get('confidence_adjustment') == 'downgrade'
+            )
+        ):
+            confirm_conditions.append(f'{level_label}突破量弱，等待二次放量确认')
+
+        ma_gate = moving_average_decision.get('ma_gate') or {}
+        ma_reason = str(ma_gate.get('reason') or '').strip()
+        ma55_role = moving_average_decision.get('ma55_role')
+        if direction == 'up' and (
+            ma55_role == 'support'
+            or 'MA55支撑有效' in ma_reason
+        ):
+            confirm_conditions.append(f'{level_label}MA55回踩不破再确认')
+            invalidation_conditions.append(f'{level_label}跌破MA55后反抽不过，按支撑失效处理')
+
+        suppressive = divergence_weight.get('impact_on_judgment') == 'suppress'
+        divergence_label = str(divergence_weight.get('label') or '').strip()
+        divergence_reason = str(divergence_weight.get('reason') or '').strip()
+        if suppressive and divergence_label:
+            wait_conditions.append(f'{divergence_label}，先等待风险释放')
+        if suppressive and divergence_reason:
+            invalidation_conditions.append(divergence_reason)
+
+        return {
+            'wait_conditions': wait_conditions,
+            'confirm_conditions': confirm_conditions,
+            'invalidation_conditions': invalidation_conditions,
+        }
+
     def _build_node_semantic_conditions(
         self,
         level_label: str,
@@ -4722,6 +4801,14 @@ class TrinityStockAnalyzer:
         execution_plan = decision.get('execution_plan') or {}
         wait_state = decision.get('wait_state') or {}
         execution = decision.get('execution') or {}
+        modifier_context = self._build_level_nesting_modifier_context(child_payload)
+        modifier_conditions = self._build_level_nesting_modifier_conditions(
+            level_label=level_label,
+            direction=direction,
+            moving_average_decision=modifier_context.get('moving_average'),
+            volume_decision=modifier_context.get('volume_confirmation'),
+            divergence_weight=modifier_context.get('divergence_weight'),
+        )
         semantic_conditions = self._build_node_semantic_conditions(level_label, node_semantic)
         boundary_conditions = self._build_boundary_semantic_conditions(
             level_label,
@@ -4734,47 +4821,56 @@ class TrinityStockAnalyzer:
         if semantic_conditions:
             wait_items = [
                 *(semantic_conditions.get('wait_conditions') or []),
+                *(modifier_conditions.get('wait_conditions') or []),
                 execution_plan.get('probe_entry'),
                 wait_state.get('next_confirmation_action'),
             ]
             confirm_items = [
                 *(semantic_conditions.get('confirm_conditions') or []),
+                *(modifier_conditions.get('confirm_conditions') or []),
                 execution_plan.get('confirm_entry'),
                 *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
             ]
             invalid_items = [
                 *(semantic_conditions.get('invalidation_conditions') or []),
+                *(modifier_conditions.get('invalidation_conditions') or []),
                 execution_plan.get('invalidation'),
                 *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
             ]
         elif boundary_conditions:
             wait_items = [
                 *(boundary_conditions.get('wait_conditions') or []),
+                *(modifier_conditions.get('wait_conditions') or []),
                 execution_plan.get('probe_entry'),
                 wait_state.get('next_confirmation_action'),
             ]
             confirm_items = [
                 *(boundary_conditions.get('confirm_conditions') or []),
+                *(modifier_conditions.get('confirm_conditions') or []),
                 execution_plan.get('confirm_entry'),
                 *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
             ]
             invalid_items = [
                 *(boundary_conditions.get('invalidation_conditions') or []),
+                *(modifier_conditions.get('invalidation_conditions') or []),
                 execution_plan.get('invalidation'),
                 *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
             ]
         else:
             wait_items = [
+                *(modifier_conditions.get('wait_conditions') or []),
                 execution_plan.get('probe_entry'),
                 wait_state.get('next_confirmation_action'),
                 *templates['wait'],
             ]
             confirm_items = [
+                *(modifier_conditions.get('confirm_conditions') or []),
                 execution_plan.get('confirm_entry'),
                 *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
                 *templates['confirm'],
             ]
             invalid_items = [
+                *(modifier_conditions.get('invalidation_conditions') or []),
                 execution_plan.get('invalidation'),
                 *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
                 *templates['invalid'],
