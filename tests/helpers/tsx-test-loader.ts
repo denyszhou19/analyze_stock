@@ -92,6 +92,24 @@ const structureExplainabilityPanelStubUrl = asDataModule(`
   }
 `);
 
+const structureTopologySvgStubUrl = asDataModule(`
+  import React from '${reactUrl}';
+  export function StructureTopologySvg({ payload, explainability, className }) {
+    return React.createElement(
+      'div',
+      {
+        className,
+        'data-slot': 'structure-topology-svg',
+        'data-has-payload': String(Boolean(payload)),
+        'data-has-explainability': String(Boolean(explainability)),
+        'data-point-count': String(payload?.point_count ?? 0),
+        'data-segment-count': String(payload?.segment_count ?? 0),
+      },
+      payload ? 'topology-ready' : 'topology-missing'
+    );
+  }
+`);
+
 const stockExecutionViewModelStubUrl = asDataModule(`
   export function buildExecutionSummary() {
     return {
@@ -343,6 +361,8 @@ async function rewriteImports(code: string, filePath?: string): Promise<string> 
     .replaceAll("'./trinity-display-vocabulary.ts'", `'${displayVocabularyStubUrl}'`)
     .replaceAll('"@/components/stock/StructureExplainabilityPanel"', `'${structureExplainabilityPanelStubUrl}'`)
     .replaceAll("'@/components/stock/StructureExplainabilityPanel'", `'${structureExplainabilityPanelStubUrl}'`)
+    .replaceAll('"@/components/stock/StructureTopologySvg"', `'${structureTopologySvgStubUrl}'`)
+    .replaceAll("'@/components/stock/StructureTopologySvg'", `'${structureTopologySvgStubUrl}'`)
     .replaceAll('"@/lib/stock-execution-view-model"', `'${stockExecutionViewModelStubUrl}'`)
     .replaceAll("'@/lib/stock-execution-view-model'", `'${stockExecutionViewModelStubUrl}'`)
     .replaceAll('"@/lib/structure-explainability-view-model"', `'${structureExplainabilityViewModelStubUrl}'`)

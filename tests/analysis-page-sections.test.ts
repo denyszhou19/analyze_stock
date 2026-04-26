@@ -246,6 +246,135 @@ function createTopologyPreview(
   };
 }
 
+function createTopologyRenderPayload() {
+  return {
+    version: 1,
+    viewport: {
+      width: 320,
+      height: 160,
+      padding: { top: 10, right: 10, bottom: 10, left: 10 },
+      draw_width: 300,
+      draw_height: 120,
+      date_label_y: 148,
+      label_box: {
+        width: 40,
+        height: 16,
+        radius: 4,
+      },
+    },
+    price_range: {
+      min: 10,
+      max: 15,
+      range: 5,
+    },
+    points: [
+      {
+        point_id: 'a1',
+        sequence: 0,
+        type: 'bottom',
+        role: 'anchor',
+        price: 10.2,
+        price_label: '10.2',
+        date: '2026-03-01',
+        date_label: '03-01',
+        x: 40,
+        y: 120,
+        label_x: 40,
+        label_y: 132,
+        label_side: 'bottom',
+        label_box_width: 40,
+        label_box_height: 16,
+        marker_radius: 3,
+        marker_fill: '#fff',
+        marker_stroke: '#333',
+        marker_stroke_width: 1,
+        show_date_label: true,
+        date_label_y: 148,
+        is_current: false,
+      },
+      {
+        point_id: 'a2',
+        sequence: 1,
+        type: 'top',
+        role: 'anchor',
+        price: 14.6,
+        price_label: '14.6',
+        date: '2026-03-05',
+        date_label: '03-05',
+        x: 120,
+        y: 60,
+        label_x: 120,
+        label_y: 48,
+        label_side: 'top',
+        label_box_width: 40,
+        label_box_height: 16,
+        marker_radius: 3,
+        marker_fill: '#fff',
+        marker_stroke: '#333',
+        marker_stroke_width: 1,
+        show_date_label: true,
+        date_label_y: 148,
+        is_current: false,
+      },
+    ],
+    segments: [
+      {
+        segment_id: 'a1-a2',
+        sequence: 0,
+        from_point: 0,
+        to_point: 1,
+        x1: 40,
+        y1: 120,
+        x2: 120,
+        y2: 60,
+        direction: 'up',
+        length: 1,
+        is_current: false,
+        stroke: '#64748b',
+        stroke_width: 2,
+        stroke_dasharray: null,
+      },
+    ],
+    point_count: 2,
+    segment_count: 1,
+  };
+}
+
+function createTopologyExplainability() {
+  return {
+    structure_family: 'A' as const,
+    standard_qualification: 'standard' as const,
+    structure_start_point_id: 'a1',
+    current_point_id: 'a2',
+    live_point_id: null,
+    current_segment: {
+      from_point_id: 'a1',
+      to_point_id: 'a2',
+      label: 'a1→a2',
+    },
+    next_segment_preview: {
+      from_point_id: 'a2',
+      to_point_id: 'a3',
+      label: 'a2→a3',
+      status: 'projected' as const,
+    },
+    point_labels: [
+      { point_id: 'a1', label: 'A1', role: 'start' as const },
+      { point_id: 'a2', label: 'A2', role: 'last_confirmed' as const },
+    ],
+    segment_labels: [
+      {
+        segment_id: 'a1-a2',
+        from_point_id: 'a1',
+        to_point_id: 'a2',
+        label: 'a1→a2',
+        role: 'current' as const,
+      },
+    ],
+    display_reason: '结构继续推进',
+  };
+}
+
 function createRuleItem(
   overrides: Partial<{
     title: string;
@@ -531,16 +660,24 @@ test('TradingCycleBus and hover consumers render topology preview summaries from
           key: 'shortline',
           label: '短线执行组合｜日线 → 30分钟',
           levels: ['daily', 'hour30'],
-          parentTopologyPreview: createTopologyPreview('日线', 'annotated', [
-            { label: '当前结构', value: '日线主升结构' },
-            { label: '当前阶段', value: '日线主升阶段' },
-            { label: '下一确认', value: '日线放量突破确认' },
-          ]),
-          childTopologyPreview: createTopologyPreview('30分钟', 'annotated', [
-            { label: '当前结构', value: '30分钟平台整理' },
-            { label: '当前阶段', value: '30分钟平台整理阶段' },
-            { label: '下一确认', value: '30分钟突破平台上沿确认' },
-          ]),
+          parentTopologyPreview: {
+            ...createTopologyPreview('日线', 'annotated', [
+              { label: '当前结构', value: '日线主升结构' },
+              { label: '当前阶段', value: '日线主升阶段' },
+              { label: '下一确认', value: '日线放量突破确认' },
+            ]),
+            renderPayload: createTopologyRenderPayload(),
+            explainability: createTopologyExplainability(),
+          },
+          childTopologyPreview: {
+            ...createTopologyPreview('30分钟', 'annotated', [
+              { label: '当前结构', value: '30分钟平台整理' },
+              { label: '当前阶段', value: '30分钟平台整理阶段' },
+              { label: '下一确认', value: '30分钟突破平台上沿确认' },
+            ]),
+            renderPayload: createTopologyRenderPayload(),
+            explainability: createTopologyExplainability(),
+          },
           direction: 'neutral',
           directionLabel: '中性',
           actionLabel: '谨慎看',
@@ -578,63 +715,104 @@ test('TradingCycleBus and hover consumers render topology preview summaries from
             topologyPreviewSource: 'child' as const,
           },
           triggerLevelLabel: '30分钟',
-          suitableAction: createExplainableField('适合动作', '等待30分钟确认后再决定是否轻仓试探'),
-          majorRisk: createExplainableField('主要风险', '30分钟冲高但量能不足会再次回到等待'),
+          suitableAction: {
+            ...createExplainableField('适合动作', '等待30分钟确认后再决定是否轻仓试探'),
+            topologyPreviewSource: 'child' as const,
+          },
+          majorRisk: {
+            ...createExplainableField('主要风险', '30分钟冲高但量能不足会再次回到等待'),
+            topologyPreviewSource: 'child' as const,
+          },
           explanation: '日线定约束，30分钟给触发；存在约束，不能直接放大动作',
         },
       ],
     })
   );
 
-  assert.match(html, /父级拓扑摘要/);
-  assert.match(html, /父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
-  assert.match(html, /子级拓扑摘要/);
-  assert.match(html, /子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+  assert.match(html, /父级约束说明[\s\S]*父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
+  assert.match(html, /结构｜日线主升结构说明[\s\S]*父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
+  assert.match(html, /触发级别说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+  assert.match(html, /适合动作说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+  assert.match(html, /主要风险说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+  assert.match(html, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
 });
 
-test('SignalTagList and ExplainableFact render raw-lines topology preview details', async () => {
-  const { SignalTagList } = await importTsxModule<typeof import('../src/components/stock/SignalTagList.tsx')>(
-    'src/components/stock/SignalTagList.tsx'
-  );
-  const { ExplainableFact } = await importTsxModule<typeof import('../src/components/stock/ExplainableFact.tsx')>(
-    'src/components/stock/ExplainableFact.tsx'
+test('TradingCycleBus renders raw-lines child topology preview through real hover entrypoints', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
   );
 
-  const preview = createTopologyPreview('30分钟', 'raw_lines', [
-    { label: '当前结构', value: '30分钟箱体震荡' },
-    { label: '原始描述', value: '原始描述：箱体仍在震荡，先等边界' },
-    { label: '数据状态', value: '已生成 render_payload，缺少 explainability' },
-  ]);
-
-  const signalHtml = renderQuietly(
-    React.createElement(SignalTagList, {
-      tags: [
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: [
         {
-          ...createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
-          topologyPreviewSource: 'child',
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          parentTopologyPreview: {
+            ...createTopologyPreview('日线', 'annotated', [
+              { label: '当前结构', value: '日线主升结构' },
+              { label: '当前阶段', value: '日线主升阶段' },
+              { label: '下一确认', value: '日线放量突破确认' },
+            ]),
+            renderPayload: createTopologyRenderPayload(),
+            explainability: createTopologyExplainability(),
+          },
+          childTopologyPreview: {
+            ...createTopologyPreview('30分钟', 'raw_lines', [
+              { label: '当前结构', value: '30分钟箱体震荡' },
+              { label: '原始描述', value: '原始描述：箱体仍在震荡，先等边界' },
+              { label: '数据状态', value: '已生成 render_payload，缺少 explainability' },
+            ]),
+            renderPayload: createTopologyRenderPayload(),
+            explainability: null,
+          },
+          direction: 'neutral',
+          directionLabel: '中性',
+          actionLabel: '谨慎看',
+          judgmentLabel: '候选可试',
+          relationLabel: '父级强冲突，子级逆父级',
+          relationHint: '日线看背景，30分钟看执行',
+          summary: '日线还没完全放行，30分钟先看确认',
+          recommendation: '先等30分钟放量突破平台上沿',
+          signalTags: [],
+          actionStateTags: [
+            {
+              ...createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
+              topologyPreviewSource: 'child' as const,
+            },
+          ],
+          judgmentBasisTags: [],
+          parentConstraintTags: [],
+          parentSignalTags: [],
+          parentConstraint: {
+            ...createExplainableField('父级约束', '日线：仍未完全放行'),
+            topologyPreviewSource: 'parent' as const,
+          },
+          triggerLevel: {
+            ...createExplainableField('触发级别', '30分钟：放量突破平台上沿'),
+            topologyPreviewSource: 'child' as const,
+          },
+          triggerLevelLabel: '30分钟',
+          suitableAction: {
+            ...createExplainableField('适合动作', '等待30分钟确认后再决定是否轻仓试探'),
+            topologyPreviewSource: 'child' as const,
+          },
+          majorRisk: {
+            ...createExplainableField('主要风险', '30分钟冲高但量能不足会再次回到等待'),
+            topologyPreviewSource: 'child' as const,
+          },
+          explanation: '日线定约束，30分钟给触发；存在约束，不能直接放大动作',
         },
       ],
-      resolveTopologyPreview: (source) => (source === 'child' ? preview : null),
     })
   );
 
-  const factHtml = renderQuietly(
-    React.createElement(ExplainableFact, {
-      fact: {
-        ...createExplainableField('触发级别', '30分钟：放量突破平台上沿'),
-        topologyPreviewSource: 'child',
-      },
-      resolveTopologyPreview: (source) => (source === 'child' ? preview : null),
-    })
-  );
-
-  assert.match(signalHtml, /子级拓扑摘要/);
-  assert.match(signalHtml, /原始描述：原始描述：箱体仍在震荡，先等边界/);
-  assert.match(signalHtml, /数据状态：已生成 render_payload，缺少 explainability/);
-  assert.match(factHtml, /子级拓扑摘要/);
-  assert.match(factHtml, /当前结构：30分钟箱体震荡/);
-  assert.match(factHtml, /原始描述：原始描述：箱体仍在震荡，先等边界/);
-  assert.match(factHtml, /数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(html, /执行｜30分钟等待边界确认说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(html, /触发级别说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(html, /适合动作说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(html, /主要风险说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(html, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"/);
 });
 
 test('TradingCycleBus renders Chinese node semantic contract copy without internal field names', async () => {
