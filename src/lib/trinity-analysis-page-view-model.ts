@@ -662,6 +662,21 @@ function buildCombinationActionStateTags(
   major: TrinityDecision | null,
   minor: TrinityDecision | null
 ): AnalysisPageSignalTagViewModel[] {
+  if (!minor) {
+    return annotateSignalTagsWithTopologySource([
+      buildCustomSignalTag('level_nesting', '级别', `${minorLabel}缺失`, 'warning', [
+        { label: '父级别', value: majorLabel },
+        { label: '子级别', value: minorLabel },
+        { label: '说明', value: `${minorLabel}主判定缺失，当前只能等待数据补齐。` },
+      ]),
+      buildCustomSignalTag('execution', '执行', `${minorLabel}等待补齐`, 'neutral', [
+        { label: '执行级别', value: minorLabel },
+        { label: '当前动作', value: '先补齐主判定' },
+        { label: '等待条件', value: `先补齐${minorLabel}主判定` },
+      ]),
+    ], 'child');
+  }
+
   const majorBlocked = !major || major.trade_qualification.position_permission === 'no_position';
   const nesting = minor?.level_nesting ?? major?.level_nesting;
   const boundaryPriceLabel = formatBoundarySemanticPriceLabel(nesting?.boundary_semantic);
@@ -717,6 +732,10 @@ function buildCombinationActionStateTags(
 }
 
 function buildCombinationBasisTags(decision: TrinityDecision | null): AnalysisPageSignalTagViewModel[] {
+  if (!decision) {
+    return [];
+  }
+
   return annotateSignalTagsWithTopologySource(
     filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
       'spacetime',
@@ -1384,11 +1403,20 @@ function findLevelPeriod(result: AnalysisResultData, level: TrinityLevel): Perio
 function buildTopologyPreview(
   result: AnalysisResultData,
   level: TrinityLevel
-): AnalysisPageTopologyPreviewViewModel | null {
+): AnalysisPageTopologyPreviewViewModel {
   const period = findLevelPeriod(result, level);
   const structure = period?.structure;
   if (!structure) {
-    return null;
+    return {
+      level,
+      levelLabel: LEVEL_LABELS[level],
+      mode: 'unavailable',
+      summaryRows: [
+        createHoverItem('当前结构', '未生成结构', '未生成结构'),
+        createHoverItem('原始描述', '暂无原始描述', '暂无原始描述'),
+        createHoverItem('数据状态', '缺少结构数据', '缺少结构数据'),
+      ],
+    };
   }
 
   const structureType = normalizeRuleChainText(structure.structure_type) || '未生成结构';
@@ -1486,6 +1514,9 @@ function buildCombination({
   const directionLabel = getDirectionMeta(direction).label;
   const majorLabel = LEVEL_LABELS[majorLevel];
   const minorLabel = LEVEL_LABELS[minorLevel];
+  const missingMinorReason = `${minorLabel}主判定缺失`;
+  const missingMinorActionValue = `先补齐${minorLabel}主判定`;
+  const missingMinorRiskValue = `${minorLabel}主判定缺失，风险暂不可判定`;
   const parentConstraintValue = major
     ? `${majorLabel}：${resolveChineseReason(
         [
@@ -1501,28 +1532,22 @@ function buildCombination({
     : `${majorLabel}缺失`;
   const suitableActionValue = minor
     ? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
-    : '等待数据补齐';
+    : missingMinorActionValue;
   const minorNestingRisk = minor ? firstLevelNestingCondition(minor.level_nesting, 'invalidation_conditions', minorLabel) : '';
-  const majorNestingRisk = major ? firstLevelNestingCondition(major.level_nesting, 'invalidation_conditions', majorLabel) : '';
+  const majorNestingRisk = minor && major ? firstLevelNestingCondition(major.level_nesting, 'invalidation_conditions', majorLabel) : '';
   const nestingRisk = minorNestingRisk || majorNestingRisk;
   const majorRiskValue =
-    nestingRisk ||
-    resolveDecisionRiskLabels(minor).at(0) ||
-    resolveDecisionRiskLabels(major).at(0) ||
-    '暂无明确风险';
+    minor ? nestingRisk || resolveDecisionRiskLabels(minor).at(0) || '暂无明确风险' : missingMinorRiskValue;
   const minorNestingWait = minor ? firstLevelNestingCondition(minor.level_nesting, 'wait_conditions', minorLabel) : '';
-  const majorNestingWait = major ? firstLevelNestingCondition(major.level_nesting, 'wait_conditions', majorLabel) : '';
   const triggerValue =
     (minorNestingWait ? scopedLevelCondition(minorNestingWait, minorLabel) : '') ||
-    (majorNestingWait ? scopedLevelCondition(majorNestingWait, majorLabel) : '') ||
     (minor ? resolveScopedCombinationTriggerText(minor, minorLabel) : '') ||
-    (major ? resolveScopedCombinationTriggerText(major, majorLabel) : '') ||
+    (!minor ? missingMinorActionValue : '') ||
     `${minorLabel}等待触发`;
   const triggerHoverValue =
     minorNestingWait ||
-    majorNestingWait ||
     (minor ? resolveCombinationTriggerText(minor, minorLabel) : '') ||
-    (major ? resolveCombinationTriggerText(major, majorLabel) : '') ||
+    (!minor ? missingMinorReason : '') ||
     `${minorLabel}等待触发`;
   const triggerHoverReason =
     minor?.level_nesting?.node_semantic?.reason ??
@@ -1554,7 +1579,7 @@ function buildCombination({
     recommendation: buildCombinationRecommendation(majorLevel, major, minor),
     signalTags: buildCombinationSignalTags(major, minor),
     actionStateTags: buildCombinationActionStateTags(majorLabel, minorLabel, major, minor),
-    judgmentBasisTags: buildCombinationBasisTags(minor ?? major),
+    judgmentBasisTags: buildCombinationBasisTags(minor),
     parentConstraintTags,
     parentSignalTags,
     parentConstraint: buildExplainableField({
@@ -1600,7 +1625,7 @@ function buildCombination({
       hoverItems: [
         createHoverItem('这句话是什么意思', `${minorLabel}负责给出更具体的执行触发。`),
         createHoverItem('为什么这么判断', triggerHoverReason),
-        createHoverItem('当前限制', major ? parentConstraintValue : `${majorLabel}缺失`),
+        createHoverItem('当前限制', minor ? parentConstraintValue : missingMinorReason),
         createHoverItem(
           '下一步条件',
           minor
@@ -1618,20 +1643,19 @@ function buildCombination({
       topologyPreviewSource: 'child',
       hoverItems: [
         createHoverItem('这句话是什么意思', '这是在当前父子级别约束下更适合采用的动作。'),
-        createHoverItem('为什么这么判断', resolveDecisionActionReason(minor) || resolveDecisionActionReason(major)),
-        createHoverItem('当前限制', parentConstraintValue),
+        createHoverItem('为什么这么判断', minor ? resolveDecisionActionReason(minor) : missingMinorReason),
+        createHoverItem('当前限制', minor ? parentConstraintValue : missingMinorReason),
         createHoverItem(
           '下一步条件',
-          formatList(
-            [
-              ...(minor ? levelNestingConditions(minor.level_nesting, 'confirm_conditions', minorLabel) : []),
-              ...(major ? levelNestingConditions(major.level_nesting, 'confirm_conditions', majorLabel) : []),
-              ...(resolveDecisionTriggerLabels(minor).length > 0
-                ? resolveDecisionTriggerLabels(minor)
-                : resolveDecisionTriggerLabels(major)),
-            ],
-            '等待进一步确认'
-          )
+          minor
+            ? formatList(
+                [
+                  ...levelNestingConditions(minor.level_nesting, 'confirm_conditions', minorLabel),
+                  ...resolveDecisionTriggerLabels(minor),
+                ],
+                '等待进一步确认'
+              )
+            : `先补齐${minorLabel}主判定`
         ),
       ],
     }),
@@ -1644,28 +1668,17 @@ function buildCombination({
         createHoverItem('这句话是什么意思', '这是当前组合最需要优先防守的风险点。'),
         createHoverItem(
           '为什么这么判断',
-          formatList(
-            [
-              nestingRisk,
-              ...(resolveDecisionRiskLabels(minor).length > 0
-                ? resolveDecisionRiskLabels(minor)
-                : resolveDecisionRiskLabels(major)),
-            ],
-            majorRiskValue
-          )
+          minor ? formatList([nestingRisk, ...resolveDecisionRiskLabels(minor)], majorRiskValue) : missingMinorRiskValue
         ),
-        createHoverItem('当前限制', parentConstraintValue),
+        createHoverItem('当前限制', minor ? parentConstraintValue : missingMinorReason),
         createHoverItem(
           '下一步条件',
-          formatList(
-            [
-              nestingRisk,
-              ...(resolveDecisionInvalidationLabels(minor).length > 0
-                ? resolveDecisionInvalidationLabels(minor)
-                : resolveDecisionInvalidationLabels(major)),
-            ],
-            '等待失效条件明确'
-          )
+          minor
+            ? formatList(
+                [nestingRisk, ...resolveDecisionInvalidationLabels(minor)],
+                '等待失效条件明确'
+              )
+            : `先补齐${minorLabel}主判定`
         ),
       ],
     }),

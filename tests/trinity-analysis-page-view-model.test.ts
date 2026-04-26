@@ -1829,6 +1829,8 @@ test('trading combination exposes parent daily and child 30-minute topology prev
   const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
 
   assert.ok(shortline);
+  assert.equal(shortline.parentTopologyPreview?.level, 'daily');
+  assert.equal(shortline.parentTopologyPreview?.levelLabel, '日线');
   assert.equal(shortline.parentTopologyPreview?.mode, 'annotated');
   assert.deepEqual(shortline.parentTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '日线主升结构' },
@@ -1837,6 +1839,8 @@ test('trading combination exposes parent daily and child 30-minute topology prev
   ]);
   assert.equal(shortline.parentConstraint.topologyPreviewSource, 'parent');
   assert.ok(shortline.parentConstraintTags.every((tag) => tag.topologyPreviewSource === 'parent'));
+  assert.equal(shortline.childTopologyPreview?.level, 'hour30');
+  assert.equal(shortline.childTopologyPreview?.levelLabel, '30分钟');
   assert.equal(shortline.childTopologyPreview?.mode, 'annotated');
   assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
     { label: '当前结构', value: '30分钟平台整理' },
@@ -1848,6 +1852,70 @@ test('trading combination exposes parent daily and child 30-minute topology prev
   assert.equal(shortline.triggerLevel.topologyPreviewSource, 'child');
   assert.equal(shortline.suitableAction.topologyPreviewSource, 'child');
   assert.equal(shortline.majorRisk.topologyPreviewSource, 'child');
+});
+
+test('child-source trading bus entries stay child-scoped when minor level is missing', () => {
+  const result = createResult();
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.parentTopologyPreview?.level, 'daily');
+  assert.equal(shortline.parentTopologyPreview?.levelLabel, '日线');
+  assert.equal(shortline.childTopologyPreview?.level, 'hour30');
+  assert.equal(shortline.childTopologyPreview?.levelLabel, '30分钟');
+  assert.equal(shortline.childTopologyPreview?.mode, 'unavailable');
+  assert.deepEqual(shortline.childTopologyPreview?.summaryRows, [
+    { label: '当前结构', value: '未生成结构' },
+    { label: '原始描述', value: '暂无原始描述' },
+    { label: '数据状态', value: '缺少结构数据' },
+  ]);
+  assert.match(shortline.parentConstraint.value, /^日线：/);
+  assert.doesNotMatch(shortline.parentConstraint.value, /30分钟缺失|先补齐30分钟主判定/);
+  assert.deepEqual(shortline.judgmentBasisTags, []);
+  assert.equal(shortline.triggerLevel.value, '30分钟：先补齐30分钟主判定');
+  assert.equal(
+    shortline.triggerLevel.hoverItems.find((item) => item.label === '为什么这么判断')?.value,
+    '30分钟主判定缺失'
+  );
+  assert.equal(
+    shortline.triggerLevel.hoverItems.find((item) => item.label === '当前限制')?.value,
+    '30分钟主判定缺失'
+  );
+  assert.equal(
+    shortline.triggerLevel.hoverItems.find((item) => item.label === '下一步条件')?.value,
+    '先补齐30分钟主判定'
+  );
+  assert.equal(shortline.suitableAction.value, '先补齐30分钟主判定');
+  assert.equal(
+    shortline.suitableAction.hoverItems.find((item) => item.label === '为什么这么判断')?.value,
+    '30分钟主判定缺失'
+  );
+  assert.equal(
+    shortline.suitableAction.hoverItems.find((item) => item.label === '当前限制')?.value,
+    '30分钟主判定缺失'
+  );
+  assert.equal(
+    shortline.suitableAction.hoverItems.find((item) => item.label === '下一步条件')?.value,
+    '先补齐30分钟主判定'
+  );
+  assert.equal(shortline.majorRisk.value, '30分钟主判定缺失，风险暂不可判定');
+  assert.equal(
+    shortline.majorRisk.hoverItems.find((item) => item.label === '为什么这么判断')?.value,
+    '30分钟主判定缺失，风险暂不可判定'
+  );
+  assert.equal(
+    shortline.majorRisk.hoverItems.find((item) => item.label === '当前限制')?.value,
+    '30分钟主判定缺失'
+  );
+  assert.equal(
+    shortline.majorRisk.hoverItems.find((item) => item.label === '下一步条件')?.value,
+    '先补齐30分钟主判定'
+  );
 });
 
 test('trading combination topology preview falls back to raw lines when explainability is missing', () => {
