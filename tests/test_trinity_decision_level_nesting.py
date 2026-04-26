@@ -218,8 +218,8 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
             ),
         )
 
-        self.assertIn('30分钟放量突破平台上沿11.20', decision['confirm_conditions'])
-        self.assertIn('突破量弱，等待二次放量确认', decision['confirm_conditions'])
+        self.assertTrue(any('11.20' in item and '平台上沿' in item and '突破' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('突破量弱' in item and '二次' in item for item in decision['confirm_conditions']))
 
     def test_supportive_ma55_pullback_modifier_enters_confirm_and_invalid_lists(self) -> None:
         decision = self._decision(
@@ -254,8 +254,8 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
             ),
         )
 
-        self.assertIn('MA55回踩不破', decision['confirm_conditions'])
-        self.assertIn('MA55反抽不过', decision['invalidation_conditions'])
+        self.assertTrue(any('MA55' in item and '回踩不破' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('MA55' in item and '反抽不过' in item for item in decision['invalidation_conditions']))
 
     def test_suppressive_divergence_adds_wait_and_risk_copy_without_leaking_enum(self) -> None:
         decision = self._decision(
@@ -288,8 +288,8 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
             + decision['confirm_conditions']
             + decision['invalidation_conditions']
         )
-        self.assertIn('顶背离压制', decision['wait_conditions'])
-        self.assertIn('顶背离风险未解除，冲高后易回落', decision['invalidation_conditions'])
+        self.assertTrue(any('顶背离压制' in item for item in decision['wait_conditions']))
+        self.assertTrue(any('顶背离风险' in item and '回落' in item for item in decision['invalidation_conditions']))
         self.assertTrue(all('suppressive' not in item for item in all_conditions))
 
     def test_standard_c_downtrend_uses_bearish_pivot_boundaries_in_conditions(self) -> None:

@@ -276,6 +276,8 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
                         'child_structure_match': True,
                         'resonance_enabled': True,
                         'structure_readiness': 'matched',
+                        'wait_reason': '顶背离压制叠加MA233压制，且量能未确认',
+                        'required_confirmation': '等待顶背离缓和、二次放量并重新站上MA233',
                     },
                 },
                 'structure_details': {
@@ -325,6 +327,7 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
                 'confirmation': ['二次放量后再确认'],
                 'position_sizing': {'initial': '10%-15%'},
                 'risk_flags': ['顶背离压制', 'MA233压制', '量能未确认'],
+                'wait_reason': '顶背离压制叠加MA233压制，且量能未确认',
                 'rationale': '边界试探信号存在，但修饰层未完成放行',
             },
             level_nesting_payload={
@@ -344,4 +347,6 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
         )
 
         self.assertEqual(decision['judgment']['label'], '严格等待')
-        self.assertIn('顶背离', decision['judgment']['critical_reason'])
+        self.assertEqual(decision['wait_state']['current_block'], '顶背离压制叠加MA233压制，且量能未确认')
+        self.assertEqual(decision['wait_state']['next_confirmation_action'], '等待顶背离缓和、二次放量并重新站上MA233')
+        self.assertEqual(decision['judgment']['critical_reason'], '顶背离压制叠加MA233压制，且量能未确认')
