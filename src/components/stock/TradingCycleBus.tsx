@@ -37,6 +37,25 @@ function filterSignalTags(
   return tags.filter((tag) => categories.has(tag.category));
 }
 
+function getTopSupportLine(combination: AnalysisPageTradingCombinationViewModel) {
+  const relationHint = combination.relationHint?.trim();
+  if (relationHint) {
+    return { label: '父子分工', value: relationHint };
+  }
+
+  const relationLabel = combination.relationLabel?.trim();
+  if (relationLabel) {
+    return { label: '父子关系', value: relationLabel };
+  }
+
+  const summary = combination.summary?.trim();
+  if (summary) {
+    return { label: '当前约束', value: summary };
+  }
+
+  return null;
+}
+
 export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
   if (!combinations.length) {
     return null;
@@ -78,6 +97,7 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
             : combination.parentSignalTags ?? [];
           const parentConstraintTooltipContentOptions =
             getTradingCycleTooltipContentOptions(null);
+          const topSupportLine = getTopSupportLine(combination);
 
           return (
             <Card
@@ -105,13 +125,14 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
                   <p className="mt-2 text-sm font-semibold leading-6 text-slate-900">
                     {combination.recommendation}
                   </p>
-                  <p className="mt-2 leading-6 text-slate-700">{combination.summary}</p>
-                  <div className="mt-3 flex flex-wrap items-center gap-2 text-xs text-slate-500">
-                    <span className="rounded-full border border-slate-200 bg-white px-2.5 py-1">
-                      父子关系：{combination.relationLabel}
-                    </span>
-                    <span>{combination.relationHint}</span>
-                  </div>
+                  {topSupportLine ? (
+                    <div className="mt-3 flex items-start gap-2 rounded-xl border border-slate-200/70 bg-white/85 px-3 py-2 text-xs leading-5 text-slate-600">
+                      <span className="shrink-0 font-medium text-slate-500">
+                        {topSupportLine.label}：
+                      </span>
+                      <span>{topSupportLine.value}</span>
+                    </div>
+                  ) : null}
                 </div>
 
                 <div className="space-y-2">
