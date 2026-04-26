@@ -3952,14 +3952,29 @@ class TrinityStockAnalyzer:
         next_confirmation = interpretation.get('next_confirmation') or {}
         confirmation_list = execution_payload.get('confirmation') if isinstance(execution_payload, dict) else None
         confirmation_list = confirmation_list if isinstance(confirmation_list, list) else []
-        wait_reason = execution_payload.get('wait_reason') or gate.get('wait_reason')
+        execution_wait_reason = execution_payload.get('wait_reason')
+        gate_wait_reason = gate.get('wait_reason')
+        wait_reason = execution_wait_reason or gate_wait_reason
+        modifier_keywords = ('量能', '放量', '缩量', '量弱', '背离', 'MA55', 'MA233', '均线')
+        generic_wait_reasons = {'等待确认', '等待触发', '继续观察', '等待下一确认', '等待进一步确认'}
+        if gate_wait_reason:
+            gate_has_modifier = any(keyword in str(gate_wait_reason) for keyword in modifier_keywords)
+            execution_has_modifier = any(keyword in str(execution_wait_reason or '') for keyword in modifier_keywords)
+            if gate_has_modifier and not execution_has_modifier:
+                wait_reason = gate_wait_reason
+            elif execution_wait_reason in generic_wait_reasons:
+                wait_reason = gate_wait_reason
         if not wait_reason and trade_qualification.get('trade_mode') != 'wait_confirmation':
             return None
 
         if '父级' in str(wait_reason or ''):
             wait_type = '父级未放行'
-        elif '量能' in str(wait_reason or ''):
+        elif any(keyword in str(wait_reason or '') for keyword in ('量能', '放量', '缩量', '量弱')):
             wait_type = '等待量能确认'
+        elif '背离' in str(wait_reason or ''):
+            wait_type = '等待背离修复'
+        elif any(keyword in str(wait_reason or '') for keyword in ('MA55', 'MA233', '均线')):
+            wait_type = '等待均线确认'
         elif '回抽' in str(wait_reason or ''):
             wait_type = '等待回抽确认'
         else:
@@ -4176,9 +4191,13 @@ class TrinityStockAnalyzer:
                 (zero_axis_signal or {}).get('signal_label')
                 if (zero_axis_signal or {}).get('impact_on_judgment') == 'promote'
                 else None,
+                (divergence_weight or {}).get('label')
+                if (divergence_weight or {}).get('impact_on_judgment') == 'promote'
+                else None,
                 (resonance_state or {}).get('reason')
                 if (resonance_state or {}).get('status') == 'supportive'
                 else None,
+                execution_payload.get('rationale'),
             ] if item
         ]
         limiting_factors = [

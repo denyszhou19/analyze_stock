@@ -349,3 +349,167 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
         self.assertEqual(decision['wait_state']['current_block'], '顶背离压制叠加MA233压制，且量能未确认')
         self.assertEqual(decision['wait_state']['next_confirmation_action'], '等待顶背离缓和、二次放量并重新站上MA233')
         self.assertEqual(decision['judgment']['critical_reason'], '顶背离压制叠加MA233压制，且量能未确认')
+
+    def test_wait_state_prefers_modifier_language_when_volume_is_weak(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'C单平台式',
+                'structure_stage': '平台边界试探',
+                'trend_direction': '上涨',
+                'description': '边界突破候选，但量能仍弱',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'C',
+                        'standard_qualification': 'standard',
+                        'summary': '平台上沿待确认',
+                    },
+                    'spacetime_gate': {
+                        'parent_status': '中偏强',
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'structure_readiness': 'matched',
+                        'wait_reason': '突破量弱，等待二次确认并观察顶背离是否缓和后再站上MA55',
+                        'required_confirmation': '二次放量后再看是否重新站上MA55',
+                    },
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'C单平台式',
+                        'archetype_family': 'C',
+                        'standard_qualification': 'standard',
+                    },
+                },
+            },
+            macd_payload={
+                'status': '中偏强',
+                'top_divergence': True,
+                'bottom_divergence': False,
+            },
+            moving_averages={
+                'MA55': 11.0,
+                'MA233': 10.6,
+                'price_vs_ma55': 'below',
+                'price_vs_ma233': 'above',
+                'ma_status': 'MA55附近反复争夺',
+            },
+            breakthrough_payload={
+                'pattern_type': '突破确认',
+                'direction': 'up',
+                'is_valid': True,
+                'confidence': '中',
+            },
+            execution_payload={
+                'can_trade': False,
+                'action': 'wait',
+                'direction': 'long',
+                'entry_style': 'boundary_probe',
+                'trigger': ['等待上沿突破后再看'],
+                'invalidation': ['跌回平台下沿'],
+                'confirmation': ['放量并重新站上MA55后再确认'],
+                'position_sizing': {'initial': '10%-15%'},
+                'risk_flags': ['量能偏弱'],
+                'wait_reason': '等待确认',
+                'rationale': '仍是边界观察阶段',
+            },
+            level_nesting_payload={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'boundary_probe',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '日线允许边界观察，但需要等量价修饰层完成',
+                },
+            },
+            period_payload={'volume_ratio_5': 1.01, 'volume_ratio_20': 0.99, 'amount_ratio_20': 1.0},
+        )
+
+        self.assertEqual(decision['wait_state']['current_block'], '突破量弱，等待二次确认并观察顶背离是否缓和后再站上MA55')
+        self.assertEqual(decision['wait_state']['wait_type'], '等待量能确认')
+        self.assertEqual(decision['wait_state']['next_confirmation_action'], '二次放量后再看是否重新站上MA55')
+
+    def test_judgment_supporting_factors_surface_ma_and_divergence_copy(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'A五段式',
+                'structure_stage': '趋势延续',
+                'trend_direction': '上涨',
+                'description': '顺势延续，等待回踩确认',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                        'summary': '顺势推进结构仍在',
+                    },
+                    'spacetime_gate': {
+                        'parent_status': '强',
+                        'child_structure_match': True,
+                        'resonance_enabled': True,
+                        'structure_readiness': 'matched',
+                        'wait_reason': '等待回踩确认',
+                        'required_confirmation': '观察30分钟回踩MA55不破后再跟随',
+                    },
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                    },
+                },
+            },
+            macd_payload={
+                'status': '强',
+                'top_divergence': False,
+                'bottom_divergence': True,
+            },
+            moving_averages={
+                'MA55': 20.5,
+                'MA233': 18.8,
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'above',
+                'ma_status': 'MA55与MA233共振支撑',
+            },
+            breakthrough_payload={
+                'pattern_type': '回抽确认',
+                'direction': 'up',
+                'is_valid': True,
+                'confidence': '高',
+            },
+            execution_payload={
+                'can_trade': False,
+                'action': 'wait',
+                'direction': 'long',
+                'entry_style': 'pullback',
+                'trigger': ['回踩后再看承接'],
+                'invalidation': ['跌破30分钟确认低点'],
+                'confirmation': ['MA55回踩不破后加仓'],
+                'position_sizing': {'initial': '15%-20%'},
+                'risk_flags': ['等待回踩确认'],
+                'wait_reason': '等待回踩确认',
+                'rationale': 'MA55支撑仍在，若底背离继续共振可按原计划跟踪',
+            },
+            level_nesting_payload={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'aligned',
+                'permission': {
+                    'allow_position_increase': True,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': False,
+                    'reason': '日线顺势支持30分钟延续，可继续按多头节奏跟踪',
+                },
+            },
+            period_payload={'volume_ratio_5': 0.82, 'volume_ratio_20': 0.88, 'amount_ratio_20': 0.9},
+        )
+
+        self.assertIn('底背离加分', decision['judgment']['supporting_factors'])
+        self.assertIn('日线顺势支持30分钟延续，可继续按多头节奏跟踪', decision['judgment']['supporting_factors'])
+        self.assertIn('MA55支撑仍在，若底背离继续共振可按原计划跟踪', decision['judgment']['supporting_factors'])
