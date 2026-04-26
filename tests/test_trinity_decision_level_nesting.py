@@ -24,8 +24,11 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         confirm_entry=None,
         invalidation=None,
         next_confirmation_action=None,
+        boundaries=None,
+        boundary_levels=None,
     ):
         standard_candidate = standard_candidate or structure_type
+        boundaries = boundaries or {'upper': 11.2, 'lower': 10.4, 'mid': 10.8}
         return {
             'macd': {'status': status},
             'trinity_decision': {
@@ -36,7 +39,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'standard_candidate': standard_candidate,
                     'qualification': qualification,
                     'direction': direction,
-                    'boundaries': {'upper': 11.2, 'lower': 10.4, 'mid': 10.8},
+                    'boundaries': boundaries,
                     'node_map': node_map or {'a4': None, 'b8': None, 'd3': None, 'd4': None, 'last_confirmed': None},
                 },
                 'execution_plan': {
@@ -65,6 +68,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     },
                 },
                 'structure_details': {
+                    'boundary_levels': boundary_levels or boundaries,
                     'prediction': prediction or {},
                     'explainability': {
                         'current_point_id': current_point_id,
@@ -137,6 +141,100 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertFalse(decision['permission']['allow_position_increase'])
         self.assertTrue(decision['permission']['allow_only_light_probe'])
         self.assertTrue(any('平台' in item or '边界' in item for item in decision['wait_conditions']))
+
+    def test_standard_c_uses_real_pivot_boundaries_in_conditions(self) -> None:
+        decision = self._decision(
+            parent_status='中偏强',
+            child_payload=self._payload(
+                status='中偏强',
+                structure_type='C单平台式',
+                qualification='standard',
+                direction='up',
+                standard_candidate='C单平台式',
+                boundaries={
+                    'upper': 11.2,
+                    'lower': 10.4,
+                    'mid': 10.8,
+                    'breakout_trigger': 11.2,
+                    'breakdown_trigger': 10.4,
+                    'stop_loss': 10.4,
+                },
+            ),
+        )
+
+        self.assertEqual(decision['boundary_semantic']['mode'], 'c_pivot')
+        self.assertEqual(decision['boundary_semantic']['label'], 'C类中枢边界')
+        self.assertEqual(decision['wait_conditions'][0], '等待30分钟突破平台上沿11.20')
+        self.assertEqual(decision['confirm_conditions'][0], '30分钟放量突破平台上沿11.20')
+        self.assertEqual(decision['invalidation_conditions'][0], '跌破30分钟中枢下沿10.40失效')
+
+    def test_standard_c_without_real_boundaries_keeps_generic_platform_copy(self) -> None:
+        decision = self._decision(
+            parent_status='中偏强',
+            child_payload=self._payload(
+                status='中偏强',
+                structure_type='C单平台式',
+                qualification='standard',
+                direction='up',
+                standard_candidate='C单平台式',
+                boundaries={'upper': None, 'lower': None, 'mid': None},
+                boundary_levels={},
+            ),
+        )
+
+        self.assertIsNone(decision['boundary_semantic'])
+        self.assertEqual(decision['wait_conditions'][0], '等待30分钟突破平台上沿')
+        self.assertTrue(all('11.20' not in item and '10.40' not in item for item in decision['wait_conditions']))
+
+    def test_range_qualification_builds_box_boundary_conditions(self) -> None:
+        decision = self._decision(
+            parent_status='中偏强',
+            child_payload=self._payload(
+                status='中偏强',
+                structure_type='大平台震荡',
+                qualification='range',
+                direction='neutral',
+                standard_candidate=None,
+                boundaries={
+                    'upper': 11.2,
+                    'lower': 10.4,
+                    'mid': 10.8,
+                    'breakout_trigger': 11.2,
+                    'breakdown_trigger': 10.4,
+                    'stop_loss': 10.4,
+                },
+            ),
+        )
+
+        self.assertEqual(decision['boundary_semantic']['mode'], 'range_box')
+        self.assertEqual(decision['wait_conditions'][0], '等待30分钟突破区间上沿11.20或跌破区间下沿10.40')
+        self.assertEqual(decision['confirm_conditions'][0], '30分钟突破11.20后回踩不破再确认')
+        self.assertEqual(decision['invalidation_conditions'][0], '30分钟重新回到10.40-11.20区间内，按假突破/假跌破处理')
+
+    def test_channel_qualification_builds_channel_boundary_conditions(self) -> None:
+        decision = self._decision(
+            parent_status='中偏弱',
+            child_payload=self._payload(
+                status='中偏弱',
+                structure_type='下降通道',
+                qualification='channel',
+                direction='down',
+                standard_candidate=None,
+                boundaries={
+                    'upper': 12.6,
+                    'lower': 11.4,
+                    'mid': 12.0,
+                    'breakout_trigger': 12.6,
+                    'breakdown_trigger': 11.4,
+                    'stop_loss': 12.6,
+                },
+            ),
+        )
+
+        self.assertEqual(decision['boundary_semantic']['mode'], 'channel_band')
+        self.assertEqual(decision['wait_conditions'][0], '等待30分钟跌破通道下沿11.40或反抽通道上沿12.60不过')
+        self.assertEqual(decision['confirm_conditions'][0], '30分钟跌破11.40后反抽不过再确认')
+        self.assertEqual(decision['invalidation_conditions'][0], '30分钟重新站回通道上沿12.60上方，按跌破失败处理')
 
     def test_strong_parent_rejects_a_family_when_table_expects_b_for_uptrend(self) -> None:
         decision = self.analyzer._build_trinity_level_nesting_decision(

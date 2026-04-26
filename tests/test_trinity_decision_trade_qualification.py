@@ -274,6 +274,55 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(decision['position_permission'], 'light_probe')
         self.assertNotEqual(decision['trade_mode'], 'standard_node_trade')
 
+    def test_range_boundary_structure_stays_conditional_boundary_trade(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'range',
+                'qualification': 'over_limit',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': False,
+                'can_trade_by_boundaries': True,
+                'node_map': {'a4': None, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': '30分钟区间结构只允许边界条件交易'},
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={'ma_gate': {'allow_long': True, 'allow_short': False, 'reason': '区间上沿附近'}},
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_breakdown': False,
+                    'supports_pullback_confirmation': True,
+                    'confidence_adjustment': 'neutral',
+                    'reason': '量能未否决',
+                }
+            },
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'parent_level': 'daily',
+                'child_level': 'hour30',
+                'parent_bias': 'bullish',
+                'child_signal': 'long',
+                'resonance': 'boundary_probe',
+                'execution_strength': 'light_probe',
+                'permission': {
+                    'allow_position_increase': False,
+                    'allow_t_trade': True,
+                    'allow_only_light_probe': True,
+                    'reason': '区间边界只允许轻仓试探',
+                },
+                'boundary_semantic': {
+                    'mode': 'range_box',
+                    'label': '区间箱体边界',
+                    'upper': 11.2,
+                    'lower': 10.4,
+                },
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'conditional_boundary_trade')
+        self.assertEqual(decision['position_permission'], 'light_probe')
+        self.assertNotEqual(decision['trade_mode'], 'standard_node_trade')
+
     def test_aligned_standard_d4_light_probe_keeps_standard_node_trade(self) -> None:
         decision = self.analyzer._build_trinity_trade_qualification(
             structure_decision={
