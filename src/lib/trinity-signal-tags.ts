@@ -51,6 +51,22 @@ function cleanText(value?: string | null): string {
   return typeof value === 'string' ? value.trim() : '';
 }
 
+function formatBoundaryPrice(value?: number | null): string {
+  return typeof value === 'number' && Number.isFinite(value) ? value.toFixed(2) : '';
+}
+
+function buildBoundaryPriceLabel(
+  boundarySemantic?: TrinityLevelNestingDecision['boundary_semantic']
+): string {
+  const parts = [
+    boundarySemantic?.upper != null ? `上沿 ${formatBoundaryPrice(boundarySemantic.upper)}` : '',
+    boundarySemantic?.lower != null ? `下沿 ${formatBoundaryPrice(boundarySemantic.lower)}` : '',
+    boundarySemantic?.mid != null ? `中轴 ${formatBoundaryPrice(boundarySemantic.mid)}` : '',
+  ].filter(Boolean);
+
+  return parts.join(' / ');
+}
+
 function buildTag(
   key: TrinitySignalTag['key'],
   category: TrinitySignalTag['category'],
@@ -459,6 +475,7 @@ function buildLevelNestingHoverItems(
   decision: TrinityDecision
 ): Array<{ label: string; value?: string | null }> {
   const levelNesting = decision.level_nesting;
+  const boundaryPriceLabel = buildBoundaryPriceLabel(levelNesting?.boundary_semantic);
   return [
     { label: '父级偏向', value: parentBiasLabel(levelNesting?.parent_bias) },
     { label: '关系状态', value: levelNestingLabel(levelNesting?.resonance) },
@@ -466,6 +483,9 @@ function buildLevelNestingHoverItems(
     { label: '结构资格', value: qualificationLabel(levelNesting?.child_structure_qualification) },
     { label: '节点语义', value: levelNesting?.node_semantic?.label },
     { label: '节点原因', value: levelNesting?.node_semantic?.reason },
+    { label: '边界语义', value: levelNesting?.boundary_semantic?.label },
+    { label: '边界原因', value: levelNesting?.boundary_semantic?.reason },
+    { label: '边界价位', value: boundaryPriceLabel },
     { label: '等待条件', value: levelNesting?.wait_conditions?.join('、') },
     { label: '确认条件', value: levelNesting?.confirm_conditions?.join('、') },
     { label: '失效条件', value: levelNesting?.invalidation_conditions?.join('、') },

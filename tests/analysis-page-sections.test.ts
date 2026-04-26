@@ -406,6 +406,97 @@ test('TradingCycleBus renders Chinese node semantic contract copy without intern
   assert.doesNotMatch(html, /暂无补充说明/);
 });
 
+test('TradingCycleBus renders Chinese boundary semantic contract copy without internal field names', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: [
+        {
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          direction: 'neutral',
+          directionLabel: '中性',
+          actionLabel: '谨慎看',
+          judgmentLabel: '候选可试',
+          relationLabel: '父级支持，子级边界试探',
+          relationHint: '日线看背景，30分钟看执行',
+          summary: '日线给背景，30分钟等箱体边界触发',
+          recommendation: '先等待30分钟突破箱体上沿11.20或跌破箱体下沿10.40',
+          signalTags: [
+            createSignalTag('级别｜日线支持30分钟', 'neutral'),
+            createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
+          ],
+          actionStateTags: [
+            {
+              key: 'level_nesting',
+              category: '级别',
+              result: '30分钟边界试探',
+              label: '级别｜30分钟边界试探',
+              tone: 'warning',
+              hover: {
+                title: '级别｜30分钟边界试探说明',
+                items: [
+                  { label: '父级别', value: '日线' },
+                  { label: '子级别', value: '30分钟' },
+                  { label: '边界语义', value: '箱体边界等待突破' },
+                  { label: '边界原因', value: '30分钟当前处于箱体震荡，必须等真实边界价位被触发后再行动' },
+                  { label: '边界价位', value: '上沿 11.20 / 下沿 10.40 / 中轴 10.80' },
+                  { label: '说明', value: '日线偏多，但30分钟箱体只允许按边界轻仓试探' },
+                ],
+              },
+            },
+            {
+              key: 'execution',
+              category: '执行',
+              result: '30分钟等待边界确认',
+              label: '执行｜30分钟等待边界确认',
+              tone: 'neutral',
+              hover: {
+                title: '执行｜30分钟等待边界确认说明',
+                items: [
+                  { label: '执行级别', value: '30分钟' },
+                  { label: '当前动作', value: '继续等待' },
+                  { label: '等待条件', value: '等待30分钟突破箱体上沿11.20或跌破箱体下沿10.40' },
+                ],
+              },
+            },
+          ],
+          judgmentBasisTags: [],
+          parentConstraintTags: [],
+          parentSignalTags: [],
+          parentConstraint: createExplainableField('父级约束', '日线：趋势偏多'),
+          triggerLevel: {
+            label: '触发级别',
+            value: '30分钟：突破箱体上沿11.20或跌破箱体下沿10.40',
+            hoverTitle: '触发级别说明',
+            hoverItems: [
+              { label: '这句话是什么意思', value: '30分钟负责给出更具体的执行触发。' },
+              { label: '为什么这么判断', value: '30分钟当前处于箱体震荡，必须等真实边界价位被触发后再行动' },
+              { label: '当前限制', value: '日线：趋势偏多' },
+              { label: '下一步条件', value: '30分钟突破11.20后回踩不破再确认' },
+            ],
+          },
+          triggerLevelLabel: '30分钟',
+          suitableAction: createExplainableField('适合动作', '等待30分钟确认后再考虑介入'),
+          majorRisk: createExplainableField('主要风险', '30分钟重新回到10.40-11.20区间内，按假突破/假跌破处理'),
+          explanation: '日线定约束，30分钟给触发；当前按边界语义执行',
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /箱体边界等待突破/);
+  assert.match(html, /30分钟当前处于箱体震荡，必须等真实边界价位被触发后再行动/);
+  assert.match(html, /上沿 11.20 \/ 下沿 10.40 \/ 中轴 10.80/);
+  assert.match(html, /30分钟重新回到10.40-11.20区间内，按假突破\/假跌破处理/);
+  assert.doesNotMatch(html, /boundary_semantic/);
+  assert.doesNotMatch(html, /暂无补充说明/);
+});
+
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {
   const { TrinityRuleChain } = await importTsxModule<TrinityRuleChainModule>(
     'src/components/stock/TrinityRuleChain.tsx'

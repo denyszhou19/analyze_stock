@@ -665,6 +665,7 @@ function buildCombinationActionStateTags(
         { label: '父级别', value: majorLabel },
         { label: '子级别', value: minorLabel },
         { label: '节点语义', value: nesting?.node_semantic?.label },
+        { label: '边界语义', value: nesting?.boundary_semantic?.label },
         {
           label: '说明',
           value:
@@ -1420,6 +1421,10 @@ function buildCombination({
     (minor ? resolveCombinationTriggerText(minor, minorLabel) : '') ||
     (major ? resolveCombinationTriggerText(major, majorLabel) : '') ||
     `${minorLabel}等待触发`;
+  const triggerHoverReason =
+    minor?.level_nesting?.node_semantic?.reason ??
+    minor?.level_nesting?.boundary_semantic?.reason ??
+    triggerHoverValue;
   const parentConstraintTags = buildParentConstraintTags(major);
   const parentSignalTags = parentConstraintTags;
   const relationLabel =
@@ -1485,7 +1490,7 @@ function buildCombination({
       hoverTitle: '触发级别说明',
       hoverItems: [
         createHoverItem('这句话是什么意思', `${minorLabel}负责给出更具体的执行触发。`),
-        createHoverItem('为什么这么判断', minor?.level_nesting?.node_semantic?.reason ?? triggerHoverValue),
+        createHoverItem('为什么这么判断', triggerHoverReason),
         createHoverItem('当前限制', major ? parentConstraintValue : `${majorLabel}缺失`),
         createHoverItem(
           '下一步条件',

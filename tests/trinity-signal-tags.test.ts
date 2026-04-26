@@ -351,6 +351,64 @@ test('buildDecisionSignalTags shows node semantic copy without leaking internal 
   assert.ok(levelTag.hover.items.every((item) => item.label !== 'node_semantic'));
 });
 
+test('buildDecisionSignalTags shows boundary semantic copy without leaking internal field names', () => {
+  const tags = signalTags.buildDecisionSignalTags(
+    createDecision({
+      level_nesting: {
+        parent_level: 'daily',
+        child_level: 'hour30',
+        parent_spacetime_status: '强',
+        child_structure_type: '箱体震荡',
+        child_structure_family: 'C',
+        child_structure_qualification: 'range',
+        child_structure_direction: 'neutral',
+        structure_match: true,
+        parent_bias: 'bullish',
+        child_signal: 'wait',
+        resonance: 'boundary_probe',
+        operation_bias: 'long',
+        operation_frame: 'range_boundary',
+        execution_strength: 'light_probe',
+        boundary_semantic: {
+          mode: 'range_box',
+          label: '箱体边界等待突破',
+          upper: 11.2,
+          lower: 10.4,
+          mid: 10.8,
+          breakout_trigger: 11.2,
+          breakdown_trigger: 10.4,
+          stop_loss: 10.4,
+          reason: '30分钟当前处于箱体震荡，必须等真实边界价位被触发后再行动',
+        },
+        wait_conditions: ['等待30分钟突破箱体上沿11.20或跌破箱体下沿10.40'],
+        confirm_conditions: ['30分钟突破11.20后回踩不破再确认'],
+        invalidation_conditions: ['30分钟重新回到10.40-11.20区间内，按假突破/假跌破处理'],
+        permission: {
+          allow_position_increase: false,
+          allow_t_trade: true,
+          allow_only_light_probe: true,
+          reason: '日线偏多，但30分钟箱体只允许按边界轻仓试探',
+        },
+      },
+    })
+  );
+
+  const levelTag = tags.find((tag) => tag.key === 'level_nesting');
+  assert.ok(levelTag);
+  assert.ok(levelTag.hover.items.some((item) => item.label === '边界语义' && item.value === '箱体边界等待突破'));
+  assert.ok(
+    levelTag.hover.items.some(
+      (item) => item.label === '边界原因' && item.value === '30分钟当前处于箱体震荡，必须等真实边界价位被触发后再行动'
+    )
+  );
+  assert.ok(
+    levelTag.hover.items.some(
+      (item) => item.label === '边界价位' && item.value === '上沿 11.20 / 下沿 10.40 / 中轴 10.80'
+    )
+  );
+  assert.ok(levelTag.hover.items.every((item) => item.label !== 'boundary_semantic'));
+});
+
 test('buildDecisionSignalTags exposes zero-axis and divergence decisions from phase2 blocks', () => {
   const tags = signalTags.buildDecisionSignalTags(
     createDecision({

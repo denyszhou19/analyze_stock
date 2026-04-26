@@ -564,6 +564,17 @@ export interface TrinityLevelNestingDecision {
     reason?: string | null;
     evidence?: string[] | null;
   } | null;
+  boundary_semantic?: {
+    mode?: string | null;
+    label?: string | null;
+    upper?: number | null;
+    lower?: number | null;
+    mid?: number | null;
+    breakout_trigger?: number | null;
+    breakdown_trigger?: number | null;
+    stop_loss?: number | null;
+    reason?: string | null;
+  } | null;
   parent_level?: string | null;
   child_level?: string | null;
   parent_spacetime_status?: string | null;
