@@ -174,6 +174,38 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertTrue(any('11.20' in item and '突破' in item for item in decision['confirm_conditions']))
         self.assertTrue(any('10.40' in item and '中枢下沿' in item and '失效' in item for item in decision['invalidation_conditions']))
 
+    def test_standard_c_downtrend_uses_bearish_pivot_boundaries_in_conditions(self) -> None:
+        decision = self._decision(
+            parent_status='中偏弱',
+            child_payload=self._payload(
+                status='中偏弱',
+                structure_type='C单平台式',
+                qualification='standard',
+                direction='down',
+                standard_candidate='C单平台式',
+                boundaries={
+                    'upper': 11.2,
+                    'lower': 10.4,
+                    'mid': 10.8,
+                    'breakout_trigger': 11.2,
+                    'breakdown_trigger': 10.4,
+                    'stop_loss': 11.2,
+                },
+            ),
+        )
+
+        semantic = decision['boundary_semantic']
+        self.assertEqual(semantic['mode'], 'c_pivot')
+        self.assertTrue(any('10.40' in item and '跌破' in item and '中枢下沿' in item for item in decision['wait_conditions']))
+        self.assertTrue(any('10.40' in item and '反抽' in item and '不过' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('假跌破' in item or ('11.20' in item and '站回' in item) for item in decision['invalidation_conditions']))
+        bearish_conditions = (
+            decision['wait_conditions']
+            + decision['confirm_conditions']
+            + decision['invalidation_conditions']
+        )
+        self.assertTrue(all('突破平台上沿' not in item for item in bearish_conditions))
+
     def test_standard_c_without_real_boundaries_keeps_generic_platform_copy(self) -> None:
         decision = self._decision(
             parent_status='中偏强',
@@ -294,9 +326,9 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertEqual(decision['child_structure_qualification'], 'extended')
         self.assertEqual(decision['execution_strength'], 'light_probe')
         self.assertIn('延伸C', decision['downgrade_reason'])
-        self.assertIn('30分钟延伸C等待平台边界突破', decision['wait_conditions'])
+        self.assertTrue(any('11.20' in item or '10.40' in item for item in decision['wait_conditions']))
         self.assertIn('30分钟回踩平台上沿不破', decision['confirm_conditions'])
-        self.assertIn('30分钟跌破平台下沿失效', decision['invalidation_conditions'])
+        self.assertTrue(any('11.20' in item or '10.40' in item for item in decision['invalidation_conditions']))
 
     def test_extended_c_uses_boundary_semantic_without_fake_node_semantic(self) -> None:
         decision = self._decision(
@@ -316,6 +348,7 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
                     'stop_loss': 10.4,
                 },
                 probe_entry='30分钟延伸C等待平台边界突破',
+                next_confirmation_action='30分钟先看量能是否跟上再说',
                 confirm_entry='30分钟回踩平台上沿不破',
                 invalidation='30分钟跌破平台下沿失效',
             ),
@@ -324,7 +357,9 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertIsNone(decision['node_semantic'])
         self.assertEqual(decision['boundary_semantic']['mode'], 'c_pivot')
         self.assertEqual(decision['wait_conditions'][0], '30分钟延伸结构沿用C类框架，等待边界确认')
+        self.assertTrue(any('11.20' in item or '10.40' in item for item in decision['wait_conditions']))
         self.assertTrue(any('11.20' in item or '10.40' in item for item in decision['confirm_conditions']))
+        self.assertTrue(any('11.20' in item or '10.40' in item for item in decision['invalidation_conditions']))
 
     def test_weak_parent_matches_uptrend_d_family_with_cautious_execution(self) -> None:
         decision = self._decision(

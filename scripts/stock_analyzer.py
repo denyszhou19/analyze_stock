@@ -4573,6 +4573,21 @@ class TrinityStockAnalyzer:
 
         mode = boundary_semantic.get('mode')
         if mode == 'c_pivot':
+            if direction == 'down':
+                return {
+                    'wait_conditions': [
+                        f'等待{level_label}跌破中枢下沿{lower}',
+                        f'等待{level_label}反抽中枢下沿{lower}不过',
+                    ],
+                    'confirm_conditions': [
+                        f'{level_label}跌破中枢下沿{lower}后继续转弱',
+                        f'{level_label}跌破后反抽{lower}不过',
+                    ],
+                    'invalidation_conditions': [
+                        f'{level_label}重新站回中枢下沿{lower}上方，按假跌破处理',
+                        f'{level_label}反抽后站回中枢内，按跌破失败处理',
+                    ],
+                }
             return {
                 'wait_conditions': [
                     f'等待{level_label}突破平台上沿{upper}',
@@ -4734,19 +4749,19 @@ class TrinityStockAnalyzer:
             ]
         elif boundary_conditions:
             wait_items = [
+                *(boundary_conditions.get('wait_conditions') or []),
                 execution_plan.get('probe_entry'),
                 wait_state.get('next_confirmation_action'),
-                *(boundary_conditions.get('wait_conditions') or []),
             ]
             confirm_items = [
+                *(boundary_conditions.get('confirm_conditions') or []),
                 execution_plan.get('confirm_entry'),
                 *((execution.get('confirmation') or []) if isinstance(execution.get('confirmation'), list) else []),
-                *(boundary_conditions.get('confirm_conditions') or []),
             ]
             invalid_items = [
+                *(boundary_conditions.get('invalidation_conditions') or []),
                 execution_plan.get('invalidation'),
                 *((execution.get('invalidation') or []) if isinstance(execution.get('invalidation'), list) else []),
-                *(boundary_conditions.get('invalidation_conditions') or []),
             ]
         else:
             wait_items = [
