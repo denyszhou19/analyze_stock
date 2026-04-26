@@ -1,5 +1,6 @@
 import test from 'node:test';
 import assert from 'node:assert/strict';
+import type { StructureExplainabilityData } from '../src/components/stock/StructureTopologySvg.tsx';
 import type {
   AiSummaryCard,
   AnalysisResultData,
@@ -237,7 +238,9 @@ function createTopologyRenderPayload() {
   };
 }
 
-function createTopologyExplainability(overrides: Record<string, unknown> = {}) {
+function createTopologyExplainability(
+  overrides: Partial<StructureExplainabilityData> = {}
+): StructureExplainabilityData {
   return {
     structure_family: 'A',
     standard_qualification: 'standard',

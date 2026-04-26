@@ -379,6 +379,21 @@ function escapeRegExp(value: string) {
   return value.replace(/[.*+?^${}()|[\]\\]/g, '\\$&');
 }
 
+function getTooltipBlock(html: string, title: string, nextTitles: string[]) {
+  const start = html.indexOf(title);
+  assert.notEqual(start, -1, `missing tooltip title: ${title}`);
+
+  let end = html.length;
+  for (const nextTitle of nextTitles) {
+    const nextIndex = html.indexOf(nextTitle, start + title.length);
+    if (nextIndex !== -1 && nextIndex < end) {
+      end = nextIndex;
+    }
+  }
+
+  return html.slice(start, end);
+}
+
 function createRuleItem(
   overrides: Partial<{
     title: string;
@@ -733,12 +748,22 @@ test('TradingCycleBus and hover consumers render topology preview summaries from
     })
   );
 
-  assert.match(html, /父级约束说明[\s\S]*父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
-  assert.match(html, /结构｜日线主升结构说明[\s\S]*父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
-  assert.match(html, /触发级别说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
-  assert.match(html, /适合动作说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
-  assert.match(html, /主要风险说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
-  assert.match(html, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
+  const parentConstraintBlock = getTooltipBlock(html, '父级约束说明', [
+    '结构｜日线主升结构说明',
+  ]);
+  const parentConstraintTagBlock = getTooltipBlock(html, '结构｜日线主升结构说明', [
+    '触发级别说明',
+  ]);
+  const triggerLevelBlock = getTooltipBlock(html, '触发级别说明', ['适合动作说明']);
+  const suitableActionBlock = getTooltipBlock(html, '适合动作说明', ['主要风险说明']);
+  const majorRiskBlock = getTooltipBlock(html, '主要风险说明', []);
+
+  assert.match(parentConstraintBlock, /父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
+  assert.match(parentConstraintTagBlock, /父级拓扑摘要[\s\S]*当前结构：日线主升结构[\s\S]*当前阶段：日线主升阶段[\s\S]*下一确认：日线放量突破确认/);
+  assert.match(triggerLevelBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+  assert.match(suitableActionBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+  assert.match(majorRiskBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟平台整理[\s\S]*当前阶段：30分钟平台整理阶段[\s\S]*下一确认：30分钟突破平台上沿确认/);
+  assert.match(parentConstraintBlock, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
 });
 
 test('TradingCycleBus renders raw-lines child topology preview through real hover entrypoints', async () => {
@@ -812,11 +837,18 @@ test('TradingCycleBus renders raw-lines child topology preview through real hove
     })
   );
 
-  assert.match(html, /执行｜30分钟等待边界确认说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
-  assert.match(html, /触发级别说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
-  assert.match(html, /适合动作说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
-  assert.match(html, /主要风险说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
-  assert.match(html, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"/);
+  const actionStateBlock = getTooltipBlock(html, '执行｜30分钟等待边界确认说明', [
+    '父级约束说明',
+  ]);
+  const triggerLevelBlock = getTooltipBlock(html, '触发级别说明', ['适合动作说明']);
+  const suitableActionBlock = getTooltipBlock(html, '适合动作说明', ['主要风险说明']);
+  const majorRiskBlock = getTooltipBlock(html, '主要风险说明', []);
+
+  assert.match(actionStateBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(triggerLevelBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(suitableActionBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(majorRiskBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(actionStateBlock, /data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"/);
 });
 
 test('TradingCycleBus renders topology previews from real analysis view model contracts', async () => {
@@ -881,16 +913,28 @@ test('TradingCycleBus renders topology previews from real analysis view model co
     })
   );
 
-  assert.match(html, /父级约束说明[\s\S]*父级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
-  assert.match(
+  const parentConstraintBlock = getTooltipBlock(html, '父级约束说明', [
+    parentConstraintTagHeading || parentConstraintTagTitle,
+  ]);
+  const parentConstraintTagBlock = getTooltipBlock(
     html,
+    parentConstraintTagHeading || parentConstraintTagTitle,
+    ['触发级别说明']
+  );
+  const triggerLevelBlock = getTooltipBlock(html, '触发级别说明', ['适合动作说明']);
+  const suitableActionBlock = getTooltipBlock(html, '适合动作说明', ['主要风险说明']);
+  const majorRiskBlock = getTooltipBlock(html, '主要风险说明', []);
+
+  assert.match(parentConstraintBlock, /父级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="true"/);
+  assert.match(
+    parentConstraintTagBlock,
     new RegExp(
-      `${escapeRegExp(parentConstraintTagHeading || parentConstraintTagTitle)}[\\s\\S]*父级拓扑摘要[\\s\\S]*当前结构：日线主升结构[\\s\\S]*当前阶段：日线主升阶段[\\s\\S]*下一确认：日线放量突破确认`
+      `父级拓扑摘要[\\s\\S]*当前结构：日线主升结构[\\s\\S]*当前阶段：日线主升阶段[\\s\\S]*下一确认：日线放量突破确认`
     )
   );
-  assert.match(html, /触发级别说明[\s\S]*子级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界/);
-  assert.match(html, /适合动作说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
-  assert.match(html, /主要风险说明[\s\S]*子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(triggerLevelBlock, /子级拓扑摘要[\s\S]*data-slot="structure-topology-svg"[\s\S]*data-has-explainability="false"[\s\S]*当前结构：30分钟箱体震荡[\s\S]*原始描述：原始描述：箱体仍在震荡，先等边界/);
+  assert.match(suitableActionBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
+  assert.match(majorRiskBlock, /子级拓扑摘要[\s\S]*当前结构：30分钟箱体震荡[\s\S]*数据状态：已生成 render_payload，缺少 explainability/);
 });
 
 test('TradingCycleBus renders Chinese node semantic contract copy without internal field names', async () => {

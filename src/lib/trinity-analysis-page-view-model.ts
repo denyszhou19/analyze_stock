@@ -3,11 +3,13 @@ import type {
   AiSummaryCard,
   AnalysisResultData,
   PeriodAnalysisData,
-  StructureExplainabilityData,
-  StructureRenderPayload,
   TrinityJudgmentCriterion,
   TrinityDecision,
 } from '@/lib/stock-structure-types';
+import type {
+  StructureExplainabilityData,
+  StructureRenderPayload,
+} from '@/components/stock/StructureTopologySvg';
 import {
   formatDecisionActionLabel,
   preferChineseList,
@@ -1428,7 +1430,7 @@ function buildTopologyPreview(
   const structureType = normalizeRuleChainText(structure.structure_type) || '未生成结构';
   const description = normalizeRuleChainText(structure.description) || '暂无原始描述';
   const details = structure.structure_details;
-  const renderPayload = details?.render_payload;
+  const renderPayload = (details?.render_payload ?? null) as StructureRenderPayload | null;
   const explainability = details?.explainability;
 
   if (renderPayload && explainability) {
