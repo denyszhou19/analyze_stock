@@ -292,6 +292,85 @@ class TrinityDecisionLevelNestingTest(unittest.TestCase):
         self.assertTrue(any('顶背离风险' in item and '回落' in item for item in decision['invalidation_conditions']))
         self.assertTrue(all('suppressive' not in item for item in all_conditions))
 
+    def test_family_fallback_keeps_main_semantic_before_modifier_and_legacy_copy_when_compact_list_truncates(self) -> None:
+        conditions = self.analyzer._build_level_nesting_conditions(
+            child_payload={
+                'trinity_decision': {
+                    'execution_plan': {
+                        'probe_entry': '旧执行等待文案',
+                        'confirm_entry': '旧执行确认文案',
+                        'invalidation': '旧执行失效文案',
+                    },
+                    'wait_state': {
+                        'next_confirmation_action': '旧等待下一确认',
+                    },
+                    'moving_average': {
+                        'ma55_role': 'support',
+                        'ma_gate': {
+                            'allow_long': True,
+                            'allow_short': False,
+                            'reason': 'MA55支撑有效',
+                        },
+                    },
+                    'volume_confirmation': {
+                        'breakout_volume': 'weak',
+                        'volume_gate': {
+                            'supports_breakout': False,
+                            'supports_breakdown': False,
+                            'supports_pullback_confirmation': False,
+                            'confidence_adjustment': 'downgrade',
+                            'reason': '突破量弱',
+                        },
+                    },
+                    'divergence_weight': {
+                        'status': 'suppressive',
+                        'label': '顶背离压制',
+                        'reason': '顶背离风险未解除，冲高后易回落',
+                        'impact_on_judgment': 'suppress',
+                    },
+                    'execution': {
+                        'confirmation': ['旧执行确认列表'],
+                        'invalidation': ['旧执行失效列表'],
+                    },
+                },
+            },
+            level_label='30分钟',
+            family='A',
+            qualification='unknown',
+            direction='up',
+            node_semantic=None,
+            boundary_semantic=None,
+        )
+
+        self.assertEqual(
+            conditions['wait_conditions'],
+            [
+                '等待30分钟有效突破结构上沿',
+                '等待30分钟站上MA55后回踩不破',
+                '顶背离压制，先等待风险释放',
+            ],
+        )
+        self.assertEqual(
+            conditions['confirm_conditions'],
+            [
+                '30分钟放量突破确认',
+                '30分钟回踩MA55不破',
+                '30分钟突破量弱，等待二次放量确认',
+            ],
+        )
+        self.assertEqual(
+            conditions['invalidation_conditions'],
+            [
+                '30分钟跌回结构内按假突破处理',
+                '30分钟跌破MA55且反抽不过失效',
+                '30分钟跌破MA55后反抽不过，按支撑失效处理',
+            ],
+        )
+        self.assertNotIn('旧执行等待文案', conditions['wait_conditions'])
+        self.assertNotIn('旧等待下一确认', conditions['wait_conditions'])
+        self.assertNotIn('旧执行确认文案', conditions['confirm_conditions'])
+        self.assertNotIn('旧执行失效文案', conditions['invalidation_conditions'])
+
     def test_standard_c_downtrend_uses_bearish_pivot_boundaries_in_conditions(self) -> None:
         decision = self._decision(
             parent_status='中偏弱',
