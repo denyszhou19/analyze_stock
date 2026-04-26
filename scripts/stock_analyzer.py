@@ -4466,6 +4466,95 @@ class TrinityStockAnalyzer:
             'invalid': [f'{level_label}结构失效'],
         })
 
+    def _format_level_nesting_boundary_price(self, value: Optional[float]) -> Optional[str]:
+        normalized = self._normalize_trinity_price(value)
+        if normalized is None:
+            return None
+        return f'{normalized:.2f}'
+
+    def _build_level_nesting_boundary_semantic(
+        self,
+        *,
+        child_payload: Optional[Dict[str, Any]],
+        family: str,
+        qualification: str,
+        level_label: str,
+        direction: str,
+    ) -> Optional[Dict[str, Any]]:
+        child_payload = child_payload if isinstance(child_payload, dict) else {}
+        structure_decision = ((child_payload.get('trinity_decision') or {}).get('structure') or {})
+        boundaries = structure_decision.get('boundaries') or {}
+
+        upper = self._normalize_trinity_price(boundaries.get('upper'))
+        lower = self._normalize_trinity_price(boundaries.get('lower'))
+        if upper is None or lower is None or upper <= lower:
+            return None
+
+        mid = self._normalize_trinity_price(boundaries.get('mid'))
+        if mid is None:
+            mid = round((upper + lower) / 2, 2)
+
+        breakout_trigger = self._normalize_trinity_price(boundaries.get('breakout_trigger'))
+        if breakout_trigger is None:
+            breakout_trigger = upper
+
+        breakdown_trigger = self._normalize_trinity_price(boundaries.get('breakdown_trigger'))
+        if breakdown_trigger is None:
+            breakdown_trigger = lower
+
+        stop_loss = self._normalize_trinity_price(boundaries.get('stop_loss'))
+        if stop_loss is None:
+            stop_loss = lower
+
+        upper_text = self._format_level_nesting_boundary_price(upper)
+        lower_text = self._format_level_nesting_boundary_price(lower)
+
+        if family == 'C' and qualification in {'standard', 'extended', 'complex'}:
+            return {
+                'mode': 'c_pivot',
+                'label': 'C类中枢边界',
+                'upper': upper,
+                'lower': lower,
+                'mid': mid,
+                'breakout_trigger': breakout_trigger,
+                'breakdown_trigger': breakdown_trigger,
+                'stop_loss': stop_loss,
+                'reason': f'{level_label}优先按中枢上沿{upper_text} / 下沿{lower_text}处理',
+            }
+
+        if qualification == 'range':
+            return {
+                'mode': 'range_box',
+                'label': '区间上下沿',
+                'upper': upper,
+                'lower': lower,
+                'mid': mid,
+                'breakout_trigger': breakout_trigger,
+                'breakdown_trigger': breakdown_trigger,
+                'stop_loss': stop_loss,
+                'reason': f'{level_label}当前按区间上沿{upper_text} / 下沿{lower_text}等待方向选择',
+            }
+
+        if qualification == 'channel':
+            reason = (
+                f'{level_label}当前按通道下沿{lower_text}等待跌破或反抽确认'
+                if direction == 'down'
+                else f'{level_label}当前按通道上沿{upper_text}等待突破或回踩确认'
+            )
+            return {
+                'mode': 'channel_band',
+                'label': '通道上下沿',
+                'upper': upper,
+                'lower': lower,
+                'mid': mid,
+                'breakout_trigger': breakout_trigger,
+                'breakdown_trigger': breakdown_trigger,
+                'stop_loss': stop_loss,
+                'reason': reason,
+            }
+
+        return None
+
     def _build_node_semantic_conditions(
         self,
         level_label: str,
@@ -4794,6 +4883,7 @@ class TrinityStockAnalyzer:
                 'operation_bias': 'wait',
                 'operation_frame': 'wait_structure',
                 'node_semantic': None,
+                'boundary_semantic': None,
                 'execution_strength': 'wait_confirmation',
                 'downgrade_reason': f'{parent_label}缺失或尚未归一化',
                 'permission': {
@@ -4862,6 +4952,13 @@ class TrinityStockAnalyzer:
             qualification=qualification,
             level_label=child_label,
         )
+        boundary_semantic = self._build_level_nesting_boundary_semantic(
+            child_payload=child_payload,
+            family=family,
+            qualification=qualification,
+            level_label=child_label,
+            direction=direction,
+        )
         conditions = self._build_level_nesting_conditions(
             child_payload=child_payload,
             level_label=child_label,
@@ -4911,6 +5008,7 @@ class TrinityStockAnalyzer:
             'operation_bias': operation_bias,
             'operation_frame': operation_frame,
             'node_semantic': node_semantic,
+            'boundary_semantic': boundary_semantic,
             'execution_strength': execution_strength,
             'downgrade_reason': downgrade_reason,
             'permission': permission,
