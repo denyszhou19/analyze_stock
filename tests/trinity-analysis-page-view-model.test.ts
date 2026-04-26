@@ -1528,6 +1528,26 @@ test('trading combinations prefer backend final Chinese modifier conditions over
         can_trade: false,
         wait_reason: '旧的等待文案',
       },
+      moving_average: {
+        ma55_role: 'resistance',
+        ma233_role: 'neutral',
+        price_position: { above_ma55: false, above_ma233: false },
+        breakthrough_state: 'breakout_pending',
+        ma_gate: { allow_long: false, allow_short: false, reason: '站上MA55前仍需确认' },
+      },
+      volume_confirmation: {
+        volume_state: 'unknown',
+        breakout_volume: 'weak',
+        breakdown_volume: 'not_applicable',
+        pullback_volume: 'healthy_shrink',
+        volume_gate: {
+          supports_breakout: false,
+          supports_breakdown: false,
+          supports_pullback_confirmation: true,
+          confidence_adjustment: 'neutral',
+          reason: '突破量弱，等待二次放量确认',
+        },
+      },
       divergence_weight: {
         status: 'suppressive',
         label: '顶背离压制',
@@ -1584,16 +1604,24 @@ test('trading combinations prefer backend final Chinese modifier conditions over
     shortline.triggerLevel.hoverItems.find((item) => item.label === '下一步条件')?.value,
     '30分钟突破量弱，等待二次放量确认'
   );
-  assert.match(
-    shortline.suitableAction.hoverItems.find((item) => item.label === '下一步条件')?.value ?? '',
-    /^30分钟突破量弱，等待二次放量确认、30分钟站上30分钟MA55后回踩不破再确认/
-  );
+  const suitableActionNextStep =
+    shortline.suitableAction.hoverItems.find((item) => item.label === '下一步条件')?.value ?? '';
+  assert.match(suitableActionNextStep, /30分钟突破量弱，等待二次放量确认/);
+  assert.match(suitableActionNextStep, /30分钟站上30分钟MA55后回踩不破再确认/);
   assert.equal(shortline.majorRisk.value, '30分钟跌破30分钟MA55且反抽不过失效');
+  assert.ok(shortline.signalTags.some((tag) => tag.label === '背离｜顶背离压制'));
+  assert.ok(shortline.signalTags.some((tag) => tag.label === '量能｜突破量弱'));
+  assert.ok(shortline.signalTags.some((tag) => tag.label === '均线｜MA55压制'));
+  assert.ok(shortline.judgmentBasisTags.some((tag) => tag.label === '背离｜顶背离压制'));
+  assert.ok(shortline.judgmentBasisTags.some((tag) => tag.label === '量能｜突破量弱'));
+  assert.ok(shortline.judgmentBasisTags.some((tag) => tag.label === '均线｜MA55压制'));
   assert.ok(
     [
       shortline.recommendation,
       shortline.triggerLevel.value,
       shortline.majorRisk.value,
+      ...shortline.signalTags.map((tag) => tag.label),
+      ...shortline.judgmentBasisTags.map((tag) => tag.label),
       ...shortline.triggerLevel.hoverItems.map((item) => item.value),
       ...shortline.suitableAction.hoverItems.map((item) => item.value),
     ].every(

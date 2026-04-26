@@ -4,15 +4,204 @@ import assert from 'node:assert/strict';
 
 import React from 'react';
 import { importTsxModule, renderQuietly } from './helpers/tsx-test-loader.ts';
-import type { AnalysisPageRuleChainItem } from '../src/lib/trinity-analysis-page-view-model.ts';
-import type { PeriodAnalysisData } from '../src/lib/stock-structure-types.ts';
+import type {
+  AnalysisPageRuleChainItem,
+  AnalysisPageViewModel,
+} from '../src/lib/trinity-analysis-page-view-model.ts';
+import type {
+  AnalysisResultData,
+  PeriodAnalysisData,
+  TrinityDecision,
+} from '../src/lib/stock-structure-types.ts';
+import type { DataIntegritySnapshot } from '../src/lib/stock-data-integrity.ts';
 
 type TradingCycleBusModule = typeof import('../src/components/stock/TradingCycleBus.tsx');
 type TrinityRuleChainModule = typeof import('../src/components/stock/TrinityRuleChain.tsx');
 type AnalysisSummaryPanelModule = typeof import('../src/components/stock/AnalysisSummaryPanel.tsx');
 type AnalysisPeriodDetailsModule = typeof import('../src/components/stock/AnalysisPeriodDetails.tsx');
+type AnalysisPageViewModelModule = typeof import('../src/lib/trinity-analysis-page-view-model.ts');
 
 const periodDetailsSource = await fs.readFile('src/components/stock/AnalysisPeriodDetails.tsx', 'utf8');
+const { buildAnalysisPageViewModel } = await import(
+  new URL('../src/lib/trinity-analysis-page-view-model.ts', import.meta.url).href
+) as AnalysisPageViewModelModule;
+
+function createDecision(overrides: Partial<TrinityDecision> = {}): TrinityDecision {
+  const base: TrinityDecision = {
+    version: 'v2',
+    level: 'daily',
+    conclusion: {
+      action: 'wait',
+      action_label: '等待',
+      bias: 'neutral',
+      confidence: 'medium',
+      can_trade: false,
+      wait_reason: '等待 C 结构边界确认',
+    },
+    structure: {
+      background_origin: null,
+      focus_origin: { point_id: 'a1', price: 10.5, date: '2025-05-12', source: 'peak_extreme' },
+      execution_origin: null,
+      family: 'standard',
+      type: 'A五段式',
+      standard_candidate: 'A五段式',
+      qualification: 'standard',
+      direction: 'up',
+      boundaries: {},
+      node_map: { last_confirmed: 10.8 },
+      can_trade_by_structure_nodes: true,
+      can_trade_by_boundaries: true,
+      explainability: { status: 'passed', reason: 'A原型成立', evidence: ['五段式成立'] },
+    },
+    spacetime: {
+      status: '中偏强',
+      direction_bias: 'bullish',
+      expected_structures: { up: ['A五段式'], down: ['D三段式'] },
+      structure_match: false,
+      mismatch_reason: '等待 C 结构边界确认',
+      divergence_policy: { top_divergence_valid: false, bottom_divergence_valid: false, reason: '无背离确认' },
+    },
+    moving_average: {
+      ma55_role: 'support',
+      ma233_role: 'support',
+      price_position: { above_ma55: true, above_ma233: true },
+      breakthrough_state: 'valid_breakout',
+      ma_gate: { allow_long: true, allow_short: false, reason: 'MA55 上方运行' },
+    },
+    volume_confirmation: {
+      volume_state: 'unknown',
+      breakout_volume: 'weak',
+      breakdown_volume: 'not_applicable',
+      pullback_volume: 'healthy_shrink',
+      volume_gate: {
+        supports_breakout: false,
+        supports_breakdown: false,
+        supports_pullback_confirmation: true,
+        confidence_adjustment: 'neutral',
+        reason: '突破量能偏弱',
+      },
+    },
+    level_nesting: {
+      parent_level: 'weekly',
+      child_level: 'daily',
+      parent_bias: 'bullish',
+      child_signal: 'wait',
+      resonance: 'child_countertrend',
+      permission: {
+        allow_position_increase: false,
+        allow_t_trade: false,
+        allow_only_light_probe: true,
+        reason: '父级偏多但子级等待确认',
+      },
+    },
+    trade_qualification: {
+      trade_mode: 'wait_confirmation',
+      position_permission: 'no_position',
+      confidence: 'medium',
+      reason: ['等待确认', '结构边界未触发'],
+    },
+    execution: {
+      entry_style: 'pullback',
+      triggers: ['重新站上平台上沿'],
+      invalidation: ['跌回平台下沿'],
+      confirmation: ['回踩 MA55 不破'],
+      position_sizing: { max_ratio: null, reason: '等待 C 结构边界确认' },
+      risk_flags: ['不追高'],
+    },
+    judgment_criteria: [],
+    ai_summary_facts: ['A五段式原型'],
+  };
+
+  return { ...base, ...overrides };
+}
+
+function createResult(): AnalysisResultData {
+  const dailyDecision = createDecision();
+  const weeklyDecision = createDecision({
+    level: 'weekly',
+    conclusion: {
+      action: 'hold',
+      action_label: '持有观察',
+      bias: 'bullish',
+      confidence: 'medium',
+      can_trade: true,
+    },
+  });
+
+  return {
+    stock_code: 'SH600000',
+    stock_name: '浦发银行',
+    analysis_time: '2026-04-18 15:00:00',
+    periods: {
+      daily: {
+        period: 'daily',
+        analysis_date: '2026-04-18',
+        trinity_decision: dailyDecision,
+        structure: {
+          structure_type: 'A五段式',
+          structure_details: {
+            valid_range: {
+              start_date: '2025-05-12',
+              end_date: '2026-04-18',
+              start_price: 9.8,
+              end_price: 10.8,
+              origin_type: 'peak_extreme',
+              break_type: 'up',
+            },
+            pipeline_debug: {
+              analysis_kline_count: 240,
+              processed_kline_count: 238,
+              valid_range_applied: true,
+              render_window_size: 160,
+            },
+          },
+        },
+      },
+      weekly: {
+        period: 'weekly',
+        trinity_decision: weeklyDecision,
+        structure: {
+          structure_type: '上升通道',
+          structure_details: {
+            valid_range: { start_date: '2024-01-05', end_date: '2026-04-17' },
+            pipeline_debug: { analysis_kline_count: 120 },
+          },
+        },
+      },
+    },
+  };
+}
+
+function createIntegrity(): DataIntegritySnapshot {
+  return {
+    code: 'SH600000',
+    baostockLatestDate: '2026-04-18',
+    currentTime: '2026-04-18T15:00:00+08:00',
+    isWeekend: false,
+    levels: [],
+    summary: {
+      overallStatus: 'ok',
+      overallText: '数据完整',
+      okCount: 5,
+      staleCount: 0,
+      missingCount: 0,
+      errorCount: 0,
+      pendingCount: 0,
+      totalLevels: 5,
+      needsSyncLevels: [],
+      canAnalyze: true,
+      analyzeWarning: null,
+    },
+  };
+}
+
+function buildViewModel(result: AnalysisResultData): AnalysisPageViewModel {
+  return buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+}
 
 function createExplainableField(label: string, value: string) {
   return {
@@ -497,94 +686,116 @@ test('TradingCycleBus renders Chinese boundary semantic contract copy without in
   assert.doesNotMatch(html, /暂无补充说明/);
 });
 
-test('TradingCycleBus renders final Chinese modifier-layer conditions without leaking internal enums', async () => {
+test('TradingCycleBus renders view-model generated modifier-layer tags without leaking internal enums', async () => {
   const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
     'src/components/stock/TradingCycleBus.tsx'
   );
 
+  const result = createResult();
+  const dailyDecision = result.periods.daily.trinity_decision;
+  if (!dailyDecision) {
+    throw new Error('missing daily decision');
+  }
+  dailyDecision.conclusion = {
+    ...dailyDecision.conclusion,
+    action: 'hold',
+    action_label: '持有观察',
+    can_trade: true,
+  };
+  dailyDecision.trade_qualification = {
+    ...dailyDecision.trade_qualification,
+    trade_mode: 'standard_node_trade',
+    position_permission: 'half_position',
+  };
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'wait',
+        action_label: '等待',
+        bias: 'neutral',
+        confidence: 'medium',
+        can_trade: false,
+        wait_reason: '旧的等待文案',
+      },
+      moving_average: {
+        ma55_role: 'resistance',
+        ma233_role: 'neutral',
+        price_position: { above_ma55: false, above_ma233: false },
+        breakthrough_state: 'breakout_pending',
+        ma_gate: { allow_long: false, allow_short: false, reason: '站上MA55前仍需确认' },
+      },
+      volume_confirmation: {
+        volume_state: 'unknown',
+        breakout_volume: 'weak',
+        breakdown_volume: 'not_applicable',
+        pullback_volume: 'healthy_shrink',
+        volume_gate: {
+          supports_breakout: false,
+          supports_breakdown: false,
+          supports_pullback_confirmation: true,
+          confidence_adjustment: 'neutral',
+          reason: '突破量弱，等待二次放量确认',
+        },
+      },
+      divergence_weight: {
+        status: 'suppressive',
+        label: '顶背离压制',
+        reason: '顶背离仍在压制，先不追高',
+        impact_on_judgment: 'suppress',
+      },
+      level_nesting: {
+        parent_level: 'daily',
+        child_level: 'hour30',
+        parent_spacetime_status: '中偏强',
+        child_structure_type: 'C单平台式',
+        child_structure_family: 'C',
+        child_structure_qualification: 'standard',
+        child_structure_direction: 'up',
+        structure_match: true,
+        parent_bias: 'bullish',
+        child_signal: 'wait',
+        resonance: 'boundary_probe',
+        operation_bias: 'long',
+        operation_frame: 'platform_boundary',
+        execution_strength: 'light_probe',
+        wait_conditions: ['等待30分钟突破平台上沿11.20', '顶背离压制时不追高'],
+        confirm_conditions: ['突破量弱，等待二次放量确认', '站上30分钟MA55后回踩不破再确认'],
+        invalidation_conditions: ['跌破30分钟MA55且反抽不过失效'],
+        permission: {
+          allow_position_increase: false,
+          allow_t_trade: true,
+          allow_only_light_probe: true,
+          reason: '日线偏多，但30分钟仍需先等修饰层确认补齐',
+        },
+      },
+      execution: {
+        entry_style: 'pullback',
+        triggers: ['旧触发数组'],
+        invalidation: ['旧失效数组'],
+        confirmation: ['旧确认数组'],
+        position_sizing: { max_ratio: 0.2, reason: '旧执行摘要' },
+        risk_flags: ['旧风险数组'],
+      },
+    }),
+  };
+  const vm = buildViewModel(result);
+
   const html = renderQuietly(
     React.createElement(TradingCycleBus, {
-      combinations: [
-        {
-          key: 'shortline',
-          label: '短线执行组合｜日线 → 30分钟',
-          levels: ['daily', 'hour30'],
-          direction: 'neutral',
-          directionLabel: '中性',
-          actionLabel: '谨慎看',
-          judgmentLabel: '候选可试',
-          relationLabel: '父级支持，子级边界试探',
-          relationHint: '日线看背景，30分钟看执行',
-          summary: '日线偏多，但30分钟仍需先等修饰层确认补齐',
-          recommendation: '先等待30分钟突破平台上沿11.20',
-          signalTags: [
-            createSignalTag('背离｜顶背离压制', 'bearish'),
-            createSignalTag('量能｜突破量弱', 'warning'),
-            createSignalTag('均线｜MA55待确认', 'warning'),
-            createSignalTag('级别｜30分钟边界试探', 'warning'),
-            createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
-          ],
-          actionStateTags: [
-            createSignalTag('级别｜30分钟边界试探', 'warning'),
-            createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
-          ],
-          judgmentBasisTags: [
-            createSignalTag('背离｜顶背离压制', 'bearish'),
-            createSignalTag('量能｜突破量弱', 'warning'),
-            createSignalTag('均线｜MA55待确认', 'warning'),
-          ],
-          parentConstraintTags: [],
-          parentSignalTags: [],
-          parentConstraint: createExplainableField('父级约束', '日线：父级偏多，但子级仍需确认'),
-          triggerLevel: {
-            label: '触发级别',
-            value: '30分钟：突破平台上沿11.20',
-            hoverTitle: '触发级别说明',
-            hoverItems: [
-              { label: '这句话是什么意思', value: '30分钟负责给出更具体的执行触发。' },
-              { label: '为什么这么判断', value: '顶背离压制时不追高' },
-              { label: '当前限制', value: '日线：父级偏多，但子级仍需确认' },
-              { label: '下一步条件', value: '30分钟突破量弱，等待二次放量确认' },
-            ],
-          },
-          triggerLevelLabel: '30分钟',
-          suitableAction: {
-            label: '适合动作',
-            value: '等待30分钟确认后再决定是否轻仓试探',
-            hoverTitle: '适合动作说明',
-            hoverItems: [
-              { label: '这句话是什么意思', value: '这是在当前父子级别约束下更适合采用的动作。' },
-              { label: '为什么这么判断', value: '日线偏多，但30分钟仍需先等修饰层确认补齐' },
-              { label: '当前限制', value: '日线：父级偏多，但子级仍需确认' },
-              {
-                label: '下一步条件',
-                value: '30分钟突破量弱，等待二次放量确认、30分钟站上30分钟MA55后回踩不破再确认',
-              },
-            ],
-          },
-          majorRisk: {
-            label: '主要风险',
-            value: '30分钟跌破30分钟MA55且反抽不过失效',
-            hoverTitle: '主要风险说明',
-            hoverItems: [
-              { label: '这句话是什么意思', value: '这是当前组合最需要优先防守的风险点。' },
-              { label: '为什么这么判断', value: '跌破30分钟MA55且反抽不过失效' },
-            ],
-          },
-          explanation: '日线定约束，30分钟给触发；当前按后端最终中文条件执行',
-        },
-      ],
+      combinations: vm.tradingCombinations,
     })
   );
 
   assert.match(html, /先等待30分钟突破平台上沿11.20/);
-  assert.match(html, /顶背离压制时不追高/);
+  assert.match(html, /背离｜顶背离压制/);
   assert.match(html, /30分钟突破量弱，等待二次放量确认/);
   assert.match(html, /30分钟站上30分钟MA55后回踩不破再确认/);
   assert.match(html, /30分钟跌破30分钟MA55且反抽不过失效/);
   assert.match(html, /背离｜顶背离压制/);
   assert.match(html, /量能｜突破量弱/);
-  assert.match(html, /均线｜MA55待确认/);
+  assert.match(html, /均线｜MA55压制/);
   assert.doesNotMatch(html, /supports_breakout/);
   assert.doesNotMatch(html, /hard_block/);
   assert.doesNotMatch(html, /suppressive/);
