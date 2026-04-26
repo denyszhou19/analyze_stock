@@ -1514,6 +1514,97 @@ test('trading combinations prefer backend boundary conditions and boundary seman
   assert.doesNotMatch(shortline.majorRisk.value, /30分钟旧边界风险/);
 });
 
+test('trading combinations prefer backend final Chinese modifier conditions over legacy execution arrays', () => {
+  const result = createResult();
+  result.periods.hour30 = {
+    period: 'hour30',
+    trinity_decision: createDecision({
+      level: 'hour30',
+      conclusion: {
+        action: 'wait',
+        action_label: '等待',
+        bias: 'neutral',
+        confidence: 'medium',
+        can_trade: false,
+        wait_reason: '旧的等待文案',
+      },
+      divergence_weight: {
+        status: 'suppressive',
+        label: '顶背离压制',
+        reason: '顶背离仍在压制，先不追高',
+        impact_on_judgment: 'suppress',
+      },
+      level_nesting: {
+        parent_level: 'daily',
+        child_level: 'hour30',
+        parent_spacetime_status: '中偏强',
+        child_structure_type: 'C单平台式',
+        child_structure_family: 'C',
+        child_structure_qualification: 'standard',
+        child_structure_direction: 'up',
+        structure_match: true,
+        parent_bias: 'bullish',
+        child_signal: 'wait',
+        resonance: 'boundary_probe',
+        operation_bias: 'long',
+        operation_frame: 'platform_boundary',
+        execution_strength: 'light_probe',
+        wait_conditions: ['等待30分钟突破平台上沿11.20', '顶背离压制时不追高'],
+        confirm_conditions: ['突破量弱，等待二次放量确认', '站上30分钟MA55后回踩不破再确认'],
+        invalidation_conditions: ['跌破30分钟MA55且反抽不过失效'],
+        permission: {
+          allow_position_increase: false,
+          allow_t_trade: true,
+          allow_only_light_probe: true,
+          reason: '日线偏多，但30分钟仍需先等修饰层确认补齐',
+        },
+      },
+      execution: {
+        entry_style: 'pullback',
+        triggers: ['旧触发数组'],
+        invalidation: ['旧失效数组'],
+        confirmation: ['旧确认数组'],
+        position_sizing: { max_ratio: 0.2, reason: '旧执行摘要' },
+        risk_flags: ['旧风险数组'],
+      },
+    }),
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+
+  assert.ok(shortline);
+  assert.equal(shortline.recommendation, '先等待30分钟突破平台上沿11.20');
+  assert.equal(shortline.triggerLevel.value, '30分钟：突破平台上沿11.20');
+  assert.equal(
+    shortline.triggerLevel.hoverItems.find((item) => item.label === '下一步条件')?.value,
+    '30分钟突破量弱，等待二次放量确认'
+  );
+  assert.match(
+    shortline.suitableAction.hoverItems.find((item) => item.label === '下一步条件')?.value ?? '',
+    /^30分钟突破量弱，等待二次放量确认、30分钟站上30分钟MA55后回踩不破再确认/
+  );
+  assert.equal(shortline.majorRisk.value, '30分钟跌破30分钟MA55且反抽不过失效');
+  assert.ok(
+    [
+      shortline.recommendation,
+      shortline.triggerLevel.value,
+      shortline.majorRisk.value,
+      ...shortline.triggerLevel.hoverItems.map((item) => item.value),
+      ...shortline.suitableAction.hoverItems.map((item) => item.value),
+    ].every(
+      (value) =>
+        !value.includes('supports_breakout') &&
+        !value.includes('hard_block') &&
+        !value.includes('suppressive')
+    )
+  );
+});
+
 test('view model normalizes candidate structure english fragments into Chinese display', () => {
   const result = createResult();
   const decision = result.periods.daily.trinity_decision;

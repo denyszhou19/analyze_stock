@@ -497,6 +497,99 @@ test('TradingCycleBus renders Chinese boundary semantic contract copy without in
   assert.doesNotMatch(html, /暂无补充说明/);
 });
 
+test('TradingCycleBus renders final Chinese modifier-layer conditions without leaking internal enums', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: [
+        {
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          direction: 'neutral',
+          directionLabel: '中性',
+          actionLabel: '谨慎看',
+          judgmentLabel: '候选可试',
+          relationLabel: '父级支持，子级边界试探',
+          relationHint: '日线看背景，30分钟看执行',
+          summary: '日线偏多，但30分钟仍需先等修饰层确认补齐',
+          recommendation: '先等待30分钟突破平台上沿11.20',
+          signalTags: [
+            createSignalTag('背离｜顶背离压制', 'bearish'),
+            createSignalTag('量能｜突破量弱', 'warning'),
+            createSignalTag('均线｜MA55待确认', 'warning'),
+            createSignalTag('级别｜30分钟边界试探', 'warning'),
+            createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
+          ],
+          actionStateTags: [
+            createSignalTag('级别｜30分钟边界试探', 'warning'),
+            createSignalTag('执行｜30分钟等待边界确认', 'neutral'),
+          ],
+          judgmentBasisTags: [
+            createSignalTag('背离｜顶背离压制', 'bearish'),
+            createSignalTag('量能｜突破量弱', 'warning'),
+            createSignalTag('均线｜MA55待确认', 'warning'),
+          ],
+          parentConstraintTags: [],
+          parentSignalTags: [],
+          parentConstraint: createExplainableField('父级约束', '日线：父级偏多，但子级仍需确认'),
+          triggerLevel: {
+            label: '触发级别',
+            value: '30分钟：突破平台上沿11.20',
+            hoverTitle: '触发级别说明',
+            hoverItems: [
+              { label: '这句话是什么意思', value: '30分钟负责给出更具体的执行触发。' },
+              { label: '为什么这么判断', value: '顶背离压制时不追高' },
+              { label: '当前限制', value: '日线：父级偏多，但子级仍需确认' },
+              { label: '下一步条件', value: '30分钟突破量弱，等待二次放量确认' },
+            ],
+          },
+          triggerLevelLabel: '30分钟',
+          suitableAction: {
+            label: '适合动作',
+            value: '等待30分钟确认后再决定是否轻仓试探',
+            hoverTitle: '适合动作说明',
+            hoverItems: [
+              { label: '这句话是什么意思', value: '这是在当前父子级别约束下更适合采用的动作。' },
+              { label: '为什么这么判断', value: '日线偏多，但30分钟仍需先等修饰层确认补齐' },
+              { label: '当前限制', value: '日线：父级偏多，但子级仍需确认' },
+              {
+                label: '下一步条件',
+                value: '30分钟突破量弱，等待二次放量确认、30分钟站上30分钟MA55后回踩不破再确认',
+              },
+            ],
+          },
+          majorRisk: {
+            label: '主要风险',
+            value: '30分钟跌破30分钟MA55且反抽不过失效',
+            hoverTitle: '主要风险说明',
+            hoverItems: [
+              { label: '这句话是什么意思', value: '这是当前组合最需要优先防守的风险点。' },
+              { label: '为什么这么判断', value: '跌破30分钟MA55且反抽不过失效' },
+            ],
+          },
+          explanation: '日线定约束，30分钟给触发；当前按后端最终中文条件执行',
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /先等待30分钟突破平台上沿11.20/);
+  assert.match(html, /顶背离压制时不追高/);
+  assert.match(html, /30分钟突破量弱，等待二次放量确认/);
+  assert.match(html, /30分钟站上30分钟MA55后回踩不破再确认/);
+  assert.match(html, /30分钟跌破30分钟MA55且反抽不过失效/);
+  assert.match(html, /背离｜顶背离压制/);
+  assert.match(html, /量能｜突破量弱/);
+  assert.match(html, /均线｜MA55待确认/);
+  assert.doesNotMatch(html, /supports_breakout/);
+  assert.doesNotMatch(html, /hard_block/);
+  assert.doesNotMatch(html, /suppressive/);
+});
+
 test('TrinityRuleChain renders six rule items and keeps failed status plus reason visible', async () => {
   const { TrinityRuleChain } = await importTsxModule<TrinityRuleChainModule>(
     'src/components/stock/TrinityRuleChain.tsx'
