@@ -327,7 +327,6 @@ class TrinityDecisionPhase2ContractTest(unittest.TestCase):
                 'confirmation': ['二次放量后再确认'],
                 'position_sizing': {'initial': '10%-15%'},
                 'risk_flags': ['顶背离压制', 'MA233压制', '量能未确认'],
-                'wait_reason': '顶背离压制叠加MA233压制，且量能未确认',
                 'rationale': '边界试探信号存在，但修饰层未完成放行',
             },
             level_nesting_payload={
