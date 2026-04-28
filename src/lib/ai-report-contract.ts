@@ -5,6 +5,7 @@ import type {
   TrinityJudgmentLabel,
 } from './stock-structure-types.ts';
 import { TRINITY_JUDGMENT_LABELS } from './stock-structure-types.ts';
+import { normalizeVisibleDecisionText } from './trinity-decision-labels.ts';
 
 const AI_REPORT_JSON_BLOCK_PATTERN = /^\s*```json\s*([\s\S]*?)\s*```\s*([\s\S]*)$/i;
 
@@ -223,6 +224,6 @@ export function parseAiReportContract(report: string): {
 
   return {
     summary: parseAiSummaryCard(parsedSummary),
-    markdown,
+    markdown: normalizeVisibleDecisionText(markdown),
   };
 }

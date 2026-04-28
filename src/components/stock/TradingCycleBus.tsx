@@ -66,11 +66,11 @@ export function TradingCycleBus({ combinations }: TradingCycleBusProps) {
       <div className="space-y-1">
         <h2 className="text-base font-semibold text-foreground">交易周期总线</h2>
         <p className="text-sm text-muted-foreground">
-          用三条交易组合综合判断当前最适合做中线、短线、超短线 / T，还是继续等待。
+          用四条交易组合综合判断当前最适合做中线、波段、短线、超短线 / T，还是继续等待。
         </p>
       </div>
 
-      <div className="grid gap-3 xl:grid-cols-3">
+      <div className="grid gap-3 xl:grid-cols-2">
         {combinations.map((combination) => {
           const directionMeta = getDirectionMeta(combination.direction);
           const resolveTopologyPreview = (

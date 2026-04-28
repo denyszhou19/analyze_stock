@@ -20,9 +20,15 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         macd_status='中偏强',
         current_leg='b5→live 下行形成中',
         current_leg_direction=None,
+        current_leg_status=None,
         ma55=132.59,
         ma233=145.92,
         close=129.10,
+        ma55_role='resistance',
+        ma233_role='support',
+        breakthrough_direction=None,
+        breakthrough_valid=False,
+        line_points=None,
     ):
         standard_candidate = standard_candidate or structure_type
         raw_type = raw_type or structure_type
@@ -36,11 +42,23 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
                 current_leg_direction = 'up'
             else:
                 current_leg_direction = direction if direction in {'up', 'down'} else 'neutral'
+        if current_leg_status is None:
+            current_leg_status = 'forming' if '形成中' in current_leg or '推进中' in current_leg or '延续中' in current_leg else None
         return {
             'macd': {'status': macd_status},
             'ma55': ma55,
             'ma233': ma233,
             'close': close,
+            'breakthrough': {
+                'direction': breakthrough_direction,
+                'is_valid': breakthrough_valid,
+            },
+            'ma_physics': {
+                'support_pressure': {
+                    'ma55_role': ma55_role,
+                    'ma233_role': ma233_role,
+                },
+            },
             'trinity_decision': {
                 'spacetime': {'status': spacetime_status},
                 'structure': {
@@ -56,12 +74,16 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
                 'trend_direction': '上涨' if direction == 'up' else '下跌' if direction == 'down' else '震荡',
                 'structure_details': {
                     'raw_classification': {'type': raw_type},
+                    'line_geometry': {
+                        'points': [{'price': price} for price in (line_points or [])],
+                    },
                 },
                 'interpretation': {
                     'current_leg': {
                         'from_point_id': None,
                         'to_point_id': 'live',
                         'direction': current_leg_direction,
+                        'status': current_leg_status,
                         'label': current_leg,
                     },
                     'focus_structure': {
@@ -164,6 +186,57 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         self.assertEqual(prediction['primary_candidate']['stage'], 'debouncing')
         self.assertEqual(prediction['narrative_switch']['state'], 'debouncing')
         self.assertFalse(prediction['narrative_switch']['passed'])
+
+    def test_progressive_down_leg_overrides_legacy_b_bias_into_a_debouncing(self) -> None:
+        decision = self.analyzer._build_trinity_level_nesting_decision(
+            level='hour30',
+            normalized_results={
+                'daily': self._period_payload(
+                    spacetime_status='强',
+                    structure_type='B双平台式',
+                    direction='up',
+                    current_leg='b5→live 下行形成中',
+                    current_leg_direction='down',
+                ),
+                'hour30': self._period_payload(
+                    spacetime_status='中偏强',
+                    structure_type='B双平台式',
+                    raw_type='延伸C类',
+                    direction='up',
+                    current_leg='b5→live 下行形成中',
+                    current_leg_direction='down',
+                    close=229.10,
+                    ma55=239.23,
+                    ma233=225.08,
+                    ma55_role='resistance',
+                    ma233_role='support',
+                    breakthrough_direction='down',
+                    breakthrough_valid=True,
+                    line_points=[251.85, 241.99, 249.11, 227.05, 236.35, 229.10],
+                ),
+            },
+            raw_level_nesting={'summary': '测试推进主语压过旧整理'},
+        )
+
+        self.assertIn('structure_prediction', decision)
+        prediction = decision['structure_prediction']
+        self._assert_scope_layers(
+            prediction,
+            allowed=['A', 'B'],
+            degraded=['C'],
+            blocked=['D'],
+        )
+        self.assertEqual(prediction['dominant_narrative'], '推进主导')
+        self.assertEqual(prediction['narrative_switch']['from_family'], 'B')
+        self.assertEqual(prediction['narrative_switch']['to_family'], 'A')
+        self.assertEqual(prediction['narrative_switch']['state'], 'debouncing')
+        self.assertFalse(prediction['narrative_switch']['passed'])
+        self.assertIn('lower_high_lower_low_sequence', prediction['narrative_switch']['soft_triggers'])
+        self.assertIn('current_leg_extension', prediction['narrative_switch']['soft_triggers'])
+        self.assertIn('ma55_direct_resistance', prediction['narrative_switch']['blocking_signals'])
+        self.assertEqual(prediction['primary_candidate']['family'], 'A')
+        self.assertEqual(prediction['primary_candidate']['stage'], 'debouncing')
+        self.assertEqual(prediction['secondary_candidate']['family'], 'B')
 
     def test_d_candidate_is_only_used_as_fallback_when_abc_fail(self) -> None:
         decision = self.analyzer._build_trinity_level_nesting_decision(

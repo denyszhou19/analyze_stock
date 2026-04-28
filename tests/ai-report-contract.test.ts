@@ -245,3 +245,38 @@ test('parseAiReportContract preserves valid optional parts when others are inval
   });
   assert.equal(parsed.summary.judgment_warning, undefined);
 });
+
+test('parseAiReportContract keeps markdown headings and blank lines while sanitizing english tokens', () => {
+  const report = [
+    '```json',
+    JSON.stringify(
+      {
+        headline: '等待为主',
+        action: 'wait',
+        bias: 'neutral',
+        primary_reason: '父级未放行',
+        triggers: ['等待确认'],
+        risks: ['跌破平台下沿'],
+        guardrail: 'position_permission=no_position',
+      },
+      null,
+      2
+    ),
+    '```',
+    '',
+    '# 综合判断',
+    '',
+    '当前 execution 字段给出 buy 含义，但 deterministic_decision 为 wait。',
+    '',
+    '## 时空怎么看',
+    '',
+    '- position_permission 为 no_position',
+  ].join('\n');
+
+  const parsed = parseAiReportContract(report);
+
+  assert.equal(
+    parsed.markdown,
+    '# 综合判断\n\n当前 执行预案字段给出买入含义，但后端当前结论为等待。\n\n## 时空怎么看\n\n- 仓位权限为空仓等待'
+  );
+});

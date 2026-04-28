@@ -5289,6 +5289,55 @@ class TrinityStockAnalyzer:
             return '整理主导'
         return '分歧混合'
 
+    def _extract_level_nesting_line_prices(self, child_payload: Optional[Dict[str, Any]]) -> List[float]:
+        child_payload = child_payload if isinstance(child_payload, dict) else {}
+        structure_payload = child_payload.get('structure') or {}
+        details = structure_payload.get('structure_details') or {}
+        line_geometry = details.get('line_geometry') or {}
+        prices: List[float] = []
+        for point in line_geometry.get('points') or []:
+            price = point.get('price') if isinstance(point, dict) else None
+            if isinstance(price, (int, float)):
+                prices.append(float(price))
+        return prices
+
+    def _resolve_level_nesting_progress_sequence_signal(
+        self,
+        *,
+        prices: List[float],
+        current_leg_direction: Optional[str],
+        current_leg_status: Optional[str],
+    ) -> Optional[str]:
+        if current_leg_direction not in {'up', 'down'} or len(prices) < 5:
+            return None
+
+        if current_leg_direction == 'down':
+            confirmed_highs = prices[-2::-2]
+            confirmed_lows = prices[-1::-2]
+            if current_leg_status == 'forming' and confirmed_lows:
+                confirmed_lows = confirmed_lows[1:]
+            if (
+                len(confirmed_highs) >= 3
+                and len(confirmed_lows) >= 2
+                and confirmed_highs[0] < confirmed_highs[1] < confirmed_highs[2]
+                and confirmed_lows[0] < confirmed_lows[1]
+            ):
+                return 'lower_high_lower_low_sequence'
+            return None
+
+        confirmed_highs = prices[-1::-2]
+        confirmed_lows = prices[-2::-2]
+        if current_leg_status == 'forming' and confirmed_highs:
+            confirmed_highs = confirmed_highs[1:]
+        if (
+            len(confirmed_highs) >= 3
+            and len(confirmed_lows) >= 2
+            and confirmed_highs[0] > confirmed_highs[1] > confirmed_highs[2]
+            and confirmed_lows[0] > confirmed_lows[1]
+        ):
+            return 'higher_high_higher_low_sequence'
+        return None
+
     def _build_level_nesting_structure_prediction(
         self,
         *,
@@ -5306,6 +5355,17 @@ class TrinityStockAnalyzer:
         raw_classification = details.get('raw_classification') or {}
         current_leg = interpretation.get('current_leg') or {}
         current_leg_label = current_leg.get('label') if isinstance(current_leg.get('label'), str) else ''
+        current_leg_direction = current_leg.get('direction') if isinstance(current_leg.get('direction'), str) else None
+        current_leg_status = current_leg.get('status') if isinstance(current_leg.get('status'), str) else None
+        current_leg_to_point = current_leg.get('to_point_id') if isinstance(current_leg.get('to_point_id'), str) else None
+        if not current_leg_status and current_leg_to_point == 'live':
+            current_leg_status = 'forming'
+        line_prices = self._extract_level_nesting_line_prices(child_payload)
+        progress_sequence_signal = self._resolve_level_nesting_progress_sequence_signal(
+            prices=line_prices,
+            current_leg_direction=current_leg_direction,
+            current_leg_status=current_leg_status,
+        )
         spacetime_scope = self._build_level_nesting_spacetime_scope(
             parent_status=parent_status,
             direction=direction,
@@ -5318,11 +5378,23 @@ class TrinityStockAnalyzer:
         has_progress_hint = bool(
             self._extract_level_nesting_stage_token(current_leg_label, 'a')
             or any(token in current_leg_label for token in ('推进', '急跌', '延续', '拉升'))
+            or progress_sequence_signal
         )
         is_v_reversal = family == 'D' and 'V反' in current_leg_label
         close = child_payload.get('close')
         ma55 = child_payload.get('ma55')
         close_above_ma55 = isinstance(close, (int, float)) and isinstance(ma55, (int, float)) and close >= ma55
+        support_pressure = ((child_payload.get('ma_physics') or {}).get('support_pressure') or {})
+        ma55_role = support_pressure.get('ma55_role')
+        ma233_role = support_pressure.get('ma233_role')
+        breakthrough = child_payload.get('breakthrough') or {}
+        breakthrough_direction = breakthrough.get('direction')
+        breakthrough_valid = breakthrough.get('is_valid') is True
+        current_leg_extension = (
+            current_leg_direction in {'up', 'down'}
+            and current_leg_to_point == 'live'
+            and current_leg_status == 'forming'
+        )
 
         dominant_narrative = self._resolve_level_nesting_narrative(
             family=family,
@@ -5368,12 +5440,30 @@ class TrinityStockAnalyzer:
                 blocking_signals = ['单次波动尚未完成防抖']
                 primary_reason = current_leg_label or '单次试探尚未完成主语切换'
             else:
-                primary_stage = 'strengthening' if close_above_ma55 else 'candidate'
-                narrative_switch_state = 'strengthening' if close_above_ma55 else 'candidate'
-                narrative_switch_passed = close_above_ma55
-                hard_triggers = ['价格站上 MA55'] if close_above_ma55 else []
-                soft_triggers = [current_leg_label] if current_leg_label else []
-                blocking_signals = [] if close_above_ma55 else ['尚未站稳 MA55']
+                hard_triggers = ['ma55_effective_break'] if close_above_ma55 else []
+                soft_triggers = []
+                if progress_sequence_signal:
+                    soft_triggers.append(progress_sequence_signal)
+                if current_leg_extension:
+                    soft_triggers.append('current_leg_extension')
+                elif current_leg_label:
+                    soft_triggers.append(current_leg_label)
+                if breakthrough_valid and breakthrough_direction == current_leg_direction:
+                    soft_triggers.append('breakthrough_follow_through')
+                blocking_signals = []
+                if direction == 'up':
+                    if ma55_role in {'压制', 'resistance'}:
+                        blocking_signals.append('ma55_direct_resistance')
+                    if ma233_role in {'压制', 'resistance'}:
+                        blocking_signals.append('ma233_direct_resistance')
+                elif direction == 'down':
+                    if ma55_role in {'支撑', 'support'}:
+                        blocking_signals.append('ma55_direct_support')
+                    if ma233_role in {'支撑', 'support'}:
+                        blocking_signals.append('ma233_direct_support')
+                narrative_switch_passed = bool(hard_triggers) or (len(soft_triggers) >= 2 and not blocking_signals)
+                primary_stage = 'strengthening' if narrative_switch_passed else 'debouncing'
+                narrative_switch_state = primary_stage
                 primary_reason = current_leg_label or '推进段主导，优先跟踪 A 候选'
             secondary_stage = 'candidate' if secondary_family == 'B' else 'degraded'
             secondary_reason = '原平台语义仍保留为次候选'

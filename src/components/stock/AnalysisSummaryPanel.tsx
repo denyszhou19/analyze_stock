@@ -220,7 +220,7 @@ export function AnalysisSummaryPanel({
               ) : null}
               {viewModel.waitStateSummary ? (
                 <section className="rounded-lg border bg-background/60 p-3 text-sm leading-6">
-                  <div className="text-xs text-muted-foreground">等待状态</div>
+                  <div className="text-xs text-muted-foreground">当前阻塞</div>
                   <p className="mt-1 text-muted-foreground">
                     {joinSummaryParts([
                       viewModel.waitStateSummary.label,

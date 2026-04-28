@@ -19,6 +19,7 @@ import { Markdown } from '@/components/ui/markdown';
 import { SmartLoading } from '@/components/ui/smart-loading';
 import type { AnalysisLoadingStage } from '@/lib/analysis-loading-stage';
 import { parseAiReportContract } from '@/lib/ai-report-contract';
+import { cn } from '@/lib/utils';
 import {
   beginRequestRun,
   createRequestRunGuard,
@@ -27,6 +28,7 @@ import {
 } from '@/lib/request-run-guard';
 import type { DataIntegritySnapshot } from '@/lib/stock-data-integrity';
 import type { AnalysisResultData, PeriodAnalysisData } from '@/lib/stock-structure-types';
+import { normalizeVisibleDecisionText } from '@/lib/trinity-decision-labels';
 import type { AnalysisPageAiState } from '@/lib/trinity-analysis-page-view-model';
 import { buildAnalysisPageViewModel } from '@/lib/trinity-analysis-page-view-model';
 
@@ -75,6 +77,11 @@ interface FollowupResponse {
   data?: {
     markdown: string;
   };
+}
+
+interface AnalysisSectionNavItem {
+  id: string;
+  label: string;
 }
 
 const PERIOD_ORDER = ['weekly', 'daily', 'hour60', 'hour30', 'hour15'] as const;
@@ -169,6 +176,7 @@ export default function StockAnalysisPage() {
   const [aiFollowupLoading, setAiFollowupLoading] = useState(false);
   const [aiFollowupTurns, setAiFollowupTurns] = useState<AiFollowupTurn[]>([]);
   const [aiFollowupError, setAiFollowupError] = useState<string | null>(null);
+  const [activeSectionId, setActiveSectionId] = useState<string>('analysis-summary');
 
   const [dataIntegrityStatus, setDataIntegrityStatus] = useState<{
     canAnalyze: boolean;
@@ -493,7 +501,7 @@ export default function StockAnalysisPage() {
         {
           id: `${Date.now()}-${prev.length}`,
           question,
-          markdown: followupPayload.markdown,
+          markdown: normalizeVisibleDecisionText(followupPayload.markdown),
         },
       ]);
       setAiFollowupDraft('');
@@ -603,6 +611,108 @@ export default function StockAnalysisPage() {
   }, [aiState, integrityForPage, result]);
 
   const periodSections = useMemo(() => (result ? buildPeriodSections(result) : []), [result]);
+  const sectionNavItems = useMemo<AnalysisSectionNavItem[]>(() => {
+    const items: AnalysisSectionNavItem[] = [
+      { id: 'analysis-summary', label: '结论总览' },
+      { id: 'analysis-bus', label: '交易总线' },
+      { id: 'analysis-periods', label: '周期详情' },
+    ];
+
+    if (aiMarkdown && aiState.status === 'ready') {
+      items.push({ id: 'analysis-report', label: 'AI 分析' });
+    }
+
+    if (aiState.status === 'ready' && aiSession) {
+      items.push({ id: 'analysis-followup', label: 'AI 追问' });
+    }
+
+    return items;
+  }, [aiMarkdown, aiSession, aiState.status]);
+
+  useEffect(() => {
+    if (!sectionNavItems.length) {
+      return;
+    }
+
+    setActiveSectionId((current) =>
+      sectionNavItems.some((item) => item.id === current) ? current : sectionNavItems[0]?.id ?? 'analysis-summary'
+    );
+  }, [sectionNavItems]);
+
+  useEffect(() => {
+    if (typeof window === 'undefined' || !sectionNavItems.length) {
+      return;
+    }
+
+    const sectionElements = sectionNavItems
+      .map((item) => document.getElementById(item.id))
+      .filter((element): element is HTMLElement => Boolean(element));
+
+    if (!sectionElements.length) {
+      return;
+    }
+
+    const activeEntries = new Map<string, IntersectionObserverEntry>();
+
+    const updateActiveSection = () => {
+      const visibleEntries = sectionElements
+        .map((element) => {
+          const entry = activeEntries.get(element.id);
+          return {
+            id: element.id,
+            top: Math.abs(element.getBoundingClientRect().top - 120),
+            ratio: entry?.intersectionRatio ?? 0,
+            visible: Boolean(entry?.isIntersecting),
+          };
+        })
+        .filter((entry) => entry.visible);
+
+      if (visibleEntries.length > 0) {
+        visibleEntries.sort((left, right) => {
+          if (right.ratio !== left.ratio) {
+            return right.ratio - left.ratio;
+          }
+          return left.top - right.top;
+        });
+        setActiveSectionId(visibleEntries[0]?.id ?? sectionNavItems[0]?.id ?? 'analysis-summary');
+        return;
+      }
+
+      const fallback = [...sectionElements]
+        .map((element) => ({
+          id: element.id,
+          top: element.getBoundingClientRect().top,
+        }))
+        .filter((entry) => entry.top <= 140)
+        .sort((left, right) => right.top - left.top)[0];
+
+      if (fallback?.id) {
+        setActiveSectionId(fallback.id);
+      }
+    };
+
+    const observer = new IntersectionObserver(
+      (entries) => {
+        entries.forEach((entry) => {
+          if (entry.isIntersecting) {
+            activeEntries.set(entry.target.id, entry);
+          } else {
+            activeEntries.delete(entry.target.id);
+          }
+        });
+        updateActiveSection();
+      },
+      {
+        rootMargin: '-96px 0px -52% 0px',
+        threshold: [0.16, 0.35, 0.6],
+      }
+    );
+
+    sectionElements.forEach((element) => observer.observe(element));
+    updateActiveSection();
+
+    return () => observer.disconnect();
+  }, [sectionNavItems]);
 
   return (
     <div className="container mx-auto max-w-6xl space-y-4 p-4">
@@ -709,22 +819,53 @@ export default function StockAnalysisPage() {
             <span>分析时间：{result.analysis_time || '未知'}</span>
           </div>
 
-          <AnalysisSummaryPanel
-            viewModel={pageViewModel.summary}
-            globalStrategy={pageViewModel.globalStrategy}
-            onGenerate={handleGenerateAiSummary}
-            canGenerate={Boolean(result) && !isLoading}
-          />
+          <nav
+            aria-label="分析页导航"
+            className="sticky top-3 z-20 overflow-x-auto rounded-2xl border border-border/70 bg-card/95 p-1.5 shadow-sm backdrop-blur supports-[backdrop-filter]:bg-card/88"
+          >
+            <div className="inline-flex min-w-full items-center gap-1.5 rounded-xl bg-muted/72 p-1">
+              {sectionNavItems.map((item) => (
+                <a
+                  key={item.id}
+                  href={`#${item.id}`}
+                  aria-current={item.id === activeSectionId ? 'page' : undefined}
+                  data-active={item.id === activeSectionId ? 'true' : 'false'}
+                  onClick={() => setActiveSectionId(item.id)}
+                  className={cn(
+                    'shrink-0 whitespace-nowrap rounded-xl px-4 py-2 text-sm font-medium transition-all duration-200',
+                    item.id === activeSectionId
+                      ? 'bg-background text-foreground shadow-sm ring-1 ring-border/70'
+                      : 'text-muted-foreground hover:bg-background/70 hover:text-foreground'
+                  )}
+                >
+                  {item.label}
+                </a>
+              ))}
+            </div>
+          </nav>
 
-          <TradingCycleBus combinations={pageViewModel.tradingCombinations} />
+          <section id="analysis-summary" className="scroll-mt-24">
+            <AnalysisSummaryPanel
+              viewModel={pageViewModel.summary}
+              globalStrategy={pageViewModel.globalStrategy}
+              onGenerate={handleGenerateAiSummary}
+              canGenerate={Boolean(result) && !isLoading}
+            />
+          </section>
 
-          <AnalysisPeriodDetails
-            sections={periodSections}
-            defaultLevelKey={pageViewModel.globalStrategy.primaryConstraintLevel}
-          />
+          <section id="analysis-bus" className="scroll-mt-24">
+            <TradingCycleBus combinations={pageViewModel.tradingCombinations} />
+          </section>
+
+          <section id="analysis-periods" className="scroll-mt-24">
+            <AnalysisPeriodDetails
+              sections={periodSections}
+              defaultLevelKey={pageViewModel.globalStrategy.primaryConstraintLevel}
+            />
+          </section>
 
           {aiMarkdown && aiState.status === 'ready' ? (
-            <Card className="border-border/70 bg-card/95 shadow-sm">
+            <Card id="analysis-report" className="scroll-mt-24 border-border/70 bg-card/95 shadow-sm">
               <CardHeader>
                 <CardTitle className="text-base">AI 正文</CardTitle>
               </CardHeader>
@@ -735,17 +876,19 @@ export default function StockAnalysisPage() {
           ) : null}
 
           {aiState.status === 'ready' && aiSession ? (
-            <AiFollowupPanel
-              draft={aiFollowupDraft}
-              turns={aiFollowupTurns}
-              isLoading={aiFollowupLoading}
-              errorMessage={aiFollowupError}
-              onDraftChange={setAiFollowupDraft}
-              onSubmit={handleSubmitAiFollowup}
-              renderMarkdown={(content) => (
-                <Markdown content={content} className="space-y-3 text-sm" />
-              )}
-            />
+            <section id="analysis-followup" className="scroll-mt-24">
+              <AiFollowupPanel
+                draft={aiFollowupDraft}
+                turns={aiFollowupTurns}
+                isLoading={aiFollowupLoading}
+                errorMessage={aiFollowupError}
+                onDraftChange={setAiFollowupDraft}
+                onSubmit={handleSubmitAiFollowup}
+                renderMarkdown={(content) => (
+                  <Markdown content={content} className="space-y-3 text-sm" />
+                )}
+              />
+            </section>
           ) : null}
         </div>
       ) : null}

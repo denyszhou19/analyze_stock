@@ -73,7 +73,7 @@ const summaryViewModel: AnalysisPageSummaryViewModel = {
 };
 
 const globalStrategyViewModel: AnalysisPageGlobalStrategyViewModel = {
-  scopeLabel: '综合范围：中线主策略组合、短线执行组合、超短线 / T 组合',
+  scopeLabel: '综合范围：中线主策略组合、波段执行组合、短线执行组合、超短线 / T 组合',
   primaryCombination: 'shortline',
   primaryCombinationLabel: '短线执行组合｜日线 → 30分钟',
   primaryConstraintLevel: 'daily',
@@ -132,8 +132,7 @@ test('AnalysisSummaryPanel idle renders generation CTA and backend gates', async
   assert.match(html, /时空：中偏强，等待 C 结构边界确认/);
   assert.match(html, /结构：A五段式，A原型成立/);
   assert.match(html, /现在怎么做：先看重新站上平台上沿，确认看回踩 MA55 不破，失效看跌回平台下沿/);
-  assert.match(html, /级别｜子级逆势/);
-  assert.match(html, /执行｜回踩执行/);
+  assert.match(html, /综合范围：中线主策略组合、波段执行组合、短线执行组合、超短线 \/ T 组合/);
   assert.match(html, /后端最终动作/);
 });
 
@@ -209,7 +208,7 @@ test('AnalysisSummaryPanel ready renders phase3 enhanced AI summary fields', asy
   assert.match(html, /D候选｜30分钟回抽段/);
   assert.match(html, /30分钟回抽止跌并放量重新转强/);
   assert.match(html, /跌回日线确认低点下方/);
-  assert.match(html, /等待状态/);
+  assert.match(html, /当前阻塞/);
   assert.match(html, /等待回抽确认｜30分钟回抽段尚未完成止跌确认/);
   assert.match(html, /观察30分钟止跌并重新转强/);
 });
