@@ -10,6 +10,36 @@
 
 ---
 
+## UI 归属与显示边界
+
+本计划虽然以策略合同为主，但实现时必须遵守 `skills/trinity-analysis-ui-design/SKILL.md` 的页面职责边界：
+
+1. `AnalysisSummaryPanel`
+   - 只讲页级综合结论、页级阻塞、页级风险提醒
+   - 不复述组合级动作
+   - 不展开单级别结构证据
+
+2. `TradingCycleBus`
+   - 只讲组合级动作、组合级约束、组合级风险
+   - `primary_candidate / candidate stage / direction_lock` 只用来说明“这条组合现在能做到什么程度”
+   - 不再复述页级结论和周期详情证据
+
+3. `AnalysisPeriodDetails`
+   - 只讲该级别结构证据、父级约束、下一确认、失效边界
+   - 不再输出执行动作、仓位约束、买卖指令
+   - 首屏证据优先级固定为：`结构匹配状态 -> 当前段 -> 下一确认`
+   - `均线背景 / 结构方向 / 均线关键位` 只能作为次级支撑证据
+
+## 中文映射硬规则
+
+`structure_prediction`、`direction_lock`、`exception_interrupt` 的内部字段名和枚举值，不允许直接进入用户可见 UI、AI 正文、AI 追问、badge 或 hover。
+
+实现时必须经过统一中文映射，至少包括：
+
+- `debouncing / candidate / strengthening / blocked / exception`
+- `direction_lock / exception_interrupt / narrative_switch`
+- `macd_zero_axis_break / parent_not_released` 等 trigger signal 枚举
+
 ## 当前工作区前置条件
 
 当前工作区已经有未提交 UI / AI / 周期详情改动：
@@ -51,16 +81,21 @@
   - 增加 `debouncing / exception / direction_lock` 的中文显示。
 - Modify: `src/lib/trinity-analysis-page-view-model.ts`
   - 综合判断、交易总线、周期详情优先消费 `structure_prediction`。
+  - 维持“页级结论 / 组合动作 / 周期证据”三层显示归属，避免同义重复。
 - Modify: `src/lib/structure-explainability-view-model.ts`
   - 结构说明区输出“结构匹配状态 / 当前段 / 下一确认 / 均线背景 / 结构方向”。
 - Modify: `src/components/stock/AnalysisSummaryPanel.tsx`
   - 用主候选与候选阶段替换旧的静态结构摘要。
+  - 只显示页级综合结论，不展开组合级动作。
 - Modify: `src/components/stock/TradingCycleBus.tsx`
   - 交易总线保持当前布局，但结构标签 / 说明优先来自主候选合同。
+  - 只显示组合级动作与组合级约束，不复述页级结论和周期证据。
 - Modify: `src/components/stock/AnalysisPeriodDetails.tsx`
   - 概览只显示最终判定 / 父级约束 / 当前结构；结构说明改用新合同。
+  - 首屏证据固定为 `结构匹配状态 / 当前段 / 下一确认`。
 - Modify: `src/components/stock/StructureExplainabilityPanel.tsx`
   - 周期详情证据区不再展示执行动作，改展示结构匹配状态、方向锁、均线关键位。
+  - `均线背景 / 结构方向 / 均线关键位` 只作为次级支撑证据。
 - Modify: `tests/ai-analysis-payload.test.ts`
   - 锁定新 payload 字段。
 - Modify: `tests/ai-analysis-follow-up-route.test.ts`
@@ -717,6 +752,7 @@ export interface TrinityDirectionLockDecision {
   '- 若 direction_lock.status = locked，必须把交易语气降级为等待确认，不得继续建议试探买卖。',
   '- 若 exception_interrupt.enabled = true，必须优先说明这是异常中断 / 风控优先，而不是普通结构候选。',
   '- 用户可见文案默认中文，不直接输出 execution / wait / no_position / debouncing 这类英文内部词。',
+  '- structure_prediction / direction_lock / exception_interrupt / narrative_switch / trigger_signals 这些字段名和枚举值不得原样出现在用户可见内容里。',
 ```
 
 - [ ] **Step 4: 写 payload / route 测试**
@@ -852,6 +888,20 @@ if (decision.structure_prediction?.exception_interrupt?.enabled) {
 }
 ```
 
+- [ ] **Step 3.1: 先补显示归属保护断言**
+
+在 `tests/trinity-analysis-page-view-model.test.ts` 追加：
+
+```ts
+test('summary/bus/period details keep distinct responsibilities for predictive contracts', () => {
+  const model = buildAnalysisPageViewModel(sampleAnalysisResultWithPredictiveA);
+  assert.match(model.summary.structureSummary ?? '', /A候选|B候选/);
+  assert.doesNotMatch(model.summary.structureSummary ?? '', /下一确认|当前段/);
+  assert.match(model.tradingCombinations[0]?.actionSummary ?? '', /候选|等待|试探|异常中断/);
+  assert.doesNotMatch(model.tradingCombinations[0]?.actionSummary ?? '', /结构方向|均线背景/);
+});
+```
+
 - [ ] **Step 4: 补视图模型与组件测试**
 
 在 `tests/trinity-analysis-page-view-model.test.ts` 增加：
@@ -976,6 +1026,8 @@ const parentConstraintLabel = parentLevelLabel && currentLevelLabel && relationL
   </EvidenceCard>
 ) : null}
 
+{/* 首屏主证据到这里结束；以下内容只作为次级支撑证据 */}
+
 {maBackgroundSummary ? (
   <EvidenceCard title="均线背景" tone="neutral">
     {maBackgroundSummary}
@@ -1020,6 +1072,24 @@ test('StructureExplainabilityPanel evidence mode replaces execution cards with p
   assert.match(html, /结构方向/);
   assert.match(html, /MA55/);
   assert.doesNotMatch(html, /执行动作|仓位约束|买入|卖出/);
+});
+
+test('StructureExplainabilityPanel keeps primary evidence ahead of secondary context fields', async () => {
+  const { StructureExplainabilityPanel } = await importStructureExplainabilityPanel();
+  const html = renderToStaticMarkup(
+    React.createElement(StructureExplainabilityPanel, {
+      mode: 'period_evidence',
+      structure: predictiveStructureFixture,
+    })
+  );
+  const matchIndex = html.indexOf('结构匹配状态');
+  const legIndex = html.indexOf('当前段');
+  const nextIndex = html.indexOf('下一确认');
+  const maIndex = html.indexOf('均线背景');
+  const directionIndex = html.indexOf('结构方向');
+  assert.ok(matchIndex >= 0 && legIndex >= 0 && nextIndex >= 0);
+  assert.ok(maIndex > nextIndex);
+  assert.ok(directionIndex > nextIndex);
 });
 ```
 
@@ -1185,4 +1255,3 @@ git commit -m "实现：接入三位一体前瞻结构候选链路"
 - `AI payload / prompt 使用新合同`：Task 4。
 - `综合判断 / 总线 / 周期详情切到新合同`：Task 5 + Task 6。
 - `HTTP 基准回归`：Task 7。
-
