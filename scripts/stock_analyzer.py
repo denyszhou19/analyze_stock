@@ -5081,6 +5081,165 @@ class TrinityStockAnalyzer:
             'evidence': [item for item in evidence if item][:3],
         }
 
+    def _resolve_level_nesting_allowed_candidates(
+        self,
+        *,
+        parent_status: Optional[str],
+        direction: str,
+    ) -> List[str]:
+        table_config = self.SPACETIME_STRUCTURE_TABLE.get(parent_status or '')
+        if not isinstance(table_config, dict):
+            return []
+        if direction == 'up':
+            candidates = table_config.get('上涨结构') or []
+        elif direction == 'down':
+            candidates = table_config.get('下跌结构') or []
+        else:
+            candidates = (table_config.get('上涨结构') or []) + (table_config.get('下跌结构') or [])
+        return list(dict.fromkeys([item for item in candidates if item in {'A', 'B', 'C', 'D'}]))
+
+    def _build_level_nesting_prediction_candidate(
+        self,
+        *,
+        family: Optional[str],
+        stage: str,
+        direction: str,
+        reason: str,
+    ) -> Dict[str, Any]:
+        family = family if family in {'A', 'B', 'C', 'D'} else 'unknown'
+        label_map = {
+            'A': 'A候选',
+            'B': 'B候选',
+            'C': 'C候选',
+            'D': 'D候选',
+            'unknown': '待确认候选',
+        }
+        return {
+            'family': family,
+            'stage': stage,
+            'label': label_map.get(family, '待确认候选'),
+            'direction': direction,
+            'reason': reason,
+        }
+
+    def _build_level_nesting_structure_prediction(
+        self,
+        *,
+        parent_status: Optional[str],
+        child_payload: Optional[Dict[str, Any]],
+        family: str,
+        direction: str,
+        resonance: str,
+        node_semantic: Optional[Dict[str, Any]],
+    ) -> Dict[str, Any]:
+        child_payload = child_payload if isinstance(child_payload, dict) else {}
+        structure_payload = child_payload.get('structure') or {}
+        interpretation = structure_payload.get('interpretation') or {}
+        current_leg = interpretation.get('current_leg') or {}
+        current_leg_label = current_leg.get('label') if isinstance(current_leg.get('label'), str) else ''
+        allowed_candidates = self._resolve_level_nesting_allowed_candidates(
+            parent_status=parent_status,
+            direction=direction,
+        )
+        has_spike_hint = any(token in current_leg_label for token in ('单根', '尝试'))
+        has_progress_hint = bool(
+            self._extract_level_nesting_stage_token(current_leg_label, 'a')
+            or any(token in current_leg_label for token in ('推进', '急跌', '延续', '拉升'))
+        )
+        is_v_reversal = family == 'D' and 'V反' in current_leg_label
+        close = child_payload.get('close')
+        ma55 = child_payload.get('ma55')
+        close_above_ma55 = isinstance(close, (int, float)) and isinstance(ma55, (int, float)) and close >= ma55
+
+        dominant_narrative = '结构跟随'
+        narrative_switch_passed = False
+        narrative_switch_reason = '当前未出现明确切换信号'
+        primary_family = family if family in {'A', 'B', 'C', 'D'} else (allowed_candidates[0] if allowed_candidates else 'unknown')
+        primary_stage = 'tracking'
+        primary_reason = current_leg_label or '沿用当前结构候选'
+        secondary_family = allowed_candidates[0] if allowed_candidates else 'unknown'
+        secondary_stage = 'standby'
+        secondary_reason = '保留为时空范围内的次候选'
+
+        if is_v_reversal:
+            dominant_narrative = '异常中断'
+            narrative_switch_reason = 'V反结构进入异常中断处理'
+            primary_family = 'D'
+            primary_stage = 'exception'
+            primary_reason = current_leg_label or 'V反异常中断'
+            secondary_family = allowed_candidates[0] if allowed_candidates else 'unknown'
+        elif 'A' in allowed_candidates and direction == 'up' and (has_progress_hint or has_spike_hint):
+            primary_family = 'A'
+            secondary_family = 'B' if 'B' in allowed_candidates else (allowed_candidates[0] if allowed_candidates else family)
+            if has_spike_hint:
+                dominant_narrative = '分歧试探'
+                primary_stage = 'debouncing'
+                narrative_switch_passed = False
+                narrative_switch_reason = '仅出现单次拉升尝试，仍需等待防抖确认'
+                primary_reason = current_leg_label or '单次试探尚未完成主语切换'
+            else:
+                dominant_narrative = '推进主导'
+                primary_stage = 'strengthening' if close_above_ma55 else 'tracking'
+                narrative_switch_passed = close_above_ma55
+                narrative_switch_reason = '推进主语已切向 A 候选' if close_above_ma55 else '推进信号出现，但仍需站稳 MA55'
+                primary_reason = current_leg_label or '推进段主导，优先跟踪 A 候选'
+            secondary_stage = 'tracking'
+            secondary_reason = '原平台语义仍保留为次候选'
+        elif primary_family in allowed_candidates:
+            dominant_narrative = '结构跟随'
+            narrative_switch_passed = resonance == 'aligned'
+            narrative_switch_reason = '沿用三位一体时空允许候选'
+            primary_stage = 'tracking' if resonance == 'aligned' else 'watch'
+            secondary_family = next((item for item in allowed_candidates if item != primary_family), 'unknown')
+            secondary_stage = 'standby'
+            secondary_reason = '保留为同级别备选候选'
+
+        fallback_reason = (
+            (node_semantic or {}).get('reason')
+            or current_leg_label
+            or '当 A/B/C 不成立时，D 仅作为降级候选'
+        )
+        fallback_candidate = self._build_level_nesting_prediction_candidate(
+            family='D',
+            stage='exception' if is_v_reversal else 'fallback',
+            direction=direction,
+            reason=fallback_reason,
+        )
+        primary_candidate = self._build_level_nesting_prediction_candidate(
+            family=primary_family,
+            stage=primary_stage,
+            direction=direction,
+            reason=primary_reason,
+        )
+        secondary_candidate = self._build_level_nesting_prediction_candidate(
+            family=secondary_family if secondary_family != primary_family else 'unknown',
+            stage=secondary_stage,
+            direction=direction,
+            reason=secondary_reason,
+        )
+        exception_interrupt = {
+            'enabled': is_v_reversal,
+            'reason': current_leg_label or '未触发异常中断',
+        }
+
+        return {
+            'spacetime_scope': {
+                'parent_status': parent_status,
+                'allowed_candidates': allowed_candidates,
+                'current_family': family,
+                'current_direction': direction,
+            },
+            'dominant_narrative': dominant_narrative,
+            'narrative_switch': {
+                'passed': narrative_switch_passed,
+                'reason': narrative_switch_reason,
+            },
+            'primary_candidate': primary_candidate,
+            'secondary_candidate': secondary_candidate,
+            'fallback_candidate': fallback_candidate,
+            'exception_interrupt': exception_interrupt,
+        }
+
     def _build_trinity_level_nesting_decision(
         self,
         *,
@@ -5134,6 +5293,14 @@ class TrinityStockAnalyzer:
                     'allow_only_light_probe': True,
                     'reason': f'{parent_label}缺失，{child_label}只能等待确认',
                 },
+                'structure_prediction': self._build_level_nesting_structure_prediction(
+                    parent_status=None,
+                    child_payload=child_payload,
+                    family='unknown',
+                    direction='neutral',
+                    resonance='parent_unclear',
+                    node_semantic=None,
+                ),
                 **conditions,
             }
 
@@ -5241,6 +5408,14 @@ class TrinityStockAnalyzer:
                 'allow_only_light_probe': True,
                 'reason': reason,
             }
+        structure_prediction = self._build_level_nesting_structure_prediction(
+            parent_status=parent_status,
+            child_payload=child_payload,
+            family=family,
+            direction=direction,
+            resonance=resonance,
+            node_semantic=node_semantic,
+        )
 
         return {
             'parent_level': parent_level,
@@ -5261,6 +5436,7 @@ class TrinityStockAnalyzer:
             'execution_strength': execution_strength,
             'downgrade_reason': downgrade_reason,
             'permission': permission,
+            'structure_prediction': structure_prediction,
             **conditions,
         }
 
