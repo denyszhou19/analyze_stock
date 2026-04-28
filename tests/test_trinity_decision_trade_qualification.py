@@ -849,3 +849,152 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(decision['trade_mode'], 'wait_confirmation')
         self.assertEqual(decision['position_permission'], 'no_position')
         self.assertTrue(any('MA233' in reason for reason in decision['reason']))
+
+    def test_exception_interrupt_forces_risk_control_before_trade_mapping(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': True,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': 'V反异常中断，常规候选失效'},
+                'structure_prediction': {
+                    'primary_candidate': {'family': 'D', 'stage': 'exception', 'label': 'D候选'},
+                    'exception_interrupt': {
+                        'enabled': True,
+                        'type': 'v_reversal',
+                        'reason': 'V反极速反抽',
+                    },
+                },
+                'direction_lock': {
+                    'status': 'released',
+                    'reason': '方向锁未额外阻断',
+                },
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={
+                'ma_gate': {
+                    'allow_long': True,
+                    'allow_short': False,
+                    'reason': 'MA55 支撑有效',
+                }
+            },
+            volume_decision={'volume_gate': {'reason': '量能确认'}},
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'resonance': 'aligned',
+                'execution_strength': 'normal',
+                'permission': {'allow_position_increase': True},
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'risk_control')
+        self.assertEqual(decision['position_permission'], 'no_position')
+        self.assertTrue(any('异常' in reason or 'V反' in reason for reason in decision['reason']))
+
+    def test_debouncing_candidate_only_waits_for_confirmation(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': False,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': 'A候选仍在单次试探防抖阶段'},
+                'structure_prediction': {
+                    'primary_candidate': {'family': 'A', 'stage': 'debouncing', 'label': 'A候选'},
+                    'exception_interrupt': {'enabled': False},
+                },
+                'direction_lock': {
+                    'status': 'released',
+                    'reason': '方向锁未额外阻断',
+                },
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={
+                'ma_gate': {
+                    'allow_long': True,
+                    'allow_short': False,
+                    'reason': 'MA55 支撑有效',
+                }
+            },
+            volume_decision={'volume_gate': {'reason': '量能确认'}},
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'resonance': 'aligned',
+                'execution_strength': 'normal',
+                'permission': {'allow_position_increase': True},
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['position_permission'], 'no_position')
+
+    def test_build_trinity_decision_projects_direction_lock_into_trade_qualification(self) -> None:
+        decision = self.analyzer._build_trinity_decision(
+            level='hour30',
+            structure_payload={
+                'structure_type': 'A五段式',
+                'trend_direction': '上涨',
+                'description': 'A候选转强，但仍受 MA233 压制',
+                'interpretation': {
+                    'focus_structure': {
+                        'archetype_family': 'A',
+                        'standard_qualification': 'standard',
+                        'directional_bias': 'up',
+                    },
+                    'current_leg': {
+                        'direction': 'up',
+                        'label': 'a4→live 上行推进中',
+                    },
+                },
+                'structure_details': {
+                    'focus_classification': {
+                        'type': 'A五段式',
+                        'standard_qualification': 'standard',
+                    },
+                    'explainability': {'a4_price': 21.6},
+                },
+            },
+            macd_payload={'status': '中偏强'},
+            moving_averages={
+                'price_vs_ma55': 'above',
+                'price_vs_ma233': 'below',
+                'ma_status': '多头修复中',
+            },
+            breakthrough_payload={'direction': 'up', 'is_valid': True, 'pattern_type': 'breakout'},
+            execution_payload={
+                'can_trade': True,
+                'action': 'buy',
+                'direction': 'long',
+                'entry_style': 'pullback_confirm',
+                'trigger': ['A候选推进确认'],
+                'invalidation': ['跌回 a4 下方'],
+                'confirmation': ['站稳 MA233'],
+                'position_sizing': {'initial': '20%-30%'},
+                'risk_flags': [],
+                'rationale': '理论上可做多，但需先等 MA233 放行',
+            },
+            level_nesting_payload={
+                'resonance': 'aligned',
+                'execution_strength': 'normal',
+                'permission': {'allow_position_increase': True},
+                'structure_prediction': {
+                    'primary_candidate': {
+                        'family': 'A',
+                        'stage': 'strengthening',
+                        'label': 'A候选',
+                        'direction': 'up',
+                    },
+                    'exception_interrupt': {'enabled': False},
+                },
+            },
+            period_payload={'volume_ratio_5': 1.3, 'volume_ratio_20': 1.15, 'amount_ratio_20': 1.18},
+        )
+
+        self.assertEqual(decision['direction_lock']['status'], 'locked')
+        self.assertEqual(decision['trade_qualification']['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['trade_qualification']['position_permission'], 'no_position')

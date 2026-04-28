@@ -3626,6 +3626,62 @@ class TrinityStockAnalyzer:
             },
         }
 
+    def _build_direction_lock(
+        self,
+        *,
+        structure_prediction: Optional[Dict[str, Any]],
+        moving_average_decision: Dict[str, Any],
+        structure_direction: Optional[str] = None,
+    ) -> Dict[str, Any]:
+        structure_prediction = structure_prediction if isinstance(structure_prediction, dict) else {}
+        moving_average_decision = moving_average_decision if isinstance(moving_average_decision, dict) else {}
+        primary_candidate = structure_prediction.get('primary_candidate') or {}
+        candidate_direction = primary_candidate.get('direction') or structure_direction
+        price_position = moving_average_decision.get('price_position') or {}
+        above_ma55 = price_position.get('above_ma55')
+        above_ma233 = price_position.get('above_ma233')
+
+        if candidate_direction not in {'up', 'down'}:
+            return {
+                'status': 'mixed',
+                'reason': '方向锁数据不足，暂无法判断候选方向',
+            }
+        if not isinstance(above_ma55, bool) or not isinstance(above_ma233, bool):
+            return {
+                'status': 'mixed',
+                'reason': '均线位置数据不足，方向锁暂不启用',
+            }
+        if candidate_direction == 'up':
+            blocking_lines = [
+                line
+                for line, passed in (('MA55', above_ma55), ('MA233', above_ma233))
+                if not passed
+            ]
+            if blocking_lines:
+                return {
+                    'status': 'locked',
+                    'reason': f"{'、'.join(blocking_lines)} 仍在头顶压制，向上候选需等待有效站上",
+                }
+            return {
+                'status': 'released',
+                'reason': '价格已有效站上 MA55 和 MA233，方向锁放行',
+            }
+
+        blocking_lines = [
+            line
+            for line, passed in (('MA55', above_ma55), ('MA233', above_ma233))
+            if passed
+        ]
+        if blocking_lines:
+            return {
+                'status': 'locked',
+                'reason': f"价格尚未有效跌破{'、'.join(blocking_lines)}，向下候选需继续等待",
+            }
+        return {
+            'status': 'released',
+            'reason': '价格已有效跌破 MA55 和 MA233，方向锁放行',
+        }
+
     def _build_trinity_trade_qualification(
         self,
         structure_decision: Dict[str, Any],
@@ -3663,6 +3719,21 @@ class TrinityStockAnalyzer:
             (is_long_intent and allow_long and structure_direction != 'down')
             or (is_short_intent and allow_short and structure_direction != 'up')
         )
+        structure_prediction = structure_decision.get('structure_prediction') or level_nesting_decision.get('structure_prediction') or {}
+        primary_candidate = structure_prediction.get('primary_candidate') or {}
+        primary_stage = primary_candidate.get('stage')
+        exception_interrupt = (
+            structure_decision.get('exception_interrupt')
+            or structure_prediction.get('exception_interrupt')
+            or {}
+        )
+        direction_lock = structure_decision.get('direction_lock') or {}
+        if not direction_lock and structure_prediction:
+            direction_lock = self._build_direction_lock(
+                structure_prediction=structure_prediction,
+                moving_average_decision=moving_average_decision,
+                structure_direction=structure_direction,
+            )
         if is_long_intent:
             volume_gate_passed = (
                 confidence_adjustment == 'neutral'
@@ -3705,6 +3776,27 @@ class TrinityStockAnalyzer:
         )
         nesting_resonance = level_nesting_decision.get('resonance')
         nesting_reason = nesting_permission.get('reason') or '级别嵌套未放行'
+        if exception_interrupt.get('enabled'):
+            return {
+                'trade_mode': 'risk_control',
+                'position_permission': 'no_position',
+                'confidence': apply_confidence('low'),
+                'reason': [
+                    exception_interrupt.get('reason')
+                    or '异常中断触发，优先进入风控模式',
+                    *reasons,
+                ],
+            }
+        if direction_lock.get('status') == 'locked':
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': apply_confidence('low'),
+                'reason': [
+                    direction_lock.get('reason') or '方向锁未放行，继续等待',
+                    *reasons,
+                ],
+            }
         if nesting_resonance in {'blocked', 'structure_mismatch', 'parent_unclear'}:
             return {
                 'trade_mode': 'wait_confirmation',
@@ -3777,6 +3869,35 @@ class TrinityStockAnalyzer:
                 'position_permission': 'reduce_only',
                 'confidence': apply_confidence('high'),
                 'reason': ['当前信号要求规避或仅做风险控制', *reasons],
+            }
+        if primary_stage == 'debouncing':
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': apply_confidence('low'),
+                'reason': ['候选仍在防抖阶段，先等待确认', *reasons],
+            }
+        if primary_stage in {'candidate', 'strengthening'}:
+            if action in {'buy', 'sell'} and direction_gate_passed and volume_gate_passed:
+                return {
+                    'trade_mode': 'conditional_boundary_trade',
+                    'position_permission': 'light_probe',
+                    'confidence': apply_confidence('medium' if primary_stage == 'strengthening' else 'low'),
+                    'reason': [
+                        '候选转强但尚未达到标准节点放行，只允许轻仓试探'
+                        if primary_stage == 'strengthening'
+                        else '候选阶段仅允许轻仓试探，需继续等待确认',
+                        *reasons,
+                    ],
+                }
+            return {
+                'trade_mode': 'wait_confirmation',
+                'position_permission': 'no_position',
+                'confidence': apply_confidence('low'),
+                'reason': [
+                    '候选阶段门控尚未满足，继续等待确认',
+                    *reasons,
+                ],
             }
         node_semantic = level_nesting_decision.get('node_semantic') or {}
         if (
@@ -4265,8 +4386,23 @@ class TrinityStockAnalyzer:
         spacetime_decision = self._build_trinity_spacetime_decision(structure_payload, macd_payload)
         moving_average_decision = self._build_trinity_moving_average_decision(moving_averages, breakthrough_payload)
         volume_decision = self._build_trinity_volume_confirmation_decision(period_payload or {}, breakthrough_payload)
+        structure_prediction = (level_nesting_payload or {}).get('structure_prediction')
+        direction_lock = self._build_direction_lock(
+            structure_prediction=structure_prediction,
+            moving_average_decision=moving_average_decision,
+            structure_direction=structure_decision.get('direction'),
+        )
+        enriched_structure_decision = dict(structure_decision)
+        if structure_prediction:
+            enriched_structure_decision['structure_prediction'] = structure_prediction
+            enriched_structure_decision['exception_interrupt'] = (
+                (structure_prediction.get('exception_interrupt') or {})
+                if isinstance(structure_prediction, dict)
+                else {}
+            )
+        enriched_structure_decision['direction_lock'] = direction_lock
         trade_qualification = self._build_trinity_trade_qualification(
-            structure_decision,
+            enriched_structure_decision,
             spacetime_decision,
             moving_average_decision,
             volume_decision,
@@ -4348,6 +4484,7 @@ class TrinityStockAnalyzer:
             'volume_confirmation': volume_decision,
             'level_nesting': level_nesting_payload,
             'structure_prediction': (level_nesting_payload or {}).get('structure_prediction'),
+            'direction_lock': direction_lock,
             'trade_qualification': trade_qualification,
             'execution': execution_decision,
             'candidate_structure': candidate_structure,
