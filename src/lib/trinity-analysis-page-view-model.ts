@@ -1208,16 +1208,56 @@ function buildPredictiveRiskLabels(decision?: TrinityDecision | null): string[] 
 }
 
 function buildPredictivePrimaryReason(decision: TrinityDecision): string | null {
-  return (
-    resolveChineseReason(
-      [
-        decision.structure_prediction?.exception_interrupt?.reason,
-        decision.structure_prediction?.primary_candidate?.reason,
-        decision.direction_lock?.reason,
-      ],
-      ''
-    ) || null
-  );
+  if (decision.structure_prediction?.exception_interrupt?.enabled) {
+    return (
+      resolveChineseReason(
+        [decision.structure_prediction.exception_interrupt.reason],
+        '异常中断，先风控、再评估，不按常规候选试探'
+      ) || '异常中断，先风控、再评估，不按常规候选试探'
+    );
+  }
+
+  let stageReason = '';
+  switch (decision.structure_prediction?.primary_candidate?.stage) {
+    case 'debouncing':
+      stageReason = '主候选正在形成，先等确认，不按已完成结构处理';
+      break;
+    case 'candidate':
+      stageReason = '主候选已出现，先观察确认，不急着放大动作';
+      break;
+    case 'strengthening':
+      stageReason = '主候选正在增强，确认后再推进';
+      break;
+    case 'standard_confirmed':
+      stageReason = '主候选已确认，可按标准节奏跟踪';
+      break;
+    case 'degraded':
+      stageReason = '主候选解释力下降，先降级观察';
+      break;
+    case 'blocked':
+      stageReason = '主候选暂未放行，先继续等待';
+      break;
+    case 'exception':
+      stageReason = '异常中断，先风控、再评估，不按常规候选试探';
+      break;
+    default:
+      stageReason = '';
+  }
+
+  const directionLockReason =
+    decision.direction_lock && decision.direction_lock.status !== 'released'
+      ? normalizeRuleChainText(decision.direction_lock.reason)
+      : '';
+
+  if (stageReason && directionLockReason) {
+    return `${stageReason}｜${directionLockReason}`;
+  }
+
+  if (directionLockReason) {
+    return directionLockReason;
+  }
+
+  return stageReason || null;
 }
 
 function buildPredictiveCandidateStructureSummary(

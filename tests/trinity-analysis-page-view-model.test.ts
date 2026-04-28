@@ -334,7 +334,7 @@ test('view model prefers predictive primary candidate and direction lock in summ
         stage: 'debouncing',
         label: 'A候选',
         direction: 'up',
-        reason: '主升候选刚开始形成',
+        reason: 'a4→live 上行推进中',
       },
       secondary_candidate: {
         family: 'B',
@@ -374,6 +374,9 @@ test('view model prefers predictive primary candidate and direction lock in summ
 
   assert.match(vm.summary.structureSummary, /A候选正在形成，先等确认/);
   assert.doesNotMatch(vm.summary.structureSummary, /a4→live|debouncing|strengthening/);
+  assert.match(vm.summary.primaryReason, /主候选正在形成，先等确认/);
+  assert.match(vm.summary.primaryReason, /MA233 头顶压制/);
+  assert.doesNotMatch(vm.summary.primaryReason, /a4→live|b5→live|当前段|下一确认|结构方向|均线背景/);
   assert.match(vm.summary.executionSummary, /主候选正在形成，先等确认/);
   assert.match(vm.summary.executionSummary, /方向未放行/);
   assert.ok(vm.summary.riskLabels.some((label) => /方向未放行/.test(label)));
@@ -448,6 +451,65 @@ test('view model prioritizes exception interrupt over ordinary predictive candid
   assert.ok(midline);
   assert.match(midline!.recommendation, /先风控、再评估/);
   assert.match(midline!.majorRisk.value, /异常中断/);
+});
+
+test('summary primary reason does not replay predictive leg evidence text', () => {
+  const result = createResult();
+  result.periods.daily!.trinity_decision = createDecision({
+    structure_prediction: {
+      spacetime_scope: {
+        parent_status: '极强',
+        allowed_candidates: ['A', 'B'],
+        degraded_candidates: ['C'],
+        blocked_candidates: ['D'],
+        current_family: 'B',
+        current_direction: 'up',
+      },
+      dominant_narrative: '推进主导',
+      narrative_switch: {
+        from_family: 'B',
+        to_family: 'A',
+        state: 'debouncing',
+        hard_triggers: [],
+        soft_triggers: [],
+        blocking_signals: [],
+        passed: false,
+      },
+      primary_candidate: {
+        family: 'A',
+        stage: 'debouncing',
+        label: 'A候选',
+        direction: 'up',
+        reason: 'b5→live 单根拉升尝试',
+      },
+      secondary_candidate: null,
+      fallback_candidate: {
+        family: 'D',
+        label: 'D候选',
+        enabled: false,
+        reason: '当前无需降级',
+      },
+      exception_interrupt: {
+        enabled: false,
+        type: null,
+        reason: '未触发异常中断',
+      },
+      observed_context: {
+        global_structure_type: 'B双平台式',
+        focus_structure_type: 'A五段式',
+        current_leg: 'b5→live 单根拉升尝试',
+      },
+    },
+  });
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.match(vm.summary.primaryReason, /主候选正在形成，先等确认/);
+  assert.doesNotMatch(vm.summary.primaryReason, /b5→live|单根拉升尝试/);
 });
 
 test('status bar renders data ranges by configured level order and daily valid range', () => {
