@@ -5266,6 +5266,12 @@ class TrinityStockAnalyzer:
             or current_leg_label
             or '当 A/B/C 不成立时，D 仅作为降级候选'
         )
+        fallback_enabled = (
+            not is_v_reversal
+            and from_family == 'D'
+            and from_family in blocked_candidates
+            and primary_family in {'A', 'B', 'C'}
+        )
         primary_candidate = self._build_level_nesting_prediction_candidate(
             family=primary_family,
             stage=primary_stage,
@@ -5281,7 +5287,7 @@ class TrinityStockAnalyzer:
         fallback_candidate = {
             'family': 'D',
             'label': 'D候选',
-            'enabled': True,
+            'enabled': fallback_enabled,
             'reason': fallback_reason,
         }
         exception_interrupt = {

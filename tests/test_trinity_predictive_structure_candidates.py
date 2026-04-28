@@ -127,7 +127,7 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         self.assertEqual(prediction['primary_candidate']['stage'], 'strengthening')
         self.assertEqual(prediction['secondary_candidate']['family'], 'B')
         self.assertEqual(prediction['secondary_candidate']['stage'], 'candidate')
-        self.assertTrue(prediction['fallback_candidate']['enabled'])
+        self.assertFalse(prediction['fallback_candidate']['enabled'])
         self.assertEqual(prediction['observed_context']['global_structure_type'], 'B双平台式')
         self.assertEqual(prediction['observed_context']['focus_structure_type'], 'B双平台式')
         self.assertEqual(prediction['observed_context']['current_leg'], 'a4→live 上行推进中')
@@ -256,6 +256,7 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         self.assertIsNotNone(prediction['exception_interrupt']['type'])
         self.assertEqual(prediction['primary_candidate']['family'], 'D')
         self.assertEqual(prediction['primary_candidate']['stage'], 'exception')
+        self.assertFalse(prediction['fallback_candidate']['enabled'])
 
     def test_refresh_level_nesting_writes_structure_prediction_to_top_level_trinity_decision(self) -> None:
         normalized_results = self.analyzer._refresh_trinity_decisions_with_level_nesting(
