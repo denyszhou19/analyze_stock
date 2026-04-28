@@ -628,6 +628,77 @@ export interface TrinityLevelNestingDecision {
     allow_only_light_probe: boolean;
     reason: string;
   };
+  structure_prediction?: TrinityStructurePrediction | null;
+}
+
+export interface TrinityNarrativeSwitch {
+  from_family?: 'A' | 'B' | 'C' | 'D' | 'unknown' | string;
+  to_family?: 'A' | 'B' | 'C' | 'D' | 'unknown' | string;
+  state?:
+    | 'debouncing'
+    | 'candidate'
+    | 'strengthening'
+    | 'standard_confirmed'
+    | 'degraded'
+    | 'blocked'
+    | 'exception'
+    | string;
+  hard_triggers?: string[] | null;
+  soft_triggers?: string[] | null;
+  blocking_signals?: string[] | null;
+  passed?: boolean;
+}
+
+export interface TrinityPredictiveCandidate {
+  family?: 'A' | 'B' | 'C' | 'D' | 'unknown' | string;
+  stage?:
+    | 'debouncing'
+    | 'candidate'
+    | 'strengthening'
+    | 'standard_confirmed'
+    | 'degraded'
+    | 'blocked'
+    | 'exception'
+    | string;
+  label?: string | null;
+  direction?: 'up' | 'down' | 'neutral' | string | null;
+  reason?: string | null;
+}
+
+export interface TrinityStructurePrediction {
+  spacetime_scope?: {
+    parent_status?: string | null;
+    allowed_candidates?: string[] | null;
+    degraded_candidates?: string[] | null;
+    blocked_candidates?: string[] | null;
+    current_family?: string | null;
+    current_direction?: string | null;
+  } | null;
+  dominant_narrative?: '推进主导' | '整理主导' | '反抽主导' | '分歧混合' | string;
+  narrative_switch?: TrinityNarrativeSwitch | null;
+  primary_candidate?: TrinityPredictiveCandidate | null;
+  secondary_candidate?: TrinityPredictiveCandidate | null;
+  fallback_candidate?: {
+    family?: 'D' | string;
+    label?: string | null;
+    enabled?: boolean;
+    reason?: string | null;
+  } | null;
+  exception_interrupt?: {
+    enabled?: boolean;
+    type?: string | null;
+    reason?: string | null;
+  } | null;
+  observed_context?: {
+    global_structure_type?: string | null;
+    focus_structure_type?: string | null;
+    current_leg?: string | null;
+  } | null;
+}
+
+export interface TrinityDirectionLockDecision {
+  status?: 'mixed' | 'locked' | 'released' | string;
+  reason?: string | null;
 }
 
 export interface TrinityTradeQualification {
@@ -734,6 +805,8 @@ export interface TrinityDecision {
   moving_average: TrinityMovingAverageDecision;
   volume_confirmation: TrinityVolumeConfirmationDecision;
   level_nesting?: TrinityLevelNestingDecision;
+  structure_prediction?: TrinityStructurePrediction | null;
+  direction_lock?: TrinityDirectionLockDecision | null;
   trade_qualification: TrinityTradeQualification;
   execution: TrinityExecutionDecision;
   candidate_structure?: TrinityCandidateStructureDecision;

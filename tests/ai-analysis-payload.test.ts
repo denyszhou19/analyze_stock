@@ -646,6 +646,60 @@ const dailyTrinityDecision: TrinityDecision = {
         reason: 'phase1',
       },
     },
+    structure_prediction: {
+      spacetime_scope: {
+        parent_status: '中偏弱',
+        allowed_candidates: ['C'],
+        degraded_candidates: ['A', 'B'],
+        blocked_candidates: ['D'],
+        current_family: 'A',
+        current_direction: 'up',
+      },
+      dominant_narrative: '推进主导',
+      narrative_switch: {
+        from_family: 'B',
+        to_family: 'A',
+        state: 'strengthening',
+        hard_triggers: ['价格站上 MA55'],
+        soft_triggers: ['30分钟回抽不破并重新转强'],
+        blocking_signals: [],
+        passed: true,
+      },
+      primary_candidate: {
+        family: 'A',
+        stage: 'strengthening',
+        label: 'A候选',
+        direction: 'up',
+        reason: '推进段主导，优先跟踪 A 候选',
+      },
+      secondary_candidate: {
+        family: 'B',
+        stage: 'candidate',
+        label: 'B候选',
+        direction: 'up',
+        reason: '原平台语义仍保留为次候选',
+      },
+      fallback_candidate: {
+        family: 'D',
+        label: 'D候选',
+        enabled: false,
+        reason: '当 A/B/C 不成立时，D 仅作为降级候选',
+      },
+      exception_interrupt: {
+        enabled: false,
+        type: null,
+        reason: '未触发异常中断',
+      },
+      observed_context: {
+        global_structure_type: 'A五段式',
+        focus_structure_type: 'A五段式',
+        current_leg: '30分钟回抽段',
+      },
+    },
+    direction_lock: {
+      status: 'released',
+      reason: '价格已有效站上 MA55 和 MA233，方向锁放行',
+    },
     level_nesting: {
       parent_level: 'weekly',
       child_level: 'daily',
@@ -665,45 +719,45 @@ const dailyTrinityDecision: TrinityDecision = {
       confidence: 'medium',
       reason: ['A原型成立'],
     },
-  execution: {
-    entry_style: 'pullback',
-    triggers: ['重新站上平台上沿'],
-    invalidation: ['跌回平台下沿'],
-    confirmation: ['回踩 MA55 不破'],
-    position_sizing: { reason: '等待' },
-    risk_flags: [],
-  },
-  candidate_structure: {
-    candidate_type: 'trend_continuation',
-    candidate_label: 'A延续候选',
-    current_leg: '30分钟回抽段',
-    direction: 'up',
-    reason: '父级支持，但30分钟仍待确认',
-    upgrade_condition: '30分钟回抽不破并重新放量上拐',
-    invalidation: '30分钟回抽跌破关键确认低点',
-  },
-  wait_state: {
-    wait_type: '等待回抽确认',
-    wait_label: '等待回抽确认',
-    current_block: '30分钟回抽段尚未完成止跌确认',
-    next_confirmation_action: '观察30分钟止跌并重新转强',
-    reason: '30分钟回抽确认前先等待',
-  },
-  zero_axis_signal: {
-    formed: true,
-    signal_type: 'zero_axis_pullback',
-    signal_label: '零轴上方回抽',
-    reason: '零轴上方回抽后若再度上拐，通常有利于延续',
-    impact_on_judgment: 'promote',
-  },
-  resonance_state: {
-    status: 'supportive',
-    reason: '30分钟尚未闭合确认',
-    impact_on_judgment: 'promote',
-    is_hard_constraint: false,
-  },
-  divergence_weight: {
-    status: 'neutral',
+    execution: {
+      entry_style: 'pullback',
+      triggers: ['重新站上平台上沿'],
+      invalidation: ['跌回平台下沿'],
+      confirmation: ['回踩 MA55 不破'],
+      position_sizing: { reason: '等待' },
+      risk_flags: [],
+    },
+    candidate_structure: {
+      candidate_type: 'trend_continuation',
+      candidate_label: 'A延续候选',
+      current_leg: '30分钟回抽段',
+      direction: 'up',
+      reason: '父级支持，但30分钟仍待确认',
+      upgrade_condition: '30分钟回抽不破并重新放量上拐',
+      invalidation: '30分钟回抽跌破关键确认低点',
+    },
+    wait_state: {
+      wait_type: '等待回抽确认',
+      wait_label: '等待回抽确认',
+      current_block: '30分钟回抽段尚未完成止跌确认',
+      next_confirmation_action: '观察30分钟止跌并重新转强',
+      reason: '30分钟回抽确认前先等待',
+    },
+    zero_axis_signal: {
+      formed: true,
+      signal_type: 'zero_axis_pullback',
+      signal_label: '零轴上方回抽',
+      reason: '零轴上方回抽后若再度上拐，通常有利于延续',
+      impact_on_judgment: 'promote',
+    },
+    resonance_state: {
+      status: 'supportive',
+      reason: '30分钟尚未闭合确认',
+      impact_on_judgment: 'promote',
+      is_hard_constraint: false,
+    },
+    divergence_weight: {
+      status: 'neutral',
     label: '背离影响中性',
     reason: '背离影响中性',
     impact_on_judgment: 'neutral',
@@ -816,6 +870,14 @@ test('buildAiDecisionPayload preserves deterministic_decision for daily period',
     daily.deterministic_decision?.execution_plan?.current_position_action,
     '维持轻仓观察，不提前追价'
   );
+  assert.equal(
+    daily.deterministic_decision?.structure_prediction?.primary_candidate?.family,
+    'A'
+  );
+  assert.equal(
+    daily.deterministic_decision?.direction_lock?.status,
+    'released'
+  );
 });
 
 test('buildAiDecisionPayload preserves deterministic_decision trade gate fields', () => {
@@ -891,6 +953,60 @@ test('buildAiDecisionPayload preserves deterministic_decision trade gate fields'
         reason: '放量跌破',
       },
     },
+    structure_prediction: {
+      spacetime_scope: {
+        parent_status: '弱',
+        allowed_candidates: ['A', 'B'],
+        degraded_candidates: ['C'],
+        blocked_candidates: ['D'],
+        current_family: 'C',
+        current_direction: 'down',
+      },
+      dominant_narrative: '整理主导',
+      narrative_switch: {
+        from_family: 'C',
+        to_family: 'C',
+        state: 'candidate',
+        hard_triggers: [],
+        soft_triggers: ['等待结构明确'],
+        blocking_signals: [],
+        passed: false,
+      },
+      primary_candidate: {
+        family: 'B',
+        stage: 'candidate',
+        label: 'B候选',
+        direction: 'down',
+        reason: '当前优先观察 B 候选是否成立',
+      },
+      secondary_candidate: {
+        family: 'C',
+        stage: 'degraded',
+        label: 'C候选',
+        direction: 'down',
+        reason: '保留为降级候选',
+      },
+      fallback_candidate: {
+        family: 'D',
+        label: 'D候选',
+        enabled: false,
+        reason: '当前无需降级到 D 解释',
+      },
+      exception_interrupt: {
+        enabled: false,
+        type: null,
+        reason: '未触发异常中断',
+      },
+      observed_context: {
+        global_structure_type: '复杂结构',
+        focus_structure_type: '复杂结构',
+        current_leg: 'p3→live 震荡进行中',
+      },
+    },
+    direction_lock: {
+      status: 'locked',
+      reason: 'MA55、MA233 仍在头顶压制，向上候选需等待有效站上',
+    },
     trade_qualification: {
       trade_mode: 'no_trade',
       position_permission: 'no_position',
@@ -932,5 +1048,13 @@ test('buildAiDecisionPayload preserves deterministic_decision trade gate fields'
   assert.equal(
     payload.periods.daily.deterministic_decision?.trade_qualification.position_permission,
     'no_position'
+  );
+  assert.equal(
+    payload.periods.daily.deterministic_decision?.structure_prediction?.primary_candidate?.family,
+    'B'
+  );
+  assert.equal(
+    payload.periods.daily.deterministic_decision?.direction_lock?.status,
+    'locked'
   );
 });

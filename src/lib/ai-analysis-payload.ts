@@ -347,6 +347,8 @@ function summarizePeriod(periodData: PeriodAnalysisData, level: string): AiDecis
           moving_average: periodData.trinity_decision.moving_average,
           volume_confirmation: periodData.trinity_decision.volume_confirmation,
           level_nesting: periodData.trinity_decision.level_nesting,
+          structure_prediction: periodData.trinity_decision.structure_prediction,
+          direction_lock: periodData.trinity_decision.direction_lock,
           trade_qualification: periodData.trinity_decision.trade_qualification,
           execution: periodData.trinity_decision.execution,
           candidate_structure: periodData.trinity_decision.candidate_structure,

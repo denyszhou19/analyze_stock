@@ -24,6 +24,15 @@ test('ai-analysis route source upgrades phase3 output contract and session snaps
   assert.match(mainRouteSource, /风险与应对/);
   assert.match(mainRouteSource, /不能直接改写后端当前正式动作/);
   assert.match(mainRouteSource, /若\s*X\s*则可升级|若.*则可升级|条件升级预案/);
+  assert.match(mainRouteSource, /structure_prediction\.primary_candidate|primary_candidate/);
+  assert.match(mainRouteSource, /debouncing/);
+  assert.match(mainRouteSource, /direction_lock\.locked|direction_lock/);
+  assert.match(mainRouteSource, /exception_interrupt\.enabled|exception_interrupt/);
+  assert.match(mainRouteSource, /用户可见内容默认中文|所有自然语言内容必须使用简体中文/);
+  assert.match(
+    mainRouteSource,
+    /不直接输出 .*structure_prediction.*direction_lock.*exception_interrupt.*narrative_switch.*trigger_signals.*debouncing|不直接输出[\s\S]*structure_prediction[\s\S]*direction_lock[\s\S]*exception_interrupt[\s\S]*narrative_switch[\s\S]*trigger_signals[\s\S]*debouncing/
+  );
   assert.match(mainRouteSource, /runCodexStrategyAnalysisWithSession/);
   assert.match(mainRouteSource, /snapshotKey/);
   assert.match(mainRouteSource, /session/);

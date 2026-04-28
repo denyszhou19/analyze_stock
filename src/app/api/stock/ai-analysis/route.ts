@@ -21,6 +21,7 @@ const AI_REPORT_OUTPUT_CONTRACT = `## 报告契约（必须严格遵守）
 - “操作策略参考”必须以 periods.*.deterministic_decision.conclusion.action 为硬边界
 - 如果 periods.*.deterministic_decision.conclusion.action = wait / avoid，摘要 action 不能升级为 buy / add
 - AI 可以写“若 X 则可升级”的条件升级预案，也可以指出后端判断疑点，但不能直接改写后端当前正式动作边界
+- 用户可见内容默认中文，不直接输出 structure_prediction / direction_lock / exception_interrupt / narrative_switch / trigger_signals / debouncing 这些内部词或英文枚举
 - Markdown 正文必须严格按以下顺序组织：
   1. 当前综合判断
   2. 时空怎么看
@@ -108,6 +109,14 @@ const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师�
 2. 分析不同周期之间的联动关系
 3. 给出具体的操作策略建议
 4. 提示风险和关键价位
+
+## 新合同解读规则（必须遵守）
+
+- 优先用 \`structure_prediction.primary_candidate\` 解释当前结构演化方向，并把它翻译成自然中文
+- \`debouncing\` 不能当成已完成标准结构，只能解读为仍待确认、仍在防抖或仍需二次验证
+- \`direction_lock.locked\` 必须降级语气为等待确认、暂不追价、先等均线或关键位放行
+- \`exception_interrupt.enabled\` 必须优先写成异常中断、风控优先，不能继续按常规候选延续叙述
+- 用户可见内容默认中文，不直接输出 \`structure_prediction\`、\`direction_lock\`、\`exception_interrupt\`、\`narrative_switch\`、\`trigger_signals\`、\`debouncing\` 这些内部词或英文枚举
 
 ## 三位一体策略核心框架
 
@@ -263,10 +272,11 @@ const TRINITY_SYSTEM_PROMPT = `你是一位资深的股票技术分析策略师�
 
 ### 四、级别嵌套分析（三维度）
 
-你需要生成“页面级综合结论”，它不是单一日线结论，而是综合以下三条交易组合：
+你需要生成“页面级综合结论”，它不是单一日线结论，而是综合以下四条交易组合：
 1. **中线主策略组合（周线→日线）**：周线定大背景、方向和仓位上限，日线定中线结构和主策略窗口。
-2. **短线执行组合（日线→30分钟）**：日线定主策略和风险边界，30分钟负责触发、回踩确认和具体买卖点。
-3. **超短线 / T 组合（60分钟→15分钟）**：60分钟定短周期节奏，15分钟负责微观触发和快进快出。
+2. **波段执行组合（日线→60分钟）**：日线定主策略和风险边界，60分钟负责波段节奏、回抽确认和执行窗口。
+3. **短线执行组合（日线→30分钟）**：日线定主策略和风险边界，30分钟负责触发、回踩确认和具体买卖点。
+4. **超短线 / T 组合（60分钟→15分钟）**：60分钟定短周期节奏，15分钟负责微观触发和快进快出。
 
 输出策略摘要时必须明确：
 - 当前优先交易组合
@@ -385,6 +395,7 @@ ${JSON.stringify(payload, null, 2)}
 - \`multi_dimension_operation\`
 - 各周期的 \`macd.status\`、\`structure\`、\`latest_price\`
 - 日线与 30分钟的 \`prediction\`
+- 各周期的 \`deterministic_decision.structure_prediction\` 与 \`deterministic_decision.direction_lock\`
 - \`key_alerts\`
 
 ${AI_REPORT_OUTPUT_CONTRACT}
