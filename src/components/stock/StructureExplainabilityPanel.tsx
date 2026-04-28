@@ -19,8 +19,10 @@ import {
   normalizeStructureDisplayText,
 } from '../../lib/structure-explainability-view-model';
 import type {
+  MovingAveragesData,
   StructureData,
   StructurePeakAnalysis,
+  TrinityDecision,
 } from '../../lib/stock-structure-types';
 
 interface ExecutionSummaryLike {
@@ -37,11 +39,21 @@ interface ExecutionSummaryLike {
 interface StructureExplainabilityPanelProps {
   structure: Pick<
     StructureData,
-    'structure_type' | 'inflection_points' | 'description' | 'interpretation' | 'archetype' | 'structure_details'
+    | 'structure_type'
+    | 'trend_direction'
+    | 'inflection_points'
+    | 'description'
+    | 'interpretation'
+    | 'archetype'
+    | 'structure_details'
   >;
   executionSummary: ExecutionSummaryLike;
   setupQualityLabel?: string | null;
   structureColors: Record<string, string>;
+  decision?: TrinityDecision | null;
+  levelLabel?: string | null;
+  movingAverages?: MovingAveragesData | null;
+  displayMode?: 'full' | 'period_evidence';
 }
 
 interface SummaryBlockProps {
@@ -64,6 +76,14 @@ type UiTone =
   | 'confirmed'
   | 'live'
   | 'next';
+
+const LEVEL_LABELS: Record<TrinityDecision['level'], string> = {
+  weekly: '周线',
+  daily: '日线',
+  hour60: '60分钟',
+  hour30: '30分钟',
+  hour15: '15分钟',
+};
 
 const TONE_STYLES: Record<
   UiTone,
@@ -234,6 +254,14 @@ function getToneStyle(tone: UiTone) {
   return TONE_STYLES[tone];
 }
 
+function resolveLevelLabel(level?: string | null) {
+  if (!level) {
+    return null;
+  }
+
+  return LEVEL_LABELS[level as TrinityDecision['level']] ?? level;
+}
+
 function SummaryBlock({
   label,
   value,
@@ -335,13 +363,94 @@ function formatVisibleTopologyPoint(
   return point.price_label ?? point.point_id ?? null;
 }
 
+function inferParentLabelFromStatus(status?: string | null) {
+  if (!status) {
+    return null;
+  }
+
+  const matched = status.match(/(周线|日线|60分钟|30分钟|15分钟)/);
+  return matched?.[1] ?? null;
+}
+
+function resolveArchetypeFamilyLabel(
+  structure: StructureExplainabilityPanelProps['structure']
+) {
+  const family =
+    structure.interpretation?.focus_structure?.archetype_family ??
+    structure.interpretation?.spacetime_gate?.child_structure_family ??
+    null;
+
+  if (family === 'A' || family === 'B' || family === 'C' || family === 'D') {
+    return `${family}类原型`;
+  }
+
+  if (structure.structure_type?.includes('A')) {
+    return 'A类原型';
+  }
+  if (structure.structure_type?.includes('B')) {
+    return 'B类原型';
+  }
+  if (structure.structure_type?.includes('C')) {
+    return 'C类原型';
+  }
+  if (structure.structure_type?.includes('D')) {
+    return 'D类原型';
+  }
+
+  return normalizeStructureDisplayText(structure.structure_type) ?? '当前结构';
+}
+
+function resolveStructureDirectionLabel(trendDirection?: string | null) {
+  if (!trendDirection) {
+    return '方向待确认';
+  }
+
+  if (trendDirection.includes('上')) {
+    return '上涨骨架';
+  }
+
+  if (trendDirection.includes('下')) {
+    return '下跌骨架';
+  }
+
+  return '震荡骨架';
+}
+
+function resolveMovingAverageRoleLabel(line: 'MA55' | 'MA233', role?: string | null) {
+  if (role === 'support') {
+    return `${line}构成支撑`;
+  }
+
+  if (role === 'pressure') {
+    return `${line}构成压制`;
+  }
+
+  return `${line}暂无明确支撑/压制`;
+}
+
+function formatMovingAverageValue(label: 'MA55' | 'MA233', value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return `${label} --`;
+  }
+
+  return `${label} ${value.toFixed(2)}`;
+}
+
 export function StructureExplainabilityPanel({
   structure,
   executionSummary,
   setupQualityLabel,
   structureColors,
+  decision = null,
+  levelLabel = null,
+  movingAverages = null,
+  displayMode = 'full',
 }: StructureExplainabilityPanelProps) {
-  const viewModel = buildStructureExplainabilityViewModel(structure);
+  const viewModel = buildStructureExplainabilityViewModel(structure, {
+    decision,
+    movingAverages,
+    levelLabel,
+  });
   const details = structure.structure_details;
   const prediction = details?.prediction ?? null;
   const peakAnalysis = details?.peak_analysis ?? null;
@@ -381,6 +490,12 @@ export function StructureExplainabilityPanel({
     (viewModel.topology.liveLabel === 'live'
       ? '进行中'
       : viewModel.topology.liveLabel ?? '待确认');
+  const parentLevelLabel =
+    resolveLevelLabel(decision?.level_nesting?.parent_level) ??
+    inferParentLabelFromStatus(structure.interpretation?.spacetime_gate?.parent_status) ??
+    '父级';
+  const currentLevelLabel = levelLabel ?? resolveLevelLabel(decision?.level) ?? '当前级别';
+  const archetypeFamilyLabel = resolveArchetypeFamilyLabel(structure);
   const visibleStateTitle =
     viewModel.interpretation.executionStateLabel ?? executionSummary.phaseLabel ?? '等待确认';
   const isDowngraded = viewModel.interpretation.explainabilityStatus === 'downgraded';
@@ -402,6 +517,18 @@ export function StructureExplainabilityPanel({
     normalizeStructureDisplayText(
       viewModel.interpretation.requiredConfirmation ?? executionSummary.phaseReason
     ) ?? '等待新的结构确认';
+  const evidenceStateValue =
+    viewModel.periodEvidence.structureMatchSummary ??
+    `${parentLevelLabel}状态与${currentLevelLabel} ${archetypeFamilyLabel}尚未完全匹配，当前仍需等待确认`;
+  const evidenceStateNote = normalizeStructureDisplayText(
+    [
+      structure.interpretation?.spacetime_gate?.wait_reason,
+      decision?.trade_qualification?.reason?.[0],
+      structure.interpretation?.spacetime_gate?.required_confirmation,
+    ]
+      .filter(Boolean)
+      .join('；')
+  );
   const archetypeContext = normalizeStructureDisplayText(
     (isDowngraded ? viewModel.interpretation.downgradeReason : null) ??
     executionSummary.archetypeReason ?? viewModel.archetype.reason ?? structure.description
@@ -452,15 +579,29 @@ export function StructureExplainabilityPanel({
   const constraintNote = executionSummary.timeframeCapLabel
     ? `生效前提：${visibleRequiredConfirmation}`
     : '当前未给出明确补仓上限。';
+  const macroBackgroundBasis = viewModel.periodEvidence.maBackgroundNote;
+  const structureDirectionLabel = viewModel.periodEvidence.structureDirectionSummary ?? '方向待确认';
+  const movingAverageValue = [
+    viewModel.periodEvidence.ma55Price,
+    viewModel.periodEvidence.ma233Price,
+  ]
+    .filter(Boolean)
+    .join('｜') || 'MA55 --｜MA233 --';
+  const movingAverageNote = viewModel.periodEvidence.maPressureSupportSummary;
+  const isPeriodEvidence = displayMode === 'period_evidence';
 
   return (
     <div className="space-y-3">
       <Card className="border-border/60 shadow-none">
         <CardContent className="p-4 space-y-4">
           <SummaryBlock
-            label="当前状态"
-            value={visibleStateTitle}
-            note={`${visibleStateReason} 等什么做：${visibleRequiredConfirmation}`}
+            label={isPeriodEvidence ? '结构匹配状态' : '当前状态'}
+            value={isPeriodEvidence ? evidenceStateValue : visibleStateTitle}
+            note={
+              isPeriodEvidence
+                ? evidenceStateNote ?? visibleRequiredConfirmation
+                : `${visibleStateReason} 等什么做：${visibleRequiredConfirmation}`
+            }
             tone={stateTone}
             emphasis="primary"
           />
@@ -480,20 +621,41 @@ export function StructureExplainabilityPanel({
             />
           </div>
 
-          <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-3">
+          <div className={`grid gap-3 ${isPeriodEvidence ? 'sm:grid-cols-2 lg:grid-cols-3' : 'sm:grid-cols-2 lg:grid-cols-3'}`}>
             <SummaryBlock
-              label="大背景"
-              value={visibleBackground}
-              note="上一级时空状态给出的方向背景。"
+              label={isPeriodEvidence ? '均线背景' : '大背景'}
+              value={isPeriodEvidence ? (viewModel.periodEvidence.maBackgroundSummary ?? visibleBackground) : visibleBackground}
+              note={
+                isPeriodEvidence
+                  ? macroBackgroundBasis ?? '当前级别均线与结构方向综合出来的背景。'
+                  : '当前级别均线与结构方向综合出来的背景。'
+              }
               tone={backgroundTone}
             />
-            <SummaryBlock
-              label="结构原型"
-              value={visibleArchetypeLabel || structure.structure_type}
-              note={archetypeNote}
-              tone={archetypeTone}
-            />
-            {visibleMaturity && (
+            {isPeriodEvidence ? (
+              <SummaryBlock
+                label="结构方向"
+                value={structureDirectionLabel}
+                note="当前结构骨架方向，不等同于父级方向。"
+                tone={resolveDirectionTone(structureDirectionLabel)}
+              />
+            ) : (
+              <SummaryBlock
+                label="结构原型"
+                value={visibleArchetypeLabel || structure.structure_type}
+                note={archetypeNote}
+                tone={archetypeTone}
+              />
+            )}
+            {isPeriodEvidence ? (
+              <SummaryBlock
+                label="均线关键位"
+                value={movingAverageValue}
+                note={movingAverageNote}
+                tone="info"
+              />
+            ) : null}
+            {!isPeriodEvidence && visibleMaturity && (
               <SummaryBlock
                 label="结构阶段"
                 value={visibleMaturity}
@@ -574,58 +736,62 @@ export function StructureExplainabilityPanel({
             )}
           </div>
 
-          <SupportSection title="坐标锚点" tone="info">
-            <div className="grid gap-3 sm:grid-cols-2">
-              <SummaryBlock label="聚焦起点" value={visibleStart} note={visibleStartMeta} tone="start" />
-              <SummaryBlock label="最后确认点" value={visibleLastConfirmed} tone="confirmed" />
-              <SummaryBlock label="进行中点" value={visibleLivePoint} note="最新价格仍在这条进行中尾段上。" tone="live" />
-              <SummaryBlock label="下一确认" value={visibleNext} note={visibleRequiredConfirmation} tone="next" />
-            </div>
-          </SupportSection>
-
-          <div className="grid gap-3 lg:grid-cols-2">
-            <SupportSection title="执行动作" tone={actionTone}>
+          {!isPeriodEvidence ? (
+            <SupportSection title="坐标锚点" tone="info">
               <div className="grid gap-3 sm:grid-cols-2">
-                {executionSummary.actionLabel && (
-                  <SummaryBlock
-                    label="动作指令"
-                    value={executionSummary.actionLabel}
-                    note={normalizeStructureDisplayText(executionSummary.executionReason)}
-                    tone={actionTone}
-                  />
-                )}
-                {executionSummary.phaseLabel && (
-                  <SummaryBlock
-                    label="执行阶段"
-                    value={executionSummary.phaseLabel}
-                    note={normalizeStructureDisplayText(executionSummary.phaseReason)}
-                    tone={phaseTone}
-                  />
-                )}
-                {setupQualityLabel && (
-                  <SummaryBlock
-                    label="形态质量"
-                    value={setupQualityLabel}
-                    note="质量越高，越值得等待确认后执行。"
-                    tone={qualityTone}
-                  />
-                )}
+                <SummaryBlock label="聚焦起点" value={visibleStart} note={visibleStartMeta} tone="start" />
+                <SummaryBlock label="最后确认点" value={visibleLastConfirmed} tone="confirmed" />
+                <SummaryBlock label="进行中点" value={visibleLivePoint} note="最新价格仍在这条进行中尾段上。" tone="live" />
+                <SummaryBlock label="下一确认" value={visibleNext} note={visibleRequiredConfirmation} tone="next" />
               </div>
             </SupportSection>
+          ) : null}
 
-            <SupportSection title="仓位约束" tone={capTone}>
-              <SummaryBlock
-                label="补仓上限"
-                value={executionSummary.timeframeCapLabel ?? '未给出'}
-                note={constraintNote}
-                tone={capTone}
-              />
-            </SupportSection>
-          </div>
+          {!isPeriodEvidence && (
+            <div className="grid gap-3 lg:grid-cols-2">
+              <SupportSection title="执行动作" tone={actionTone}>
+                <div className="grid gap-3 sm:grid-cols-2">
+                  {executionSummary.actionLabel && (
+                    <SummaryBlock
+                      label="动作指令"
+                      value={executionSummary.actionLabel}
+                      note={normalizeStructureDisplayText(executionSummary.executionReason)}
+                      tone={actionTone}
+                    />
+                  )}
+                  {executionSummary.phaseLabel && (
+                    <SummaryBlock
+                      label="执行阶段"
+                      value={executionSummary.phaseLabel}
+                      note={normalizeStructureDisplayText(executionSummary.phaseReason)}
+                      tone={phaseTone}
+                    />
+                  )}
+                  {setupQualityLabel && (
+                    <SummaryBlock
+                      label="形态质量"
+                      value={setupQualityLabel}
+                      note="质量越高，越值得等待确认后执行。"
+                      tone={qualityTone}
+                    />
+                  )}
+                </div>
+              </SupportSection>
+
+              <SupportSection title="仓位约束" tone={capTone}>
+                <SummaryBlock
+                  label="补仓上限"
+                  value={executionSummary.timeframeCapLabel ?? '未给出'}
+                  note={constraintNote}
+                  tone={capTone}
+                />
+              </SupportSection>
+            </div>
+          )}
         </CardContent>
       </Card>
 
-      {scenarioPaths.length > 0 && (
+      {!isPeriodEvidence && scenarioPaths.length > 0 && (
         <SupportSection title="改判路径" tone="progress">
           <div className="space-y-2">
             {scenarioPaths.map((path, index) => (
@@ -656,7 +822,7 @@ export function StructureExplainabilityPanel({
         </SupportSection>
       )}
 
-      {prediction && (
+      {!isPeriodEvidence && prediction && (
         <SupportSection title="预测提示" tone={predictionTone}>
           <div className="space-y-2">
             <div className="text-sm font-medium text-foreground">{predictionAlert}</div>
@@ -680,7 +846,7 @@ export function StructureExplainabilityPanel({
         </SupportSection>
       )}
 
-      {peakAnalysis?.is_peak_structure && (
+      {!isPeriodEvidence && peakAnalysis?.is_peak_structure && (
         <SupportSection
           title="峰值分析"
           tone={peakAnalysis?.peak_type === 'mountain_peak' ? 'bullish' : peakAnalysis?.peak_type === 'valley_bottom' ? 'bearish' : 'neutral'}
@@ -707,7 +873,7 @@ export function StructureExplainabilityPanel({
         </SupportSection>
       )}
 
-      {warning && (
+      {!isPeriodEvidence && warning && (
         <SupportSection
           title="左侧结构提醒"
           tone={warning.type === 'mountain_peak_left' ? 'bullish' : 'bearish'}
@@ -748,7 +914,7 @@ export function StructureExplainabilityPanel({
         </SupportSection>
       )}
 
-      {details?.judgment_criteria && (
+      {!isPeriodEvidence && details?.judgment_criteria && (
         <SupportSection title="判定标准" tone="info">
           <pre className="whitespace-pre-wrap text-sm leading-relaxed text-muted-foreground">
             {normalizeStructureDisplayText(details.judgment_criteria)}

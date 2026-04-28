@@ -259,6 +259,7 @@ test('StructureExplainabilityPanel renders visible topology summary blocks and s
   assert.match(html, /当前级别暂不操作/);
   assert.match(html, /日线中偏强仅接受 C 结构试仓，当前 A 原型暂不操作/);
   assert.match(html, /大背景/);
+  assert.match(html, /当前级别均线与结构方向综合出来的背景/);
   assert.match(html, /结构原型/);
   assert.match(html, /结构阶段/);
   assert.match(html, /当前状态/);
@@ -346,6 +347,140 @@ test('StructureExplainabilityPanel falls back gracefully when explainability is 
   assert.match(html, /结构完成，等待方向选择/);
   assert.doesNotMatch(html, /data-slot="topology-svg"/);
   assert.match(html, /暂无可视化拓扑/);
+});
+
+test('StructureExplainabilityPanel evidence mode removes action panels and adds explicit context labels', async () => {
+  const { StructureExplainabilityPanel } = await importStructureExplainabilityPanel();
+
+  const html = renderQuietly(
+    React.createElement(StructureExplainabilityPanel, {
+      structure: {
+        structure_type: 'C单平台式',
+        trend_direction: '下跌',
+        inflection_points: 6,
+        description: '平台整理即将完成，等待边界确认。',
+        interpretation: {
+          macro_background: {
+            label: '混合',
+            direction: 'mixed',
+            basis: ['均线与结构方向未完全同向', '最近骨架仍偏空'],
+          },
+          focus_structure: {
+            archetype_label: 'C单平台式原型',
+            archetype_family: 'C',
+            maturity: 'developing',
+            display_reason: '平台整理进入尾段，等待最后确认。',
+          },
+          current_leg: {
+            label: 'c5→live 下行形成中',
+            from_point_id: 'c5',
+            to_point_id: 'live',
+            direction: 'down',
+            status: 'forming',
+          },
+          next_confirmation: {
+            label: '等待 c6 拐点（突破点）',
+            type: 'pivot',
+            trigger: '等待平台边界确认',
+          },
+          spacetime_gate: {
+            parent_status: '日线中偏强',
+            child_structure_family: 'C',
+            child_structure_match: true,
+            resonance_enabled: true,
+            structure_readiness: 'matched',
+            required_confirmation: '等待平台边界确认',
+          },
+        },
+        structure_details: {
+          prediction: {
+            current_stage: 'c5拐点',
+            next_stage: 'c6确认',
+            prediction_alert: '平台整理后通常会有突破行情。',
+            key_price_levels: [],
+            confidence: 'medium',
+            action_hint: '等待平台边界确认',
+          },
+        },
+      },
+      decision: {
+        level: 'hour60',
+        conclusion: {
+          action: 'wait',
+          action_label: '等待',
+          bias: 'neutral',
+          confidence: 'medium',
+          can_trade: false,
+        },
+        trade_qualification: {
+          trade_mode: 'wait_confirmation',
+          position_permission: 'no_position',
+          confidence: 'medium',
+          reason: ['交易资格仍未放行'],
+        },
+        level_nesting: {
+          parent_level: 'daily',
+          child_level: 'hour60',
+          resonance: 'boundary_probe',
+          permission: {
+            allow_position_increase: false,
+            allow_t_trade: false,
+            allow_only_light_probe: true,
+            reason: '日线只允许60分钟边界试探',
+          },
+        },
+        moving_average: {
+          ma55_role: 'support',
+          ma233_role: 'pressure',
+        },
+      },
+      levelLabel: '60分钟',
+      displayMode: 'period_evidence',
+      movingAverages: {
+        MA55: 133.05,
+        MA233: 128.44,
+      },
+      executionSummary: {
+        phaseLabel: '回抽确认',
+        phaseReason: '当前仅看结构边界确认',
+        actionLabel: '买入',
+        setupQuality: 'B',
+        executionReason: '这是结构预案，不代表当前已放行',
+        timeframeCapLabel: '最多补仓 1/2',
+        archetypeLabel: 'C单平台式',
+        archetypeReason: '平台整理尾段',
+      },
+      setupQualityLabel: 'B',
+      structureColors: {
+        C单平台式: 'archetype-c',
+      },
+      getTrendStyle: (trend: string) => `trend-${trend}`,
+    })
+  );
+
+  assert.match(html, /结构匹配状态/);
+  assert.match(html, /日线状态与60分钟 C类原型匹配已成立，但交易资格仍未放行/);
+  assert.match(html, /均线背景/);
+  assert.match(html, /混合/);
+  assert.match(html, /均线与结构方向未完全同向/);
+  assert.match(html, /最近骨架仍偏空/);
+  assert.match(html, /当前段/);
+  assert.match(html, /下一确认/);
+  assert.match(html, /均线关键位/);
+  assert.match(html, /MA55 133\.05/);
+  assert.match(html, /MA233 128\.44/);
+  assert.match(html, /MA55构成支撑/);
+  assert.match(html, /MA233构成压制/);
+  assert.match(html, /结构方向/);
+  assert.match(html, /下跌骨架/);
+  assert.doesNotMatch(html, /结构阶段/);
+  assert.doesNotMatch(html, /执行动作/);
+  assert.doesNotMatch(html, /仓位约束/);
+  assert.doesNotMatch(html, /买入|卖出/);
+  assert.ok(
+    html.indexOf('结构匹配状态') < html.indexOf('均线背景') &&
+      html.indexOf('当前段') < html.indexOf('均线关键位')
+  );
 });
 
 test('StructureExplainabilityPanel does not expose internal stage field names', async () => {

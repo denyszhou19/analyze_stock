@@ -1888,16 +1888,20 @@ test('AnalysisPeriodDetails renders level tabs with a slim overview and structur
   assert.match(html, /该级别概览/);
   assert.match(html, /最终判定/);
   assert.match(html, /父级约束/);
+  assert.match(html, /当前结构/);
   assert.match(html, /周线支持：日线可顺势跟踪/);
   assert.match(html, /来源：日线三位一体判定/);
   assert.match(html, /证据区/);
-  assert.match(html, /结构类型/);
-  assert.match(html, /标准C类结构/);
+  assert.match(html, /结构说明/);
+  assert.match(html, /data-slot="structure-explainability-panel"/);
   assert.doesNotMatch(html, /全部混排标签/);
   assert.doesNotMatch(html, /时空摘要/);
   assert.doesNotMatch(html, /结构摘要/);
   assert.doesNotMatch(html, /执行摘要/);
   assert.doesNotMatch(html, /规则摘要/);
+  assert.doesNotMatch(html, /执行动作/);
+  assert.doesNotMatch(html, /仓位约束/);
+  assert.doesNotMatch(html, /买入|卖出/);
   assert.doesNotMatch(html, /触发条件/);
   assert.doesNotMatch(html, /风险条件/);
   assert.doesNotMatch(html, /风控约束/);
@@ -2176,6 +2180,7 @@ test('AnalysisPeriodDetails overview keeps candidate structure but omits duplica
   assert.doesNotMatch(html, /跌破15分钟确认低点/);
   assert.doesNotMatch(html, /旧确认点/);
   assert.doesNotMatch(html, /A延续候选｜a3进行中/);
+  assert.doesNotMatch(html, /执行动作|仓位约束|买入|卖出/);
 });
 
 test('AnalysisPeriodDetails ignores legacy section summary when candidate structure is present', async () => {
@@ -2407,6 +2412,7 @@ test('AnalysisPeriodDetails normalizes candidate structure copy and avoids repea
     html,
     /<div class="mt-1 leading-6">p16→进行中 下行形成中｜结构复杂，需人工确认方向。｜等待结构明确为标准 A\/B\/C\/D 后再判断<\/div>/
   );
+  assert.doesNotMatch(html, /data-slot="structure-explainability-panel"/);
   assert.match(html, /结构复杂，需人工确认方向。/);
   assert.match(html, /2025-07-14 至 2026-04-24/);
   assert.doesNotMatch(html, /2025-07-14 至 2026-04-24 ·/);
@@ -2516,6 +2522,7 @@ test('AnalysisPeriodDetails falls back to legacy structure when phase2 fields ar
 
   assert.match(html, /旧结构摘要/);
   assert.match(html, /结构｜A五段式/);
+  assert.doesNotMatch(html, /data-slot="structure-explainability-panel"/);
   assert.doesNotMatch(html, /旧先手点/);
   assert.doesNotMatch(html, /旧确认点/);
   assert.doesNotMatch(html, /旧失效点/);

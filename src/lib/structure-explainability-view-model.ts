@@ -1,3 +1,8 @@
+import type {
+  MovingAveragesData,
+  TrinityDecision,
+} from './stock-structure-types.ts';
+
 export interface StructureExplainabilityViewModel {
   topology: {
     hasExplainability: boolean;
@@ -32,6 +37,15 @@ export interface StructureExplainabilityViewModel {
     alternativeLabels: string[];
     reason: string | null;
   };
+  periodEvidence: {
+    structureMatchSummary: string | null;
+    maBackgroundSummary: string | null;
+    maBackgroundNote: string | null;
+    structureDirectionSummary: string | null;
+    ma55Price: string | null;
+    ma233Price: string | null;
+    maPressureSupportSummary: string | null;
+  };
 }
 
 interface ExplainabilitySummary {
@@ -54,6 +68,8 @@ interface PredictionSummary {
 interface StructureInterpretationSummary {
   macro_background?: {
     label?: string | null;
+    direction?: string | null;
+    basis?: string[] | null;
   } | null;
   focus_structure?: {
     archetype_label?: string | null;
@@ -85,6 +101,8 @@ interface StructureInterpretationSummary {
     label?: string | null;
   } | null;
   spacetime_gate?: {
+    parent_status?: string | null;
+    child_structure_family?: string | null;
     child_structure_match?: boolean | null;
     resonance_enabled?: boolean | null;
     structure_readiness?: string | null;
@@ -97,6 +115,12 @@ interface StructureInterpretationSummary {
   }> | null;
 }
 
+interface StructureExplainabilityContext {
+  decision?: TrinityDecision | null;
+  movingAverages?: MovingAveragesData | null;
+  levelLabel?: string | null;
+}
+
 interface ArchetypeSummary {
   primary?: string | null;
   reason?: string | null;
@@ -105,6 +129,7 @@ interface ArchetypeSummary {
 
 interface StructureExplainabilityInput {
   structure_type?: string | null;
+  trend_direction?: string | null;
   description?: string | null;
   interpretation?: StructureInterpretationSummary | null;
   archetype?: ArchetypeSummary | null;
@@ -262,8 +287,97 @@ function inferLiveLabel(currentLeg?: {
   return null;
 }
 
+function resolveLevelLabel(level?: string | null) {
+  if (!level) {
+    return null;
+  }
+
+  const mapping: Record<string, string> = {
+    weekly: '周线',
+    daily: '日线',
+    hour60: '60分钟',
+    hour30: '30分钟',
+    hour15: '15分钟',
+  };
+
+  return mapping[level] ?? level;
+}
+
+function inferParentLabelFromStatus(status?: string | null) {
+  if (!status) {
+    return null;
+  }
+
+  const matched = status.match(/(周线|日线|60分钟|30分钟|15分钟)/);
+  return matched?.[1] ?? null;
+}
+
+function resolveArchetypeFamilyLabel(structure?: StructureExplainabilityInput) {
+  const family =
+    structure?.interpretation?.focus_structure?.archetype_family ??
+    structure?.interpretation?.spacetime_gate?.child_structure_family ??
+    null;
+
+  if (family === 'A' || family === 'B' || family === 'C' || family === 'D') {
+    return `${family}类原型`;
+  }
+
+  const structureType = structure?.structure_type ?? '';
+  if (structureType.includes('A')) {
+    return 'A类原型';
+  }
+  if (structureType.includes('B')) {
+    return 'B类原型';
+  }
+  if (structureType.includes('C')) {
+    return 'C类原型';
+  }
+  if (structureType.includes('D')) {
+    return 'D类原型';
+  }
+
+  return normalizeStructureDisplayText(structureType) ?? '当前结构';
+}
+
+function resolveStructureDirectionSummary(trendDirection?: string | null) {
+  if (!trendDirection) {
+    return '方向待确认';
+  }
+
+  if (trendDirection.includes('上')) {
+    return '上涨骨架';
+  }
+
+  if (trendDirection.includes('下')) {
+    return '下跌骨架';
+  }
+
+  return '震荡骨架';
+}
+
+function resolveMovingAverageRoleLabel(line: 'MA55' | 'MA233', role?: string | null) {
+  if (role === 'support') {
+    return `${line}构成支撑`;
+  }
+
+  if (role === 'pressure' || role === 'resistance') {
+    return `${line}构成压制`;
+  }
+
+  return `${line}暂无明确支撑/压制`;
+}
+
+function formatMovingAverageValue(label: 'MA55' | 'MA233', value?: number | null) {
+  if (typeof value !== 'number' || Number.isNaN(value)) {
+    return null;
+  }
+
+  return `${label} ${value.toFixed(2)}`;
+}
+
 export function buildStructureExplainabilityViewModel(
-  structure?: StructureExplainabilityInput
+  structure?: StructureExplainabilityInput,
+  context?: StructureExplainabilityContext
 ): StructureExplainabilityViewModel {
   const explainability = structure?.structure_details?.explainability;
   const prediction = structure?.structure_details?.prediction;
@@ -318,6 +432,38 @@ export function buildStructureExplainabilityViewModel(
   const alternativeLabels = Array.from(
     new Set(alternatives.filter((label) => label !== primaryLabel))
   );
+  const decision = context?.decision ?? null;
+  const movingAverages = context?.movingAverages ?? null;
+  const currentLevelLabel =
+    context?.levelLabel ?? resolveLevelLabel(decision?.level) ?? '当前级别';
+  const parentLevelLabel =
+    resolveLevelLabel(decision?.level_nesting?.parent_level) ??
+    inferParentLabelFromStatus(interpretationGate?.parent_status) ??
+    '父级';
+  const archetypeFamilyLabel = resolveArchetypeFamilyLabel(structure);
+  const tradeQualificationReleased =
+    decision?.trade_qualification?.trade_mode === 'standard_node_trade' ||
+    decision?.trade_qualification?.trade_mode === 'conditional_boundary_trade';
+  const structureMatchSummary =
+    interpretationGate?.resonance_enabled
+      ? `${parentLevelLabel}状态与${currentLevelLabel} ${archetypeFamilyLabel}匹配已成立${
+          tradeQualificationReleased ? '，交易资格已放行' : '，但交易资格仍未放行'
+        }`
+      : `${parentLevelLabel}状态与${currentLevelLabel} ${archetypeFamilyLabel}尚未完全匹配，当前仍需等待确认`;
+  const maBackgroundNote = normalizeStructureDisplayText(
+    interpretation?.macro_background?.basis?.join('；') ?? null
+  );
+  const maBackgroundSummary =
+    normalizeStructureDisplayText(interpretation?.macro_background?.label) ?? '待确认';
+  const structureDirectionSummary = resolveStructureDirectionSummary(structure?.trend_direction);
+  const ma55Price = formatMovingAverageValue('MA55', movingAverages?.MA55);
+  const ma233Price = formatMovingAverageValue('MA233', movingAverages?.MA233);
+  const maPressureSupportSummary = normalizeStructureDisplayText(
+    [
+      resolveMovingAverageRoleLabel('MA55', decision?.moving_average?.ma55_role),
+      resolveMovingAverageRoleLabel('MA233', decision?.moving_average?.ma233_role),
+    ].join('；')
+  );
 
   return {
     topology: {
@@ -367,6 +513,15 @@ export function buildStructureExplainabilityViewModel(
       primaryLabel,
       alternativeLabels,
       reason: normalizeStructureDisplayText(archetype?.reason ?? structure?.description ?? null),
+    },
+    periodEvidence: {
+      structureMatchSummary,
+      maBackgroundSummary,
+      maBackgroundNote,
+      structureDirectionSummary,
+      ma55Price,
+      ma233Price,
+      maPressureSupportSummary,
     },
   };
 }

@@ -3,14 +3,15 @@ import { SignalTagList } from '@/components/stock/SignalTagList';
 import { Badge } from '@/components/ui/badge';
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { buildExecutionSummary } from '@/lib/stock-execution-view-model';
-import type { PeriodAnalysisData, StructureData } from '@/lib/stock-structure-types';
+import type { PeriodAnalysisData, StructureData, TrinityDecision } from '@/lib/stock-structure-types';
 import { normalizeStructureDisplayText } from '@/lib/structure-explainability-view-model';
-import { resolveJudgmentLabel, resolveRelationLabel } from '@/lib/trinity-judgment-display';
+import { resolveJudgmentLabel } from '@/lib/trinity-judgment-display';
 import { buildPeriodSummarySignalTags, type TrinitySignalTag } from '@/lib/trinity-signal-tags';
 import {
   directionFromBias,
   getDirectionMeta,
   getStructureTagMeta,
+  normalizeTradingDisplayText,
 } from '@/lib/trinity-display-vocabulary';
 import { cn } from '@/lib/utils';
 
@@ -39,24 +40,20 @@ const STRUCTURE_COLORS: Record<string, string> = {
   山谷形态: 'bg-gradient-to-r from-green-100 to-red-100 text-gray-800 border border-gray-300',
 };
 
-function resolveSummary(section: AnalysisPeriodSection) {
-  if (!section.period) {
-    return '当前级别暂无周期数据。';
+const LEVEL_LABELS: Record<TrinityDecision['level'], string> = {
+  weekly: '周线',
+  daily: '日线',
+  hour60: '60分钟',
+  hour30: '30分钟',
+  hour15: '15分钟',
+};
+
+function resolveLevelLabel(level?: string | null) {
+  if (!level) {
+    return null;
   }
 
-  const candidateStructure = section.period.trinity_decision?.candidate_structure;
-  const candidateSummary = [candidateStructure?.candidate_label, candidateStructure?.current_leg]
-    .filter(Boolean)
-    .join('｜');
-
-  return (
-    candidateSummary ||
-    section.summary ||
-    section.period.structure?.description ||
-    section.period.structure?.execution?.wait_reason ||
-    section.period.trinity_decision?.conclusion.wait_reason ||
-    '当前周期暂无补充摘要。'
-  );
+  return LEVEL_LABELS[level as TrinityDecision['level']] ?? level;
 }
 
 function resolveTopologyTitle(section: AnalysisPeriodSection) {
@@ -69,10 +66,9 @@ function resolveStructureEvidence(section: AnalysisPeriodSection) {
     return (
       normalizeStructureDisplayText(
         [
-          candidateStructure.candidate_label,
-          candidateStructure.current_leg,
-          candidateStructure.reason,
-          candidateStructure.upgrade_condition,
+          normalizeTradingDisplayText(candidateStructure.current_leg),
+          normalizeTradingDisplayText(candidateStructure.reason),
+          normalizeTradingDisplayText(candidateStructure.upgrade_condition),
         ]
           .filter(Boolean)
           .join('｜')
@@ -97,10 +93,47 @@ function resolveStructureEvidence(section: AnalysisPeriodSection) {
   return normalizeStructureDisplayText(evidence) || '当前周期暂无结构证据。';
 }
 
+function resolveEvidenceCaption(section: AnalysisPeriodSection) {
+  return normalizeTradingDisplayText(section.rangeLabel) || '核对该级别结构拓扑和说明依据。';
+}
+
 function resolvePeriodDecisionSource(section: AnalysisPeriodSection) {
   return section.period?.trinity_decision
     ? `来源：${section.label}三位一体判定`
     : '来源：结构解释链路回退';
+}
+
+function resolveScopedRelationLabel(section: AnalysisPeriodSection) {
+  const decision = section.period?.trinity_decision;
+  if (!decision?.level_nesting) {
+    return `父级未明：${section.label}先看确认`;
+  }
+
+  const childLabel = section.label;
+  const parentLabel = resolveLevelLabel(decision.level_nesting.parent_level) ?? '父级';
+  const resonance = decision.level_nesting.resonance;
+
+  if (resonance === 'aligned') {
+    return `${parentLabel}支持：${childLabel}可顺势跟踪`;
+  }
+
+  if (resonance === 'boundary_probe') {
+    return `${parentLabel}约束：${childLabel}只允许边界试探`;
+  }
+
+  if (resonance === 'structure_mismatch') {
+    return `${parentLabel}约束：${childLabel}结构先重配`;
+  }
+
+  if (resonance === 'blocked') {
+    return `${parentLabel}未放行：${childLabel}当前先等待`;
+  }
+
+  if (resonance === 'child_countertrend' || resonance === 'conflict') {
+    return `${parentLabel}强冲突：${childLabel}当前逆父级`;
+  }
+
+  return `${parentLabel}未明：${childLabel}先看确认`;
 }
 
 type SignalTag = TrinitySignalTag;
@@ -141,12 +174,23 @@ function resolvePeriodDirection(section: AnalysisPeriodSection) {
 
 function buildExplainabilityStructure(period?: PeriodAnalysisData | null) {
   const structure = period?.structure;
-  if (!structure) {
+  const hasExplainabilityPayload = Boolean(
+    structure?.interpretation ||
+      structure?.archetype ||
+      structure?.structure_details?.explainability ||
+      structure?.structure_details?.prediction ||
+      structure?.structure_details?.peak_analysis ||
+      structure?.structure_details?.left_structure_warning ||
+      structure?.structure_details?.judgment_criteria
+  );
+
+  if (!structure || !hasExplainabilityPayload) {
     return null;
   }
 
   return {
     structure_type: structure.structure_type || '未识别结构',
+    trend_direction: structure.trend_direction || '震荡',
     inflection_points: typeof structure.inflection_points === 'number' ? structure.inflection_points : 0,
     description: structure.description || '当前周期暂无结构说明。',
     interpretation: structure.interpretation,
@@ -160,7 +204,7 @@ function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
   const directionMeta = getDirectionMeta(direction);
   const decision = section.period?.trinity_decision ?? undefined;
   const judgmentLabel = resolveJudgmentLabel(decision);
-  const relationLabel = resolveRelationLabel(decision?.level_nesting);
+  const relationLabel = resolveScopedRelationLabel(section);
   const structureTags = buildPeriodSummarySignalTags(section.period)
     .filter((tag) => tag.key === 'structure')
     .map((tag) => enrichStructureSignalTag(section, tag));
@@ -170,18 +214,17 @@ function PeriodDecisionCard({ section }: { section: AnalysisPeriodSection }) {
       <div className="space-y-1">
         <h3 className="text-sm font-semibold text-foreground">该级别概览</h3>
         <p className="text-xs text-muted-foreground">{resolvePeriodDecisionSource(section)}</p>
-        <p className="text-sm leading-6 text-muted-foreground">{resolveSummary(section)}</p>
       </div>
 
       <div className="mt-4 grid gap-3 sm:grid-cols-2">
         <div className="rounded-lg border bg-background/80 p-3">
-          <div className="text-xs font-medium text-muted-foreground">当前判断</div>
+          <div className="text-xs font-medium text-muted-foreground">最终判定</div>
           <Badge variant="outline" className="mt-2">
             {judgmentLabel}
           </Badge>
         </div>
         <div className="rounded-lg border bg-background/80 p-3">
-          <div className="text-xs font-medium text-muted-foreground">父子约束</div>
+          <div className="text-xs font-medium text-muted-foreground">父级约束</div>
           <p className="mt-2 text-sm leading-6 text-foreground">{relationLabel}</p>
         </div>
       </div>
@@ -238,14 +281,7 @@ export function AnalysisPeriodDetails({
               <section className="space-y-3 rounded-xl border bg-muted/20 p-4">
                 <div className="space-y-1">
                   <h3 className="text-sm font-semibold text-foreground">证据区</h3>
-                  <p className="text-xs text-muted-foreground">
-                    {[section.rangeLabel, resolveSummary(section)].filter(Boolean).join(' · ')}
-                  </p>
-                </div>
-
-                <div className="rounded-md border border-dashed bg-background/70 px-3 py-3 text-sm text-muted-foreground">
-                  <div className="font-medium text-foreground">{resolveTopologyTitle(section)}</div>
-                  <div className="mt-1 leading-6">{resolveStructureEvidence(section)}</div>
+                  <p className="text-xs text-muted-foreground">{resolveEvidenceCaption(section)}</p>
                 </div>
 
                 {explainabilityStructure ? (
@@ -253,11 +289,20 @@ export function AnalysisPeriodDetails({
                     <div className="text-sm font-medium text-foreground">结构说明</div>
                     <StructureExplainabilityPanel
                       structure={explainabilityStructure}
+                      decision={section.period?.trinity_decision ?? null}
+                      levelLabel={section.label}
+                      displayMode="period_evidence"
+                      movingAverages={section.period?.moving_averages ?? null}
                       executionSummary={buildExecutionSummary(section.period)}
                       structureColors={STRUCTURE_COLORS}
                     />
                   </div>
-                ) : null}
+                ) : (
+                  <div className="rounded-md border border-dashed bg-background/70 px-3 py-3 text-sm text-muted-foreground">
+                    <div className="font-medium text-foreground">{resolveTopologyTitle(section)}</div>
+                    <div className="mt-1 leading-6">{resolveStructureEvidence(section)}</div>
+                  </div>
+                )}
               </section>
             </TabsContent>
           );
