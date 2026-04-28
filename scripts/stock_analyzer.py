@@ -4347,6 +4347,7 @@ class TrinityStockAnalyzer:
             'moving_average': moving_average_decision,
             'volume_confirmation': volume_decision,
             'level_nesting': level_nesting_payload,
+            'structure_prediction': (level_nesting_payload or {}).get('structure_prediction'),
             'trade_qualification': trade_qualification,
             'execution': execution_decision,
             'candidate_structure': candidate_structure,
@@ -5081,22 +5082,33 @@ class TrinityStockAnalyzer:
             'evidence': [item for item in evidence if item][:3],
         }
 
-    def _resolve_level_nesting_allowed_candidates(
+    def _build_level_nesting_spacetime_scope(
         self,
         *,
         parent_status: Optional[str],
         direction: str,
-    ) -> List[str]:
-        table_config = self.SPACETIME_STRUCTURE_TABLE.get(parent_status or '')
-        if not isinstance(table_config, dict):
-            return []
-        if direction == 'up':
-            candidates = table_config.get('上涨结构') or []
-        elif direction == 'down':
-            candidates = table_config.get('下跌结构') or []
+        family: str,
+    ) -> Dict[str, Any]:
+        if parent_status in {'极强', '强'} and direction == 'up':
+            allowed_candidates = ['A', 'B']
+            degraded_candidates = ['C']
+        elif parent_status in {'极弱', '弱'} and direction == 'down':
+            allowed_candidates = ['A', 'B']
+            degraded_candidates = ['C']
+        elif parent_status in {'中偏强', '中偏弱'}:
+            allowed_candidates = ['C']
+            degraded_candidates = ['A', 'B']
         else:
-            candidates = (table_config.get('上涨结构') or []) + (table_config.get('下跌结构') or [])
-        return list(dict.fromkeys([item for item in candidates if item in {'A', 'B', 'C', 'D'}]))
+            allowed_candidates = []
+            degraded_candidates = ['A', 'B', 'C']
+        return {
+            'parent_status': parent_status,
+            'allowed_candidates': allowed_candidates,
+            'degraded_candidates': degraded_candidates,
+            'blocked_candidates': ['D'],
+            'current_family': family,
+            'current_direction': direction,
+        }
 
     def _build_level_nesting_prediction_candidate(
         self,
@@ -5122,6 +5134,24 @@ class TrinityStockAnalyzer:
             'reason': reason,
         }
 
+    def _resolve_level_nesting_narrative(
+        self,
+        *,
+        family: str,
+        current_leg_label: str,
+        has_progress_hint: bool,
+        has_spike_hint: bool,
+    ) -> str:
+        if has_spike_hint:
+            return '分歧混合'
+        if '反抽' in current_leg_label or family == 'D':
+            return '反抽主导'
+        if has_progress_hint:
+            return '推进主导'
+        if family in {'B', 'C'}:
+            return '整理主导'
+        return '分歧混合'
+
     def _build_level_nesting_structure_prediction(
         self,
         *,
@@ -5135,12 +5165,18 @@ class TrinityStockAnalyzer:
         child_payload = child_payload if isinstance(child_payload, dict) else {}
         structure_payload = child_payload.get('structure') or {}
         interpretation = structure_payload.get('interpretation') or {}
+        details = structure_payload.get('structure_details') or {}
+        raw_classification = details.get('raw_classification') or {}
         current_leg = interpretation.get('current_leg') or {}
         current_leg_label = current_leg.get('label') if isinstance(current_leg.get('label'), str) else ''
-        allowed_candidates = self._resolve_level_nesting_allowed_candidates(
+        spacetime_scope = self._build_level_nesting_spacetime_scope(
             parent_status=parent_status,
             direction=direction,
+            family=family,
         )
+        allowed_candidates = list(spacetime_scope.get('allowed_candidates') or [])
+        degraded_candidates = list(spacetime_scope.get('degraded_candidates') or [])
+        blocked_candidates = list(spacetime_scope.get('blocked_candidates') or [])
         has_spike_hint = any(token in current_leg_label for token in ('单根', '尝试'))
         has_progress_hint = bool(
             self._extract_level_nesting_stage_token(current_leg_label, 'a')
@@ -5151,59 +5187,84 @@ class TrinityStockAnalyzer:
         ma55 = child_payload.get('ma55')
         close_above_ma55 = isinstance(close, (int, float)) and isinstance(ma55, (int, float)) and close >= ma55
 
-        dominant_narrative = '结构跟随'
+        dominant_narrative = self._resolve_level_nesting_narrative(
+            family=family,
+            current_leg_label=current_leg_label,
+            has_progress_hint=has_progress_hint,
+            has_spike_hint=has_spike_hint,
+        )
+        from_family = family if family in {'A', 'B', 'C', 'D'} else 'unknown'
+        to_family = from_family
+        narrative_switch_state = 'candidate'
         narrative_switch_passed = False
-        narrative_switch_reason = '当前未出现明确切换信号'
-        primary_family = family if family in {'A', 'B', 'C', 'D'} else (allowed_candidates[0] if allowed_candidates else 'unknown')
-        primary_stage = 'tracking'
+        hard_triggers: List[str] = []
+        soft_triggers: List[str] = []
+        blocking_signals: List[str] = []
+
+        primary_family = allowed_candidates[0] if allowed_candidates else (degraded_candidates[0] if degraded_candidates else 'unknown')
+        primary_stage = 'candidate' if primary_family in {'A', 'B', 'C'} else 'blocked'
         primary_reason = current_leg_label or '沿用当前结构候选'
-        secondary_family = allowed_candidates[0] if allowed_candidates else 'unknown'
-        secondary_stage = 'standby'
-        secondary_reason = '保留为时空范围内的次候选'
+        secondary_family = degraded_candidates[0] if degraded_candidates else (allowed_candidates[1] if len(allowed_candidates) > 1 else 'unknown')
+        secondary_stage = 'degraded' if secondary_family in degraded_candidates else 'candidate'
+        secondary_reason = '保留为次级别候选'
 
         if is_v_reversal:
-            dominant_narrative = '异常中断'
-            narrative_switch_reason = 'V反结构进入异常中断处理'
+            dominant_narrative = '反抽主导'
+            to_family = 'D'
+            narrative_switch_state = 'exception'
             primary_family = 'D'
             primary_stage = 'exception'
             primary_reason = current_leg_label or 'V反异常中断'
-            secondary_family = allowed_candidates[0] if allowed_candidates else 'unknown'
-        elif 'A' in allowed_candidates and direction == 'up' and (has_progress_hint or has_spike_hint):
+            hard_triggers = [current_leg_label or 'V反极速反抽']
+            blocking_signals = list(blocked_candidates)
+            secondary_family = allowed_candidates[0] if allowed_candidates else (degraded_candidates[0] if degraded_candidates else 'unknown')
+            secondary_stage = 'blocked' if secondary_family == 'unknown' else ('candidate' if secondary_family in allowed_candidates else 'degraded')
+            secondary_reason = '异常中断前的常规候选降级处理'
+        elif 'A' in allowed_candidates and (has_progress_hint or has_spike_hint):
             primary_family = 'A'
-            secondary_family = 'B' if 'B' in allowed_candidates else (allowed_candidates[0] if allowed_candidates else family)
+            to_family = 'A'
+            secondary_family = 'B' if 'B' in allowed_candidates else (degraded_candidates[0] if degraded_candidates else 'unknown')
             if has_spike_hint:
-                dominant_narrative = '分歧试探'
                 primary_stage = 'debouncing'
-                narrative_switch_passed = False
-                narrative_switch_reason = '仅出现单次拉升尝试，仍需等待防抖确认'
+                narrative_switch_state = 'debouncing'
+                soft_triggers = [current_leg_label or '单次拉升尝试']
+                blocking_signals = ['单次波动尚未完成防抖']
                 primary_reason = current_leg_label or '单次试探尚未完成主语切换'
             else:
-                dominant_narrative = '推进主导'
-                primary_stage = 'strengthening' if close_above_ma55 else 'tracking'
+                primary_stage = 'strengthening' if close_above_ma55 else 'candidate'
+                narrative_switch_state = 'strengthening' if close_above_ma55 else 'candidate'
                 narrative_switch_passed = close_above_ma55
-                narrative_switch_reason = '推进主语已切向 A 候选' if close_above_ma55 else '推进信号出现，但仍需站稳 MA55'
+                hard_triggers = ['价格站上 MA55'] if close_above_ma55 else []
+                soft_triggers = [current_leg_label] if current_leg_label else []
+                blocking_signals = [] if close_above_ma55 else ['尚未站稳 MA55']
                 primary_reason = current_leg_label or '推进段主导，优先跟踪 A 候选'
-            secondary_stage = 'tracking'
+            secondary_stage = 'candidate' if secondary_family == 'B' else 'degraded'
             secondary_reason = '原平台语义仍保留为次候选'
-        elif primary_family in allowed_candidates:
-            dominant_narrative = '结构跟随'
+        elif from_family in allowed_candidates:
+            primary_family = from_family
+            to_family = from_family
+            primary_stage = 'standard_confirmed' if resonance == 'aligned' else 'candidate'
+            narrative_switch_state = primary_stage
             narrative_switch_passed = resonance == 'aligned'
-            narrative_switch_reason = '沿用三位一体时空允许候选'
-            primary_stage = 'tracking' if resonance == 'aligned' else 'watch'
-            secondary_family = next((item for item in allowed_candidates if item != primary_family), 'unknown')
-            secondary_stage = 'standby'
+            soft_triggers = [current_leg_label] if current_leg_label else []
+            secondary_family = next((item for item in allowed_candidates if item != primary_family), degraded_candidates[0] if degraded_candidates else 'unknown')
+            secondary_stage = 'candidate' if secondary_family in allowed_candidates else 'degraded'
             secondary_reason = '保留为同级别备选候选'
+        else:
+            to_family = primary_family
+            primary_stage = 'candidate' if primary_family in allowed_candidates else 'degraded'
+            narrative_switch_state = primary_stage
+            soft_triggers = [current_leg_label] if current_leg_label else []
+            if from_family in blocked_candidates:
+                blocking_signals = [f'{from_family} 不在时空允许主集合']
+            secondary_family = next((item for item in degraded_candidates if item != primary_family), 'unknown')
+            secondary_stage = 'degraded' if secondary_family in degraded_candidates else 'blocked'
+            secondary_reason = '保留为降级候选'
 
         fallback_reason = (
             (node_semantic or {}).get('reason')
             or current_leg_label
             or '当 A/B/C 不成立时，D 仅作为降级候选'
-        )
-        fallback_candidate = self._build_level_nesting_prediction_candidate(
-            family='D',
-            stage='exception' if is_v_reversal else 'fallback',
-            direction=direction,
-            reason=fallback_reason,
         )
         primary_candidate = self._build_level_nesting_prediction_candidate(
             family=primary_family,
@@ -5217,27 +5278,39 @@ class TrinityStockAnalyzer:
             direction=direction,
             reason=secondary_reason,
         )
+        fallback_candidate = {
+            'family': 'D',
+            'label': 'D候选',
+            'enabled': True,
+            'reason': fallback_reason,
+        }
         exception_interrupt = {
             'enabled': is_v_reversal,
+            'type': 'v_reversal' if is_v_reversal else None,
             'reason': current_leg_label or '未触发异常中断',
         }
 
         return {
-            'spacetime_scope': {
-                'parent_status': parent_status,
-                'allowed_candidates': allowed_candidates,
-                'current_family': family,
-                'current_direction': direction,
-            },
+            'spacetime_scope': spacetime_scope,
             'dominant_narrative': dominant_narrative,
             'narrative_switch': {
+                'from_family': from_family,
+                'to_family': to_family,
+                'state': narrative_switch_state,
+                'hard_triggers': hard_triggers,
+                'soft_triggers': soft_triggers,
+                'blocking_signals': blocking_signals,
                 'passed': narrative_switch_passed,
-                'reason': narrative_switch_reason,
             },
             'primary_candidate': primary_candidate,
             'secondary_candidate': secondary_candidate,
             'fallback_candidate': fallback_candidate,
             'exception_interrupt': exception_interrupt,
+            'observed_context': {
+                'global_structure_type': raw_classification.get('type') or structure_payload.get('structure_type') or '未知结构',
+                'focus_structure_type': structure_payload.get('structure_type') or '未知结构',
+                'current_leg': current_leg_label or '待确认',
+            },
         }
 
     def _build_trinity_level_nesting_decision(
