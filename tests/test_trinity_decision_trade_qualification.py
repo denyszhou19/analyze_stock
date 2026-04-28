@@ -793,3 +793,51 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
 
         self.assertEqual(qualification['trade_mode'], 'conditional_boundary_trade')
         self.assertEqual(qualification['position_permission'], 'light_probe')
+
+    def test_direction_lock_blocks_light_probe_even_when_candidate_strengthens(self) -> None:
+        decision = self.analyzer._build_trinity_trade_qualification(
+            structure_decision={
+                'family': 'standard',
+                'qualification': 'standard',
+                'direction': 'up',
+                'can_trade_by_structure_nodes': True,
+                'can_trade_by_boundaries': False,
+                'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+                'explainability': {'reason': 'A候选转强，原本可按标准节点执行'},
+                'structure_prediction': {
+                    'primary_candidate': {'family': 'A', 'stage': 'strengthening', 'label': 'A候选'},
+                    'exception_interrupt': {'enabled': False},
+                },
+                'direction_lock': {
+                    'status': 'locked',
+                    'reason': 'MA233 头顶压制',
+                },
+            },
+            spacetime_decision={'mismatch_reason': None},
+            moving_average_decision={
+                'ma_gate': {
+                    'allow_long': True,
+                    'allow_short': False,
+                    'reason': 'MA55 支撑有效',
+                }
+            },
+            volume_decision={
+                'volume_gate': {
+                    'supports_breakout': True,
+                    'supports_breakdown': False,
+                    'supports_pullback_confirmation': True,
+                    'confidence_adjustment': 'neutral',
+                    'reason': '量能确认',
+                }
+            },
+            execution_payload={'action': 'buy', 'direction': 'long'},
+            level_nesting_decision={
+                'resonance': 'aligned',
+                'execution_strength': 'normal',
+                'permission': {'allow_position_increase': True},
+            },
+        )
+
+        self.assertEqual(decision['trade_mode'], 'wait_confirmation')
+        self.assertEqual(decision['position_permission'], 'no_position')
+        self.assertTrue(any('MA233' in reason for reason in decision['reason']))
