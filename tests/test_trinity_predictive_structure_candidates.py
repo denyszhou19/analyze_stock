@@ -74,6 +74,9 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         }
 
     def test_progressive_narrative_promotes_a_candidate_when_scope_allows(self) -> None:
+        # Current normalized fixture still uses current_leg label to carry
+        # "推进主导 / 防抖分歧" narrative hints; once a structured trigger_signals
+        # contract exists, these tests should migrate to that input instead.
         decision = self.analyzer._build_trinity_level_nesting_decision(
             level='hour30',
             normalized_results={
@@ -83,6 +86,7 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
                     structure_type='B双平台式',
                     direction='up',
                     current_leg='a4→live 上行推进中',
+                    current_leg_direction='up',
                     close=151.8,
                     ma55=149.1,
                     ma233=129.8,
@@ -108,6 +112,7 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
                     structure_type='B双平台式',
                     direction='up',
                     current_leg='b5→live 单根拉升尝试',
+                    current_leg_direction='up',
                     close=150.2,
                     ma55=150.0,
                     ma233=129.8,
@@ -155,6 +160,7 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
 
         self.assertIn('structure_prediction', decision)
         prediction = decision['structure_prediction']
+        self.assertNotIn('D', prediction['spacetime_scope']['allowed_candidates'])
         self.assertEqual(prediction['fallback_candidate']['family'], 'D')
         self.assertFalse(prediction['exception_interrupt']['enabled'])
 

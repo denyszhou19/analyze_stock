@@ -795,16 +795,7 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
         self.assertEqual(qualification['position_permission'], 'light_probe')
 
     def test_direction_lock_blocks_light_probe_even_when_candidate_strengthens(self) -> None:
-        # Internal helper input: public contract stays on trinity_decision.*, but this
-        # helper consumes the structure_decision projection enriched with prediction/lock state.
-        enriched_structure_decision = {
-            'family': 'standard',
-            'qualification': 'standard',
-            'direction': 'up',
-            'can_trade_by_structure_nodes': True,
-            'can_trade_by_boundaries': False,
-            'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
-            'explainability': {'reason': 'A候选转强，原本可按标准节点执行'},
+        public_trinity_decision_contract = {
             'structure_prediction': {
                 'primary_candidate': {'family': 'A', 'stage': 'strengthening', 'label': 'A候选'},
                 'exception_interrupt': {'enabled': False},
@@ -813,6 +804,20 @@ class TrinityDecisionTradeQualificationTest(unittest.TestCase):
                 'status': 'locked',
                 'reason': 'MA233 头顶压制',
             },
+        }
+
+        # Public contract lives on trinity_decision.*; this helper receives the
+        # projected structure_decision enriched with those fields.
+        enriched_structure_decision = {
+            'family': 'standard',
+            'qualification': 'standard',
+            'direction': 'up',
+            'can_trade_by_structure_nodes': True,
+            'can_trade_by_boundaries': False,
+            'node_map': {'a4': 21.6, 'b8': None, 'd3': None, 'd4': None},
+            'explainability': {'reason': 'A候选转强，原本可按标准节点执行'},
+            'structure_prediction': public_trinity_decision_contract['structure_prediction'],
+            'direction_lock': public_trinity_decision_contract['direction_lock'],
         }
         decision = self.analyzer._build_trinity_trade_qualification(
             structure_decision=enriched_structure_decision,
