@@ -11,13 +11,17 @@ import type {
   StructureRenderPayload,
 } from '@/components/stock/StructureTopologySvg';
 import {
+  containsChinese,
   formatDecisionActionLabel,
+  normalizeVisibleDecisionText,
   preferChineseList,
   preferChineseText,
 } from './trinity-decision-labels.ts';
 import {
   buildExecutionPreview,
+  resolveDirectionLockLabel,
   resolveJudgmentLabel,
+  resolvePredictiveStageLabel,
   resolveRelationLabel,
 } from './trinity-judgment-display.ts';
 import {
@@ -142,7 +146,7 @@ export interface AnalysisPageSignalTagViewModel extends TrinitySignalTag {
   topologyPreviewSource?: AnalysisPageTopologyPreviewSource;
 }
 
-export type TradingCombinationKey = 'midline' | 'shortline' | 'intraday_t';
+export type TradingCombinationKey = 'midline' | 'swingline' | 'shortline' | 'intraday_t';
 
 export interface AnalysisPageTopologyPreviewViewModel {
   level: TrinityLevel;
@@ -355,6 +359,7 @@ const ENTRY_STYLE_LABELS: Record<string, string> = {
   t_trade: 'T 交易',
   none: '不执行',
   wait: '等待触发',
+  等待: '等待触发',
   待执行: '等待触发',
   等待执行: '等待触发',
 };
@@ -408,7 +413,7 @@ function normalizeRuleChainText(value?: string | null): string {
     return '';
   }
 
-  return normalizeTradingDisplayText(value);
+  return normalizeTradingDisplayText(normalizeVisibleDecisionText(value));
 }
 
 function formatEntryStyleLabel(entryStyle?: string | null): string {
@@ -488,9 +493,16 @@ function buildCombinationSummary(
 ): string {
   const majorLabel = LEVEL_LABELS[majorLevel];
   const minorLabel = LEVEL_LABELS[minorLevel];
+  const triggerDecision = minor ?? major;
+  const predictiveSummary = triggerDecision ? buildPredictiveStructureSummary(triggerDecision) : null;
+  const compactPredictiveSummary = predictiveSummary?.replace(/^结构：/, '').trim() ?? null;
 
   if (!major) {
     return `${majorLabel}缺失，${minorLabel}先不单独执行`;
+  }
+
+  if (compactPredictiveSummary) {
+    return compactPredictiveSummary;
   }
 
   if (!major.conclusion.can_trade || major.trade_qualification.position_permission === 'no_position') {
@@ -514,6 +526,14 @@ function buildCombinationRecommendation(
   }
 
   const triggerDecision = minor ?? major;
+  const predictiveAction = buildPredictiveExecutionAction(triggerDecision);
+  const predictiveBlocking = buildPredictiveBlockingLabel(triggerDecision);
+  if (predictiveAction || predictiveBlocking) {
+    return [predictiveAction, predictiveBlocking]
+      .filter((item, index, items): item is string => Boolean(item) && items.indexOf(item) === index)
+      .join('；');
+  }
+
   const triggerLevelLabel = minor ? LEVEL_LABELS[minor.level] : LEVEL_LABELS[major.level];
   const levelCondition = firstLevelNestingCondition(
     triggerDecision.level_nesting,
@@ -649,17 +669,32 @@ function formatCombinationList(
 }
 
 function buildParentConstraintTags(decision: TrinityDecision | null): AnalysisPageSignalTagViewModel[] {
-  return annotateSignalTagsWithTopologySource(
-    filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
+  const tags = filterSignalTagsByKeys(buildDecisionSignalTags(decision), [
       'spacetime',
       'divergence',
       'breakthrough',
       'volume',
       'moving_average',
       'structure',
-    ]),
-    'parent'
-  );
+    ]);
+
+  const directionLockLabel =
+    decision?.direction_lock && decision.direction_lock.status !== 'released'
+      ? resolveDirectionLockLabel(decision.direction_lock)
+      : '';
+
+  const appendedTags = directionLockLabel
+    ? [
+        ...tags,
+        buildCustomSignalTag('moving_average', '均线', directionLockLabel, 'warning', [
+          { label: '这句话是什么意思', value: '当前方向还没有通过均线与关键位的放行。' },
+          { label: '为什么这么判断', value: decision?.direction_lock?.reason ?? directionLockLabel },
+          { label: '当前限制', value: directionLockLabel },
+        ]),
+      ]
+    : tags;
+
+  return annotateSignalTagsWithTopologySource(appendedTags, 'parent');
 }
 
 function buildCombinationActionStateTags(
@@ -708,6 +743,11 @@ function buildCombinationActionStateTags(
       ? 'warning'
       : 'neutral';
 
+  const triggerDecision = minor ?? major;
+  const predictiveAction = triggerDecision ? buildPredictiveExecutionAction(triggerDecision) : null;
+  const predictiveBlocking = triggerDecision ? buildPredictiveBlockingLabel(triggerDecision) : null;
+  const executionLabel = predictiveAction ?? executionResult;
+
   return annotateSignalTagsWithTopologySource([
     buildCustomSignalTag(
       'level_nesting',
@@ -729,10 +769,10 @@ function buildCombinationActionStateTags(
         },
       ].filter((item): item is { label: string; value: string } => Boolean(item.value))
     ),
-    buildCustomSignalTag('execution', '执行', executionResult, 'neutral', [
+    buildCustomSignalTag('execution', '执行', executionLabel, predictiveBlocking ? 'warning' : 'neutral', [
       { label: '执行级别', value: minorLabel },
-      { label: '当前动作', value: '继续等待' },
-      { label: '等待条件', value: trigger || `${minorLabel}等待更明确确认` },
+      { label: '当前动作', value: predictiveAction ?? '继续等待' },
+      { label: '等待条件', value: predictiveBlocking ?? trigger ?? `${minorLabel}等待更明确确认` },
     ]),
   ], 'child');
 }
@@ -981,11 +1021,10 @@ function resolveChineseReason(
   fallback = '暂无明确结论约束'
 ): string {
   const chineseCandidate = candidates.find((candidate) => {
-    const value = preferChineseText(candidate, '').trim();
-    return /[\u4e00-\u9fff]/.test(value);
+    return containsChinese(candidate);
   });
   if (chineseCandidate) {
-    return preferChineseText(chineseCandidate, fallback).trim();
+    return normalizeRuleChainText(chineseCandidate).trim() || fallback;
   }
 
   const firstNonEmpty = candidates.find((candidate) => typeof candidate === 'string' && candidate.trim());
@@ -1086,6 +1125,132 @@ function buildHardGates(decision: TrinityDecision): AnalysisPageSummaryGate[] {
   ];
 }
 
+function buildPredictiveStructureSummary(decision?: TrinityDecision | null): string | null {
+  if (!decision) {
+    return null;
+  }
+  const prediction = decision.structure_prediction;
+  if (!prediction) {
+    return null;
+  }
+
+  if (prediction.exception_interrupt?.enabled) {
+    return '结构：异常中断，先风控、再评估，不按常规候选试探';
+  }
+
+  if (!prediction.primary_candidate) {
+    return null;
+  }
+
+  return `结构：${resolvePredictiveStageLabel(prediction.primary_candidate)}`;
+}
+
+function buildPredictiveExecutionAction(decision?: TrinityDecision | null): string | null {
+  if (!decision) {
+    return null;
+  }
+  const prediction = decision.structure_prediction;
+  if (!prediction) {
+    return null;
+  }
+
+  if (prediction.exception_interrupt?.enabled) {
+    return '先风控、再评估，不按常规候选试探';
+  }
+
+  switch (prediction.primary_candidate?.stage) {
+    case 'debouncing':
+      return '主候选正在形成，先等确认';
+    case 'candidate':
+      return '主候选已出现，先观察确认';
+    case 'strengthening':
+      return '主候选正在增强，确认后再推进';
+    case 'standard_confirmed':
+      return '主候选已确认，可按标准节奏跟踪';
+    case 'degraded':
+      return '主候选解释力下降，先降级观察';
+    case 'blocked':
+      return '主候选暂未放行，先继续等待';
+    case 'exception':
+      return '先风控、再评估，不按常规候选试探';
+    default:
+      return null;
+  }
+}
+
+function buildPredictiveBlockingLabel(decision?: TrinityDecision | null): string | null {
+  if (!decision) {
+    return null;
+  }
+  const prediction = decision.structure_prediction;
+  if (!prediction) {
+    return null;
+  }
+
+  if (prediction.exception_interrupt?.enabled) {
+    return '异常中断，先风控、再评估，不按常规候选试探';
+  }
+
+  if (decision.direction_lock && decision.direction_lock.status !== 'released') {
+    return resolveDirectionLockLabel(decision.direction_lock);
+  }
+
+  return null;
+}
+
+function buildPredictiveRiskLabels(decision?: TrinityDecision | null): string[] {
+  if (!decision) {
+    return [];
+  }
+
+  const blockingLabel = buildPredictiveBlockingLabel(decision);
+  return blockingLabel ? [blockingLabel] : [];
+}
+
+function buildPredictivePrimaryReason(decision: TrinityDecision): string | null {
+  return (
+    resolveChineseReason(
+      [
+        decision.structure_prediction?.exception_interrupt?.reason,
+        decision.structure_prediction?.primary_candidate?.reason,
+        decision.direction_lock?.reason,
+      ],
+      ''
+    ) || null
+  );
+}
+
+function buildPredictiveCandidateStructureSummary(
+  decision: TrinityDecision
+): AnalysisPageCandidateStructureSummary | null {
+  const prediction = decision.structure_prediction;
+  if (!prediction?.primary_candidate || prediction.exception_interrupt?.enabled) {
+    return null;
+  }
+
+  return {
+    label: resolvePredictiveStageLabel(prediction.primary_candidate),
+    currentLeg: null,
+    upgradeCondition: null,
+    invalidation: null,
+  };
+}
+
+function buildPredictiveWaitStateSummary(
+  decision: TrinityDecision
+): AnalysisPageWaitStateSummary | null {
+  const blockingLabel = buildPredictiveBlockingLabel(decision);
+  if (!blockingLabel) {
+    return null;
+  }
+
+  return {
+    label: '当前阻塞',
+    currentBlock: blockingLabel,
+    nextAction: null,
+  };
+}
+
 function buildSpacetimeSummary(decision: TrinityDecision): string {
   const detail = resolveChineseReason(
     [
@@ -1100,6 +1265,11 @@ function buildSpacetimeSummary(decision: TrinityDecision): string {
 }
 
 function buildStructureSummary(decision: TrinityDecision): string {
+  const predictiveSummary = buildPredictiveStructureSummary(decision);
+  if (predictiveSummary) {
+    return predictiveSummary;
+  }
+
   const candidateStructure = decision.candidate_structure;
   if (candidateStructure?.candidate_label) {
     const structureLabel = [candidateStructure.candidate_label, candidateStructure.current_leg]
@@ -1121,6 +1291,14 @@ function buildStructureSummary(decision: TrinityDecision): string {
 }
 
 function buildExecutionSummary(decision: TrinityDecision): string {
+  const predictiveAction = buildPredictiveExecutionAction(decision);
+  const predictiveBlocking = buildPredictiveBlockingLabel(decision);
+  if (predictiveAction) {
+    return predictiveBlocking && predictiveBlocking !== predictiveAction
+      ? `现在怎么做：${predictiveAction}；${predictiveBlocking}`
+      : `现在怎么做：${predictiveAction}`;
+  }
+
   const preview = buildExecutionPreview(decision);
   const probeEntry = decision.execution_plan?.probe_entry ?? compactTriggerText(preview.probeEntry);
   const confirmEntry = decision.execution_plan?.confirm_entry ?? compactTriggerText(preview.confirmEntry);
@@ -1132,6 +1310,46 @@ function buildExecutionSummary(decision: TrinityDecision): string {
 function normalizeOptionalSummaryText(value?: string | null): string | null {
   const normalized = normalizeRuleChainText(value);
   return normalized || null;
+}
+
+function resolveScopedLevelLabel(level?: string | null): string | null {
+  if (!level) {
+    return null;
+  }
+
+  return LEVEL_LABELS[level as TrinityLevel] ?? null;
+}
+
+function scopeSpacetimeSummary(decision: TrinityDecision, summary?: string | null): string {
+  const currentLevelLabel = LEVEL_LABELS[decision.level];
+  const normalized = normalizeOptionalSummaryText(summary);
+  if (!normalized) {
+    return `${currentLevelLabel}时空：继续等待时空共振确认`;
+  }
+  if (normalized.startsWith(`${currentLevelLabel}时空：`)) {
+    return normalized;
+  }
+
+  let detail = normalized.replace(/^时空：/, '').trim();
+  if (detail.startsWith(currentLevelLabel)) {
+    detail = detail.slice(currentLevelLabel.length).trim();
+  }
+
+  return `${currentLevelLabel}时空：${detail}`;
+}
+
+function hasParentScopedWaitBlock(decision: TrinityDecision, currentBlock?: string | null): boolean {
+  const normalized = normalizeOptionalSummaryText(currentBlock);
+  const parentLevelLabel = resolveScopedLevelLabel(decision.level_nesting?.parent_level);
+  const parentStatus = normalizeOptionalSummaryText(decision.level_nesting?.parent_spacetime_status);
+  if (!normalized || !parentLevelLabel || !parentStatus) {
+    return false;
+  }
+
+  return (
+    normalized.startsWith(parentStatus) &&
+    (normalized.includes('背景下') || normalized.includes('仅接受') || normalized.includes('允许'))
+  );
 }
 
 function toCandidateStructureSummary(
@@ -1231,6 +1449,27 @@ function preferWaitStateSummary(
   };
 
   return Object.values(merged).some(Boolean) ? merged : null;
+}
+
+function scopeWaitStateSummary(
+  decision: TrinityDecision,
+  summary: AnalysisPageWaitStateSummary | null
+): AnalysisPageWaitStateSummary | null {
+  if (!summary) {
+    return null;
+  }
+
+  const parentLevelLabel = resolveScopedLevelLabel(decision.level_nesting?.parent_level);
+  const label =
+    hasParentScopedWaitBlock(decision, summary.currentBlock) && parentLevelLabel
+      ? `${parentLevelLabel}约束`
+      : summary.label ?? null;
+
+  return {
+    label,
+    currentBlock: summary.currentBlock ?? null,
+    nextAction: summary.nextAction ?? null,
+  };
 }
 
 function resolveDecisionTriggerLabels(decision?: TrinityDecision | null): string[] {
@@ -1344,9 +1583,13 @@ function buildSummary(
   const backendStructureSummary = buildStructureSummary(decision);
   const backendExecutionSummary = buildExecutionSummary(decision);
   const aiCandidateStructureSummary = toCandidateStructureSummary(readySummary?.candidate_structure);
+  const predictiveCandidateStructureSummary = buildPredictiveCandidateStructureSummary(decision);
   const backendCandidateStructureSummary = buildBackendCandidateStructureSummary(decision);
   const aiWaitStateSummary = toWaitStateSummary(readySummary?.wait_state);
+  const predictiveWaitStateSummary = buildPredictiveWaitStateSummary(decision);
   const backendWaitStateSummary = buildBackendWaitStateSummary(decision);
+  const predictivePrimaryReason = buildPredictivePrimaryReason(decision);
+  const predictiveRiskLabels = buildPredictiveRiskLabels(decision);
   const backendReason = resolveChineseReason([
     decision.judgment?.critical_reason,
     decision.wait_state?.current_block,
@@ -1363,15 +1606,21 @@ function buildSummary(
     judgmentLabel: readySummary?.judgment ?? resolveJudgmentLabel(decision),
     relationLabel: resolveRelationLabel(decision.level_nesting),
     primaryReason: resolveChineseReason(
-      [readySummary?.critical_reason, readySummary?.primary_reason, backendReason],
+      [readySummary?.critical_reason, readySummary?.primary_reason, predictivePrimaryReason, backendReason],
       backendReason
     ),
     triggerLabels: preferChineseList(readySummary?.triggers, resolveDecisionTriggerLabels(decision)),
-    riskLabels: preferChineseList(readySummary?.risks, resolveDecisionRiskLabels(decision)),
-    guardrail: resolveChineseReason([readySummary?.guardrail, backendReason], backendReason),
-    spacetimeSummary: resolveChineseReason(
-      [readySummary?.spacetime_summary, backendSpacetimeSummary],
-      backendSpacetimeSummary
+    riskLabels: preferChineseList(
+      readySummary?.risks,
+      [...predictiveRiskLabels, ...resolveDecisionRiskLabels(decision)]
+    ),
+    guardrail: resolveChineseReason(
+      [readySummary?.guardrail, predictiveRiskLabels[0], backendReason],
+      predictiveRiskLabels[0] ?? backendReason
+    ),
+    spacetimeSummary: scopeSpacetimeSummary(
+      decision,
+      resolveChineseReason([readySummary?.spacetime_summary, backendSpacetimeSummary], backendSpacetimeSummary)
     ),
     structureSummary: resolveChineseReason(
       [readySummary?.structure_summary, backendStructureSummary],
@@ -1381,12 +1630,15 @@ function buildSummary(
       [readySummary?.execution_summary, backendExecutionSummary],
       backendExecutionSummary
     ),
-    judgmentWarning: readySummary?.judgment_warning ?? null,
+    judgmentWarning: normalizeOptionalSummaryText(readySummary?.judgment_warning) ?? null,
     candidateStructureSummary: preferCandidateStructureSummary(
       aiCandidateStructureSummary,
-      backendCandidateStructureSummary
+      predictiveCandidateStructureSummary ?? backendCandidateStructureSummary
     ),
-    waitStateSummary: preferWaitStateSummary(aiWaitStateSummary, backendWaitStateSummary),
+    waitStateSummary: scopeWaitStateSummary(
+      decision,
+      preferWaitStateSummary(aiWaitStateSummary, predictiveWaitStateSummary ?? backendWaitStateSummary)
+    ),
     signalTags: buildDecisionSignalTags(decision),
     hardGateTitle: '主策略硬门控',
     hardGateSourceLabel: primaryLevelSourceLabel(
@@ -1547,27 +1799,35 @@ function buildCombination({
   const missingMinorReason = `${minorLabel}主判定缺失`;
   const missingMinorActionValue = `先补齐${minorLabel}主判定`;
   const missingMinorRiskValue = `${minorLabel}主判定缺失，风险暂不可判定`;
+  const majorPredictiveBlocking = major ? buildPredictiveBlockingLabel(major) : null;
+  const triggerPredictiveAction = minor ? buildPredictiveExecutionAction(minor) : buildPredictiveExecutionAction(major);
+  const triggerPredictiveBlocking = minor ? buildPredictiveBlockingLabel(minor) : buildPredictiveBlockingLabel(major);
   const parentConstraintValue = major
-    ? `${majorLabel}：${resolveChineseReason(
-        [
-          major.wait_state?.current_block,
-          major.wait_state?.reason,
-          major.judgment?.critical_reason,
-          major.conclusion.wait_reason,
-          major.trade_qualification.reason[0],
-          major.execution.position_sizing.reason,
-        ],
-        '暂无额外约束'
-      )}`
+    ? `${majorLabel}：${
+        majorPredictiveBlocking ??
+        resolveChineseReason(
+          [
+            major.wait_state?.current_block,
+            major.wait_state?.reason,
+            major.judgment?.critical_reason,
+            major.conclusion.wait_reason,
+            major.trade_qualification.reason[0],
+            major.execution.position_sizing.reason,
+          ],
+          '暂无额外约束'
+        )
+      }`
     : `${majorLabel}缺失`;
   const suitableActionValue = minor
-    ? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
+    ? triggerPredictiveAction ?? formatDecisionActionLabel(minor.conclusion.action, minor.conclusion.action_label)
     : missingMinorActionValue;
   const minorNestingRisk = minor ? firstLevelNestingCondition(minor.level_nesting, 'invalidation_conditions', minorLabel) : '';
   const majorNestingRisk = minor && major ? firstLevelNestingCondition(major.level_nesting, 'invalidation_conditions', majorLabel) : '';
   const nestingRisk = minorNestingRisk || majorNestingRisk;
   const majorRiskValue =
-    minor ? nestingRisk || resolveDecisionRiskLabels(minor).at(0) || '暂无明确风险' : missingMinorRiskValue;
+    minor
+      ? triggerPredictiveBlocking || nestingRisk || resolveDecisionRiskLabels(minor).at(0) || '暂无明确风险'
+      : missingMinorRiskValue;
   const minorNestingWait = minor ? firstLevelNestingCondition(minor.level_nesting, 'wait_conditions', minorLabel) : '';
   const triggerValue =
     (minorNestingWait ? scopedLevelCondition(minorNestingWait, minorLabel) : '') ||
@@ -1725,6 +1985,12 @@ function buildTradingCombinations(result: AnalysisResultData): BuiltTradingCombi
       result,
     }),
     buildCombination({
+      key: 'swingline',
+      label: '波段执行组合｜日线 → 60分钟',
+      levels: ['daily', 'hour60'],
+      result,
+    }),
+    buildCombination({
       key: 'shortline',
       label: '短线执行组合｜日线 → 30分钟',
       levels: ['daily', 'hour30'],
@@ -1749,7 +2015,8 @@ function pickPrimaryCombination(
     failed: 1,
   };
   const tieBreak: Record<TradingCombinationKey, number> = {
-    shortline: 3,
+    shortline: 4,
+    swingline: 3,
     midline: 2,
     intraday_t: 1,
   };
@@ -1789,7 +2056,7 @@ function buildGlobalStrategy({
   const structureMeta = getStructureTagMeta(
     triggerDecision?.structure.type ?? constraintDecision?.structure.type ?? ''
   );
-  const combinationNames = ['中线主策略组合', '短线执行组合', '超短线 / T 组合'];
+  const combinationNames = ['中线主策略组合', '波段执行组合', '短线执行组合', '超短线 / T 组合'];
 
   return {
     scopeLabel: `综合范围：${combinationNames.join('、')}`,
@@ -1835,12 +2102,17 @@ function buildBus(result: AnalysisResultData): AnalysisPageViewModel['bus'] {
         detail: `${describePeriod(result.periods.weekly)} / ${describePeriod(result.periods.daily)}`,
       },
       {
-        title: '维度二｜日线 → 30分钟',
+        title: '维度二｜日线 → 60分钟',
+        primary: `${daily ? BIAS_LABELS[daily.conclusion.bias] : '日线缺失'} → ${hour60 ? BIAS_LABELS[hour60.conclusion.bias] : '60分钟缺失'}`,
+        detail: `${describePeriod(result.periods.daily)} / ${describePeriod(result.periods.hour60)}`,
+      },
+      {
+        title: '维度三｜日线 → 30分钟',
         primary: `${daily ? BIAS_LABELS[daily.conclusion.bias] : '日线缺失'} → ${hour30 ? BIAS_LABELS[hour30.conclusion.bias] : '30分钟缺失'}`,
         detail: `${describePeriod(result.periods.daily)} / ${describePeriod(result.periods.hour30)}`,
       },
       {
-        title: '维度三｜60分钟 → 15分钟',
+        title: '维度四｜60分钟 → 15分钟',
         primary: `${hour60 ? BIAS_LABELS[hour60.conclusion.bias] : '60分钟缺失'} → ${hour15 ? BIAS_LABELS[hour15.conclusion.bias] : '15分钟缺失'}`,
         detail: `${describePeriod(result.periods.hour60)} / ${describePeriod(result.periods.hour15)}`,
       },

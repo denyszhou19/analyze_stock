@@ -448,7 +448,7 @@ function createRuleItem(
   };
 }
 
-test('TradingCycleBus renders three trading combinations with direction and trigger level', async () => {
+test('TradingCycleBus renders four trading combinations in two rows with direction and trigger level', async () => {
   const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
     'src/components/stock/TradingCycleBus.tsx'
   );
@@ -519,6 +519,33 @@ test('TradingCycleBus renders three trading combinations with direction and trig
           explanation: '日线定约束，30分钟给触发；存在约束，不能直接放大动作',
         },
         {
+          key: 'swingline',
+          label: '波段执行组合｜日线 → 60分钟',
+          levels: ['daily', 'hour60'],
+          direction: 'bullish',
+          directionLabel: '偏多',
+          actionLabel: '可执行',
+          judgmentLabel: '观察中',
+          relationLabel: '父级约束清楚，子级节奏可跟',
+          relationHint: '日线看背景，60分钟看执行',
+          summary: '日线给主策略边界，60分钟负责回抽确认',
+          recommendation: '等60分钟回抽 MA55 确认后再看买入',
+          signalTags: [
+            createSignalTag('结构｜C单平台式', 'neutral'),
+            createSignalTag('执行｜回抽确认', 'bullish'),
+          ],
+          actionStateTags: [],
+          judgmentBasisTags: [],
+          parentConstraintTags: [],
+          parentSignalTags: [],
+          parentConstraint: createExplainableField('父级约束', '日线：主策略窗口已打开'),
+          triggerLevel: createExplainableField('触发级别', '60分钟：回抽 MA55 确认'),
+          triggerLevelLabel: '60分钟',
+          suitableAction: createExplainableField('适合动作', '等60分钟确认后再考虑分批买入'),
+          majorRisk: createExplainableField('主要风险', '60分钟跌回 MA55 下方会重新回到等待'),
+          explanation: '日线定约束，60分钟给执行节奏；适合波段跟踪，不等同于30分钟抢触发',
+        },
+        {
           key: 'intraday_t',
           label: '超短线 / T 组合｜60分钟 → 15分钟',
           levels: ['hour60', 'hour15'],
@@ -547,17 +574,23 @@ test('TradingCycleBus renders three trading combinations with direction and trig
   );
 
   assert.match(html, /交易周期总线/);
+  assert.match(html, /用四条交易组合综合判断当前最适合做中线、波段、短线、超短线 \/ T，还是继续等待。/);
   assert.match(html, /中线主策略组合｜周线 → 日线/);
+  assert.match(html, /波段执行组合｜日线 → 60分钟/);
   assert.match(html, /短线执行组合｜日线 → 30分钟/);
   assert.match(html, /超短线 \/ T 组合｜60分钟 → 15分钟/);
+  assert.match(html, /xl:grid-cols-2/);
   assert.match(html, /触发级别/);
   assert.match(html, /严格等待/);
+  assert.match(html, /观察中/);
   assert.match(html, /候选可试/);
   assert.match(html, /适合动作/);
   assert.match(html, /主要风险/);
   assert.match(html, /周线：大方向偏多/);
+  assert.match(html, /日线：主策略窗口已打开/);
   assert.match(html, /先等30分钟放量突破平台上沿/);
   assert.match(html, /父子分工：<\/span><span>周线看背景，日线看执行/);
+  assert.match(html, /父子分工：<\/span><span>日线看背景，60分钟看执行/);
   assert.match(html, /父子分工：<\/span><span>日线看背景，30分钟看执行/);
   assert.match(html, /父子分工：<\/span><span>60分钟看背景，15分钟看执行/);
   assert.match(html, /时空｜中偏弱/);
@@ -1054,6 +1087,51 @@ test('TradingCycleBus renders Chinese node semantic contract copy without intern
   assert.doesNotMatch(html, /暂无补充说明/);
 });
 
+test('TradingCycleBus renders predictive and direction-lock copy without leaking internal enums', async () => {
+  const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
+    'src/components/stock/TradingCycleBus.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(TradingCycleBus, {
+      combinations: [
+        {
+          key: 'shortline',
+          label: '短线执行组合｜日线 → 30分钟',
+          levels: ['daily', 'hour30'],
+          direction: 'bullish',
+          directionLabel: '偏多',
+          actionLabel: '观察中',
+          judgmentLabel: '候选可试',
+          relationLabel: '父级支持，子级顺父级',
+          relationHint: '日线看背景，30分钟看执行',
+          summary: '当前主看A候选，正在形成，先等确认',
+          recommendation: '方向未放行，先等 MA233 头顶压制解除',
+          signalTags: [],
+          actionStateTags: [
+            createSignalTag('执行｜主候选正在形成', 'warning'),
+            createSignalTag('执行｜方向未放行', 'warning'),
+          ],
+          judgmentBasisTags: [createSignalTag('结构｜当前主看A候选', 'neutral')],
+          parentConstraintTags: [createSignalTag('均线｜方向未放行', 'warning')],
+          parentSignalTags: [],
+          parentConstraint: createExplainableField('父级约束', '日线：方向未放行，先等 MA233 头顶压制解除'),
+          triggerLevel: createExplainableField('触发级别', '30分钟：等待确认'),
+          triggerLevelLabel: '30分钟',
+          suitableAction: createExplainableField('适合动作', '主候选正在形成，先等确认'),
+          majorRisk: createExplainableField('主要风险', '方向未放行，贸然推进容易回到等待'),
+          explanation: '日线定约束，30分钟给触发；先等放行，不急着追价',
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /主候选正在形成/);
+  assert.match(html, /方向未放行/);
+  assert.match(html, /先等 MA233 头顶压制解除/);
+  assert.doesNotMatch(html, /debouncing|candidate|strengthening|exception_interrupt|narrative_switch|direction_lock/);
+});
+
 test('TradingCycleBus renders Chinese boundary semantic contract copy without internal field names', async () => {
   const { TradingCycleBus } = await importTsxModule<TradingCycleBusModule>(
     'src/components/stock/TradingCycleBus.tsx'
@@ -1450,7 +1528,7 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
         triggerLabels: ['30分钟放量突破平台上沿'],
         riskLabels: ['跌回日线平台下沿'],
         guardrail: '仓位不超过 20%',
-        spacetimeSummary: '时空：中偏强，等待时空确认',
+        spacetimeSummary: '日线时空：中偏强，等待时空确认',
         structureSummary: '结构：A五段式，A原型成立',
         executionSummary: '现在怎么做：先看30分钟放量突破平台上沿，确认看回踩不破平台上沿，失效看跌回日线平台下沿',
         signalTags: [
@@ -1473,7 +1551,7 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
         ],
       },
       globalStrategy: {
-        scopeLabel: '综合范围：中线主策略组合、短线执行组合、超短线 / T 组合',
+        scopeLabel: '综合范围：中线主策略组合、波段执行组合、短线执行组合、超短线 / T 组合',
         primaryCombination: 'shortline',
         primaryCombinationLabel: '短线执行组合｜日线 → 30分钟',
         primaryConstraintLevel: 'daily',
@@ -1495,12 +1573,12 @@ test('AnalysisSummaryPanel renders global strategy scope and hard gate explanati
   );
 
   assert.match(html, /页面范围/);
-  assert.match(html, /综合范围：中线主策略组合、短线执行组合、超短线 \/ T 组合/);
+  assert.match(html, /综合范围：中线主策略组合、波段执行组合、短线执行组合、超短线 \/ T 组合/);
   assert.match(html, /当前优先组合：短线执行组合｜日线 → 30分钟/);
   assert.match(html, /主约束级别：日线/);
   assert.match(html, /触发级别：30分钟/);
   assert.match(html, /候选可试/);
-  assert.match(html, /时空：中偏强，等待时空确认/);
+  assert.match(html, /日线时空：中偏强，等待时空确认/);
   assert.match(html, /结构：A五段式，A原型成立/);
   assert.match(html, /现在怎么做：先看30分钟放量突破平台上沿，确认看回踩不破平台上沿，失效看跌回日线平台下沿/);
   assert.match(html, /主策略硬门控/);
@@ -1530,7 +1608,7 @@ test('AnalysisSummaryPanel keeps candidate blocks and hard gates visible when ph
         triggerLabels: ['30分钟止跌后重新转强'],
         riskLabels: ['跌回日线确认低点下方'],
         guardrail: '后端当前仍未放开等待约束',
-        spacetimeSummary: '时空：日线中偏强，30分钟顺父级，零轴强信号偏支持',
+        spacetimeSummary: '日线时空：中偏强，30分钟顺父级，零轴强信号偏支持',
         structureSummary: '结构：正式结构未完全确认，当前更偏 D 候选',
         executionSummary: '现在怎么做：先看30分钟止跌，确认后再加',
         judgmentWarning: '判断疑点：30分钟信号已明显转强，但后端当前结论仍偏保守',
@@ -1541,9 +1619,9 @@ test('AnalysisSummaryPanel keeps candidate blocks and hard gates visible when ph
           invalidation: '跌回日线确认低点下方',
         },
         waitStateSummary: {
-          label: '等待回抽确认',
-          currentBlock: '30分钟回抽段尚未完成止跌确认',
-          nextAction: '观察30分钟止跌并重新转强',
+          label: '周线约束',
+          currentBlock: '极弱背景下当前仍属复杂/未完成结构，暂不操作',
+          nextAction: '等待结构明确为标准 A/B/C/D 后再判断',
         },
         signalTags: [
           createSignalTag('级别｜子级逆势', 'warning'),
@@ -1565,7 +1643,7 @@ test('AnalysisSummaryPanel keeps candidate blocks and hard gates visible when ph
         ],
       },
       globalStrategy: {
-        scopeLabel: '综合范围：中线主策略组合、短线执行组合、超短线 / T 组合',
+        scopeLabel: '综合范围：中线主策略组合、波段执行组合、短线执行组合、超短线 / T 组合',
         primaryCombination: 'shortline',
         primaryCombinationLabel: '短线执行组合｜日线 → 30分钟',
         primaryConstraintLevel: 'daily',
@@ -1589,12 +1667,66 @@ test('AnalysisSummaryPanel keeps candidate blocks and hard gates visible when ph
   assert.match(html, /判断疑点/);
   assert.match(html, /候选结构/);
   assert.match(html, /D候选｜30分钟回抽段/);
-  assert.match(html, /等待状态/);
-  assert.match(html, /等待回抽确认｜30分钟回抽段尚未完成止跌确认/);
+  assert.match(html, /当前阻塞/);
+  assert.match(html, /周线约束｜极弱背景下当前仍属复杂\/未完成结构，暂不操作/);
+  assert.match(html, /下一步：等待结构明确为标准 A\/B\/C\/D 后再判断/);
   assert.match(html, /页面范围/);
   assert.match(html, /主策略硬门控/);
   assert.match(html, /仓位权限/);
   assert.doesNotMatch(html, /关键信号标签/);
+});
+
+test('AnalysisSummaryPanel renders predictive summary copy without leaking internal enums or period-detail evidence', async () => {
+  const { AnalysisSummaryPanel } = await importTsxModule<AnalysisSummaryPanelModule>(
+    'src/components/stock/AnalysisSummaryPanel.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisSummaryPanel, {
+      viewModel: {
+        mode: 'idle',
+        headline: '当前先等主候选确认',
+        primaryActionLabel: '等待',
+        judgmentLabel: '候选可试',
+        relationLabel: '父级支持，子级顺父级',
+        primaryReason: '当前主看A候选，但方向仍未放行',
+        triggerLabels: ['等待确认信号'],
+        riskLabels: ['方向未放行，贸然推进容易回到等待'],
+        guardrail: '方向未放行，先等 MA233 头顶压制解除',
+        spacetimeSummary: '日线时空：父级仍支持，但先等确认',
+        structureSummary: '结构：当前主看A候选，正在形成，先等确认',
+        executionSummary: '现在怎么做：主候选正在形成，先等确认；方向未放行，暂不追价',
+        signalTags: [],
+        hardGateTitle: '主策略硬门控',
+        hardGateSourceLabel: '当前硬门控来自主判定级别：日线',
+        hardGates: [],
+      },
+      globalStrategy: {
+        scopeLabel: '综合范围：中线主策略组合、波段执行组合、短线执行组合、超短线 / T 组合',
+        primaryCombination: 'shortline',
+        primaryCombinationLabel: '短线执行组合｜日线 → 30分钟',
+        primaryConstraintLevel: 'daily',
+        primaryConstraintLevelLabel: '日线',
+        triggerLevel: 'hour30',
+        triggerLevelLabel: '30分钟',
+        direction: 'bullish',
+        directionLabel: '偏多',
+        actionLabel: '观察中',
+        headline: '当前先等主候选确认',
+        primaryReason: '当前主看A候选，但方向仍未放行',
+        triggerLabels: ['等待确认信号'],
+        riskLabels: ['方向未放行，贸然推进容易回到等待'],
+        guardrail: '方向未放行，先等 MA233 头顶压制解除',
+      },
+      onGenerate: () => undefined,
+      canGenerate: true,
+    })
+  );
+
+  assert.match(html, /当前主看A候选，正在形成，先等确认/);
+  assert.match(html, /方向未放行，暂不追价/);
+  assert.doesNotMatch(html, /a4→live|当前段|下一确认|结构方向|均线背景/);
+  assert.doesNotMatch(html, /debouncing|strengthening|direction_lock|exception_interrupt/);
 });
 
 test('AnalysisPeriodDetails renders level tabs with a slim overview and structure evidence', async () => {
@@ -1754,9 +1886,9 @@ test('AnalysisPeriodDetails renders level tabs with a slim overview and structur
   assert.match(html, /周期详情/);
   assert.match(html, /日线/);
   assert.match(html, /该级别概览/);
-  assert.match(html, /当前判断/);
-  assert.match(html, /父子约束/);
-  assert.match(html, /日线等待确认/);
+  assert.match(html, /最终判定/);
+  assert.match(html, /父级约束/);
+  assert.match(html, /周线支持：日线可顺势跟踪/);
   assert.match(html, /来源：日线三位一体判定/);
   assert.match(html, /证据区/);
   assert.match(html, /结构类型/);
@@ -2034,8 +2166,8 @@ test('AnalysisPeriodDetails overview keeps candidate structure but omits duplica
   );
 
   assert.match(html, /候选可试/);
-  assert.match(html, /A延续候选｜a3进行中/);
   assert.match(html, /结构｜A延续候选/);
+  assert.match(html, /进行中 段仍按上涨原型处理/);
   assert.doesNotMatch(html, /结构｜A五段式/);
   assert.doesNotMatch(html, /观察30分钟回抽不破 MA55/);
   assert.doesNotMatch(html, /父级支持但30分钟仍待确认/);
@@ -2043,6 +2175,7 @@ test('AnalysisPeriodDetails overview keeps candidate structure but omits duplica
   assert.doesNotMatch(html, /30分钟回抽确认后加仓/);
   assert.doesNotMatch(html, /跌破15分钟确认低点/);
   assert.doesNotMatch(html, /旧确认点/);
+  assert.doesNotMatch(html, /A延续候选｜a3进行中/);
 });
 
 test('AnalysisPeriodDetails ignores legacy section summary when candidate structure is present', async () => {
@@ -2154,9 +2287,132 @@ test('AnalysisPeriodDetails ignores legacy section summary when candidate struct
     })
   );
 
-  assert.match(html, /A延续候选｜a3进行中/);
   assert.match(html, /结构｜A延续候选/);
+  assert.match(html, /进行中 段仍按上涨原型处理/);
   assert.doesNotMatch(html, /旧调用方摘要/);
+});
+
+test('AnalysisPeriodDetails normalizes candidate structure copy and avoids repeating the same candidate summary across sections', async () => {
+  const { AnalysisPeriodDetails } = await importTsxModule<AnalysisPeriodDetailsModule>(
+    'src/components/stock/AnalysisPeriodDetails.tsx'
+  );
+
+  const html = renderQuietly(
+    React.createElement(AnalysisPeriodDetails, {
+      defaultLevelKey: 'daily',
+      sections: [
+        {
+          key: 'daily',
+          label: '日线',
+          rangeLabel: '2025-07-14 至 2026-04-24',
+          period: {
+            period: 'daily',
+            trinity_decision: {
+              version: 'v2',
+              level: 'daily',
+              conclusion: {
+                action: 'wait',
+                action_label: '等待',
+                bias: 'neutral',
+                confidence: 'medium',
+                can_trade: false,
+                wait_reason: '等待结构确认',
+              },
+              spacetime: {
+                status: '中偏强',
+                direction_bias: 'neutral',
+                expected_structures: { up: ['C单平台式'], down: ['D三段式'] },
+                structure_match: false,
+                mismatch_reason: null,
+                divergence_policy: {
+                  top_divergence_valid: false,
+                  bottom_divergence_valid: false,
+                  reason: '沿用现有 MACD 背离字段',
+                },
+              },
+              structure: {
+                family: 'complex',
+                type: '复杂结构',
+                qualification: 'standard',
+                direction: 'down',
+                boundaries: {},
+                node_map: {},
+                can_trade_by_structure_nodes: false,
+                can_trade_by_boundaries: false,
+                explainability: { status: 'passed', reason: '结构复杂，需人工确认方向。', evidence: [] },
+              },
+              candidate_structure: {
+                candidate_type: 'complex',
+                candidate_label: 'complex候选',
+                current_leg: 'p16→live 下行形成中',
+                direction: 'down',
+                reason: '结构复杂，需人工确认方向。',
+                upgrade_condition: '等待结构明确为标准 A/B/C/D 后再判断',
+                invalidation: '跌破关键止损位后放弃',
+              },
+              moving_average: {
+                ma55_role: 'neutral',
+                ma233_role: 'neutral',
+                price_position: { above_ma55: false, above_ma233: false },
+                breakthrough_state: 'breakout_pending',
+                ma_gate: {
+                  allow_long: false,
+                  allow_short: false,
+                  reason: '均线未确认',
+                },
+              },
+              volume_confirmation: {
+                volume_state: 'normal',
+                breakout_volume: 'weak',
+                breakdown_volume: 'not_applicable',
+                pullback_volume: 'normal',
+                volume_gate: {
+                  supports_breakout: false,
+                  supports_breakdown: false,
+                  supports_pullback_confirmation: false,
+                  confidence_adjustment: 'neutral',
+                  reason: '量能未确认',
+                },
+              },
+              trade_qualification: {
+                position_permission: 'no_position',
+                trade_mode: 'wait_confirmation',
+                confidence: 'low',
+                reason: ['等待确认'],
+              },
+              execution: {
+                entry_style: 'none',
+                triggers: [],
+                confirmation: [],
+                invalidation: [],
+                risk_flags: [],
+                position_sizing: { reason: '等待确认' },
+              },
+              judgment_criteria: [],
+              ai_summary_facts: [],
+            },
+            structure: {
+              structure_type: '复杂结构',
+              description: 'complex候选｜p16→live 下行形成中',
+            },
+          } as PeriodAnalysisData,
+        },
+      ],
+    })
+  );
+
+  assert.match(html, /来源：日线三位一体判定/);
+  assert.match(html, /<p class="text-xs text-muted-foreground">2025-07-14 至 2026-04-24<\/p>/);
+  assert.match(
+    html,
+    /<div class="mt-1 leading-6">p16→进行中 下行形成中｜结构复杂，需人工确认方向。｜等待结构明确为标准 A\/B\/C\/D 后再判断<\/div>/
+  );
+  assert.match(html, /结构复杂，需人工确认方向。/);
+  assert.match(html, /2025-07-14 至 2026-04-24/);
+  assert.doesNotMatch(html, /2025-07-14 至 2026-04-24 ·/);
+  assert.doesNotMatch(html, /<div class="mt-1 leading-6">复杂结构候选/);
+  assert.doesNotMatch(html, /complex候选/);
+  assert.doesNotMatch(html, /→live/);
 });
 
 test('AnalysisPeriodDetails falls back to legacy structure when phase2 fields are absent', async () => {
@@ -2284,8 +2540,8 @@ test('AnalysisPeriodDetails falls back cleanly when period data is missing', asy
 
   assert.match(html, /该级别概览/);
   assert.match(html, /严格等待/);
-  assert.match(html, /父级未明，子级先看确认/);
-  assert.match(html, /当前级别暂无周期数据/);
+  assert.match(html, /父级未明：日线先看确认/);
+  assert.match(html, /来源：结构解释链路回退/);
   assert.match(html, /当前周期暂无结构证据/);
   assert.doesNotMatch(html, /时空摘要/);
   assert.doesNotMatch(html, /执行摘要/);

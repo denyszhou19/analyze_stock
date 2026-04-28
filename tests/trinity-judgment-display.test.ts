@@ -196,6 +196,70 @@ test('resolveRelationLabel compresses parent-child resonance into fixed short co
   );
 });
 
+test('resolvePredictiveStageLabel turns predictive stages into natural Chinese copy', () => {
+  assert.equal(
+    judgmentDisplay.resolvePredictiveStageLabel({
+      family: 'A',
+      stage: 'debouncing',
+      label: 'A候选',
+    }),
+    'A候选正在形成，先等确认'
+  );
+
+  assert.equal(
+    judgmentDisplay.resolvePredictiveStageLabel({
+      family: 'B',
+      stage: 'candidate',
+      label: 'B候选',
+    }),
+    'B候选已出现，先观察确认'
+  );
+
+  assert.equal(
+    judgmentDisplay.resolvePredictiveStageLabel({
+      family: 'A',
+      stage: 'strengthening',
+      label: 'A候选',
+    }),
+    'A候选正在增强，确认后再推进'
+  );
+
+  assert.equal(
+    judgmentDisplay.resolvePredictiveStageLabel({
+      family: 'D',
+      stage: 'exception',
+      label: 'D候选',
+    }),
+    '异常中断，先风控再评估'
+  );
+});
+
+test('resolveDirectionLockLabel turns direction lock states into Chinese guardrails', () => {
+  assert.equal(
+    judgmentDisplay.resolveDirectionLockLabel({
+      status: 'locked',
+      reason: 'MA233 头顶压制',
+    }),
+    '方向未放行，先等 MA233 头顶压制解除'
+  );
+
+  assert.equal(
+    judgmentDisplay.resolveDirectionLockLabel({
+      status: 'released',
+      reason: '价格已重新站上 MA55',
+    }),
+    '方向已放行，可继续跟踪确认'
+  );
+
+  assert.equal(
+    judgmentDisplay.resolveDirectionLockLabel({
+      status: 'mixed',
+      reason: '均线与结构信号仍待补齐',
+    }),
+    '方向待确认，先等均线与结构信号补齐'
+  );
+});
+
 test('buildExecutionPreview returns fallback-safe execution copy', () => {
   assert.deepEqual(judgmentDisplay.buildExecutionPreview(createDecision()), {
     probeEntry: '重新站上平台上沿',

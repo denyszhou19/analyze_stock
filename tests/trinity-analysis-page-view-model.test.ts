@@ -278,7 +278,7 @@ test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chai
   assert.equal(vm.summary.primaryActionLabel, '等待');
   assert.equal(vm.summary.judgmentLabel, '严格等待');
   assert.equal(vm.summary.relationLabel, '父级强冲突，子级逆父级');
-  assert.match(vm.summary.spacetimeSummary, /^时空：/);
+  assert.match(vm.summary.spacetimeSummary, /^日线时空：/);
   assert.match(vm.summary.structureSummary, /^结构：/);
   assert.match(vm.summary.executionSummary, /^现在怎么做：先看/);
   assert.deepEqual(vm.summary.triggerLabels, ['重新站上平台上沿']);
@@ -287,10 +287,10 @@ test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chai
   assert.ok(vm.summary.signalTags.some((tag) => tag.label === '执行｜回踩执行'));
   assert.equal(vm.summary.hardGates[0].label, '后端最终动作');
   assert.equal(vm.summary.hardGates[0].value, '等待');
-  assert.equal(vm.bus.dimensions.length, 3);
+  assert.equal(vm.bus.dimensions.length, 4);
   assert.deepEqual(
     vm.bus.dimensions.map((dimension) => dimension.title),
-    ['维度一｜周线 → 日线', '维度二｜日线 → 30分钟', '维度三｜60分钟 → 15分钟']
+    ['维度一｜周线 → 日线', '维度二｜日线 → 60分钟', '维度三｜日线 → 30分钟', '维度四｜60分钟 → 15分钟']
   );
   assert.equal(vm.ruleChain.items.length, 6);
   assert.deepEqual(
@@ -305,6 +305,149 @@ test('AI idle uses backend conclusion and builds fixed gates, bus, and rule chai
     vm.ruleChain.sourceLabel,
     '本规则链默认按日线主判定展示；若日线缺失，则依次降级为周线、60分钟、30分钟、15分钟。'
   );
+});
+
+test('view model prefers predictive primary candidate and direction lock in summary and bus copy', () => {
+  const result = createResult();
+  result.periods.daily!.trinity_decision = createDecision({
+    structure_prediction: {
+      spacetime_scope: {
+        parent_status: '极强',
+        allowed_candidates: ['A', 'B'],
+        degraded_candidates: ['C'],
+        blocked_candidates: ['D'],
+        current_family: 'B',
+        current_direction: 'up',
+      },
+      dominant_narrative: '推进主导',
+      narrative_switch: {
+        from_family: 'B',
+        to_family: 'A',
+        state: 'debouncing',
+        hard_triggers: [],
+        soft_triggers: [],
+        blocking_signals: [],
+        passed: false,
+      },
+      primary_candidate: {
+        family: 'A',
+        stage: 'debouncing',
+        label: 'A候选',
+        direction: 'up',
+        reason: '主升候选刚开始形成',
+      },
+      secondary_candidate: {
+        family: 'B',
+        stage: 'candidate',
+        label: 'B候选',
+        direction: 'up',
+        reason: '原平台语义仍保留',
+      },
+      fallback_candidate: {
+        family: 'D',
+        label: 'D候选',
+        enabled: false,
+        reason: '当前无需降级',
+      },
+      exception_interrupt: {
+        enabled: false,
+        type: null,
+        reason: '未触发异常中断',
+      },
+      observed_context: {
+        global_structure_type: 'B双平台式',
+        focus_structure_type: 'A五段式',
+        current_leg: 'a4→live 上行推进中',
+      },
+    },
+    direction_lock: {
+      status: 'locked',
+      reason: 'MA233 头顶压制',
+    },
+  });
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.match(vm.summary.structureSummary, /A候选正在形成，先等确认/);
+  assert.doesNotMatch(vm.summary.structureSummary, /a4→live|debouncing|strengthening/);
+  assert.match(vm.summary.executionSummary, /主候选正在形成，先等确认/);
+  assert.match(vm.summary.executionSummary, /方向未放行/);
+  assert.ok(vm.summary.riskLabels.some((label) => /方向未放行/.test(label)));
+
+  const shortline = vm.tradingCombinations.find((item) => item.key === 'shortline');
+  assert.ok(shortline);
+  assert.match(shortline!.summary, /A候选正在形成，先等确认/);
+  assert.match(shortline!.recommendation, /方向未放行/);
+  assert.doesNotMatch(shortline!.summary, /当前段|a4→live|MA233|up/);
+});
+
+test('view model prioritizes exception interrupt over ordinary predictive candidate narration', () => {
+  const result = createResult();
+  result.periods.daily!.trinity_decision = createDecision({
+    structure_prediction: {
+      spacetime_scope: {
+        parent_status: '极弱',
+        allowed_candidates: ['A', 'B'],
+        degraded_candidates: ['C'],
+        blocked_candidates: ['D'],
+        current_family: 'D',
+        current_direction: 'up',
+      },
+      dominant_narrative: '反抽主导',
+      narrative_switch: {
+        from_family: 'C',
+        to_family: 'D',
+        state: 'exception',
+        hard_triggers: ['V反极速反抽'],
+        soft_triggers: [],
+        blocking_signals: ['不按常规候选延续'],
+        passed: true,
+      },
+      primary_candidate: {
+        family: 'D',
+        stage: 'exception',
+        label: 'D候选',
+        direction: 'up',
+        reason: 'V反异常中断',
+      },
+      secondary_candidate: null,
+      fallback_candidate: {
+        family: 'D',
+        label: 'D候选',
+        enabled: false,
+        reason: '异常中断时不走普通 fallback',
+      },
+      exception_interrupt: {
+        enabled: true,
+        type: 'v_reversal',
+        reason: 'V反极速反抽，先风控再评估',
+      },
+      observed_context: {
+        global_structure_type: '复杂结构',
+        focus_structure_type: 'D三段式',
+        current_leg: 'live V反极速反抽',
+      },
+    },
+  });
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.match(vm.summary.structureSummary, /异常中断/);
+  assert.match(vm.summary.executionSummary, /先风控、再评估/);
+  assert.doesNotMatch(vm.summary.structureSummary, /exception|exception_interrupt/);
+
+  const midline = vm.tradingCombinations.find((item) => item.key === 'midline');
+  assert.ok(midline);
+  assert.match(midline!.recommendation, /先风控、再评估/);
+  assert.match(midline!.majorRisk.value, /异常中断/);
 });
 
 test('status bar renders data ranges by configured level order and daily valid range', () => {
@@ -529,6 +672,42 @@ test('summary falls back to backend candidate structure and wait state when AI o
   });
 });
 
+test('summary scopes backend wait state to the parent level when current block comes from parent background', () => {
+  const result = createResult();
+  const decision = result.periods.daily.trinity_decision;
+  if (!decision) {
+    throw new Error('missing daily decision');
+  }
+  if (!decision.level_nesting) {
+    throw new Error('missing daily level nesting');
+  }
+
+  decision.level_nesting = {
+    ...decision.level_nesting,
+    parent_level: 'weekly',
+    parent_spacetime_status: '极弱',
+  };
+  decision.wait_state = {
+    wait_type: '等待触发',
+    wait_label: '等待触发',
+    current_block: '极弱背景下当前仍属复杂/未完成结构，暂不操作',
+    next_confirmation_action: '等待结构明确为标准 A/B/C/D 后再判断',
+    reason: '极弱背景下当前仍属复杂/未完成结构，暂不操作',
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: { status: 'idle' },
+  });
+
+  assert.deepEqual(vm.summary.waitStateSummary, {
+    label: '周线约束',
+    currentBlock: '极弱背景下当前仍属复杂/未完成结构，暂不操作',
+    nextAction: '等待结构明确为标准 A/B/C/D 后再判断',
+  });
+});
+
 test('summary prefers backend judgment critical reason and execution plan', () => {
   const result = createResult();
   const decision = result.periods.daily.trinity_decision;
@@ -569,6 +748,41 @@ test('summary prefers backend judgment critical reason and execution plan', () =
   assert.match(vm.summary.executionSummary, /30分钟回抽确认后加仓/);
 });
 
+test('summary sanitizes mixed-language AI warning and execution copy into Chinese display', () => {
+  const result = createResult();
+  const aiSummary: AiSummaryCard = {
+    headline: 'AI 判断：当前先等确认',
+    action: 'wait',
+    bias: 'neutral',
+    primary_reason: 'AI 仍建议等待',
+    triggers: ['等待 30分钟 确认'],
+    risks: ['execution 字段存在 buy 倾向'],
+    guardrail: 'position_permission 仍是 no_position',
+    execution_summary:
+      'execution 字段给出 buy 含义，但 deterministic_decision 为 wait 且 position_permission 为 no_position',
+    judgment_warning:
+      '60分钟execution字段给出buy含义，但其deterministic_decision为wait且position_permission为no_position，正式策略必须按等待处理。',
+  };
+
+  const vm = buildAnalysisPageViewModel({
+    result,
+    integrity: createIntegrity(),
+    aiState: {
+      status: 'ready',
+      summary: aiSummary,
+    },
+  });
+
+  assert.equal(
+    vm.summary.judgmentWarning,
+    '60分钟执行预案字段给出买入含义，但其后端当前结论为等待且仓位权限为空仓等待，正式策略必须按等待处理。'
+  );
+  assert.equal(
+    vm.summary.executionSummary,
+    '执行预案字段给出买入含义，但后端当前结论为等待且仓位权限为空仓等待'
+  );
+});
+
 test('summary prefers candidate structure label and current leg over legacy structure copy', () => {
   const result = createResult();
   const decision = result.periods.daily.trinity_decision;
@@ -594,7 +808,7 @@ test('summary prefers candidate structure label and current leg over legacy stru
     aiState: { status: 'idle' },
   });
 
-  assert.equal(vm.summary.structureSummary, '结构：A延续候选｜a3进行中，live 段仍按上涨原型处理');
+  assert.equal(vm.summary.structureSummary, '结构：A延续候选｜a3进行中，进行中 段仍按上涨原型处理');
   assert.ok(vm.summary.signalTags.some((tag) => tag.label === '结构｜A延续候选'));
 });
 
@@ -879,7 +1093,7 @@ test('loading and error states use unified Chinese labels', () => {
   assert.equal(errorVm.statusBar.aiStatus.label, '生成失败');
 });
 
-test('global strategy is derived from three trading combinations, not a single daily label', () => {
+test('global strategy is derived from four trading combinations, not a single daily label', () => {
   const result = createResult();
   if (!result.periods.daily.trinity_decision) {
     throw new Error('missing daily decision');
@@ -926,17 +1140,22 @@ test('global strategy is derived from three trading combinations, not a single d
     aiState: { status: 'idle' },
   });
 
-  assert.equal(vm.globalStrategy.scopeLabel, '综合范围：中线主策略组合、短线执行组合、超短线 / T 组合');
+  assert.equal(vm.globalStrategy.scopeLabel, '综合范围：中线主策略组合、波段执行组合、短线执行组合、超短线 / T 组合');
   assert.equal(vm.globalStrategy.primaryCombinationLabel, '短线执行组合｜日线 → 30分钟');
   assert.equal(vm.globalStrategy.primaryConstraintLevel, 'daily');
   assert.equal(vm.globalStrategy.primaryConstraintLevelLabel, '日线');
   assert.equal(vm.globalStrategy.triggerLevel, 'hour30');
   assert.equal(vm.globalStrategy.triggerLevelLabel, '30分钟');
   assert.equal(vm.globalStrategy.actionLabel, '可执行');
-  assert.equal(vm.tradingCombinations.length, 3);
+  assert.equal(vm.tradingCombinations.length, 4);
   assert.deepEqual(
     vm.tradingCombinations.map((item) => item.label),
-    ['中线主策略组合｜周线 → 日线', '短线执行组合｜日线 → 30分钟', '超短线 / T 组合｜60分钟 → 15分钟']
+    [
+      '中线主策略组合｜周线 → 日线',
+      '波段执行组合｜日线 → 60分钟',
+      '短线执行组合｜日线 → 30分钟',
+      '超短线 / T 组合｜60分钟 → 15分钟',
+    ]
   );
 });
 
