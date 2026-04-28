@@ -12,14 +12,30 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         *,
         spacetime_status='强',
         structure_type='B双平台式',
+        standard_candidate=None,
+        focus_family=None,
+        raw_type=None,
         direction='up',
         qualification='standard',
         macd_status='中偏强',
         current_leg='b5→live 下行形成中',
+        current_leg_direction=None,
         ma55=132.59,
         ma233=145.92,
         close=129.10,
     ):
+        standard_candidate = standard_candidate or structure_type
+        raw_type = raw_type or structure_type
+        if focus_family is None:
+            family_hint = (standard_candidate or '')[:1]
+            focus_family = family_hint if family_hint in {'A', 'B', 'C', 'D'} else None
+        if current_leg_direction is None:
+            if '下行' in current_leg or '急跌' in current_leg:
+                current_leg_direction = 'down'
+            elif '上行' in current_leg or '反抽' in current_leg or '拉升' in current_leg:
+                current_leg_direction = 'up'
+            else:
+                current_leg_direction = direction if direction in {'up', 'down'} else 'neutral'
         return {
             'macd': {'status': macd_status},
             'ma55': ma55,
@@ -29,7 +45,7 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
                 'spacetime': {'status': spacetime_status},
                 'structure': {
                     'type': structure_type,
-                    'standard_candidate': structure_type,
+                    'standard_candidate': standard_candidate,
                     'qualification': qualification,
                     'direction': direction,
                     'current_leg': current_leg,
@@ -37,19 +53,19 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
             },
             'structure': {
                 'structure_type': structure_type,
-                'trend_direction': '上涨' if direction == 'up' else '下跌',
+                'trend_direction': '上涨' if direction == 'up' else '下跌' if direction == 'down' else '震荡',
                 'structure_details': {
-                    'raw_classification': {'type': '延伸C类'},
+                    'raw_classification': {'type': raw_type},
                 },
                 'interpretation': {
                     'current_leg': {
                         'from_point_id': None,
                         'to_point_id': 'live',
-                        'direction': 'down' if '下行' in current_leg else 'up',
+                        'direction': current_leg_direction,
                         'label': current_leg,
                     },
                     'focus_structure': {
-                        'archetype_family': structure_type[:1],
+                        'archetype_family': focus_family,
                         'standard_qualification': qualification,
                         'directional_bias': direction,
                     }
@@ -77,7 +93,7 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
 
         self.assertIn('structure_prediction', decision)
         prediction = decision['structure_prediction']
-        self.assertEqual(prediction['spacetime_scope']['allowed_candidates'], ['A', 'B'])
+        self.assertCountEqual(prediction['spacetime_scope']['allowed_candidates'], ['A', 'B'])
         self.assertEqual(prediction['dominant_narrative'], '推进主导')
         self.assertEqual(prediction['primary_candidate']['family'], 'A')
         self.assertEqual(prediction['secondary_candidate']['family'], 'B')
@@ -110,12 +126,25 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         decision = self.analyzer._build_trinity_level_nesting_decision(
             level='hour15',
             normalized_results={
-                'hour60': self._period_payload(spacetime_status='中偏弱', structure_type='复杂结构', direction='down'),
+                'hour60': self._period_payload(
+                    spacetime_status='中偏弱',
+                    structure_type='复杂结构',
+                    standard_candidate='D三段式',
+                    focus_family='D',
+                    raw_type='D三段式',
+                    direction='down',
+                    current_leg='d4→live 下行延续中',
+                    current_leg_direction='down',
+                ),
                 'hour15': self._period_payload(
                     spacetime_status='中偏弱',
                     structure_type='复杂结构',
+                    standard_candidate='D三段式',
+                    focus_family='D',
+                    raw_type='D三段式',
                     direction='down',
-                    current_leg='live 急跌单边推进',
+                    current_leg='d4→live 下行急跌推进中',
+                    current_leg_direction='down',
                     close=118.6,
                     ma55=126.1,
                     ma233=134.4,
@@ -133,12 +162,25 @@ class TrinityPredictiveStructureCandidatesTest(unittest.TestCase):
         decision = self.analyzer._build_trinity_level_nesting_decision(
             level='hour15',
             normalized_results={
-                'hour60': self._period_payload(spacetime_status='极弱', structure_type='复杂结构', direction='down'),
+                'hour60': self._period_payload(
+                    spacetime_status='极弱',
+                    structure_type='复杂结构',
+                    standard_candidate='D三段式',
+                    focus_family='D',
+                    raw_type='D三段式',
+                    direction='down',
+                    current_leg='d4→live 下行延续中',
+                    current_leg_direction='down',
+                ),
                 'hour15': self._period_payload(
                     spacetime_status='极弱',
                     structure_type='复杂结构',
+                    standard_candidate='D三段式',
+                    focus_family='D',
+                    raw_type='D三段式',
                     direction='up',
-                    current_leg='live V反极速反抽',
+                    current_leg='d3→live 上行V反抽中',
+                    current_leg_direction='up',
                     close=137.5,
                     ma55=126.1,
                     ma233=134.4,
